@@ -90,9 +90,17 @@ importRouter.post(
     const parsed = await parseCasBuffer(req.file.buffer, req.body.password || '');
     if (!parsed.ok) {
       const status = parsed.errorType === 'not_installed' ? 503 : 400;
-      return res.status(status).json({ error: FRIENDLY[parsed.errorType] || parsed.error });
+      console.error('[CAS parse failed]', parsed.errorType, '| casparser', parsed.casparser, '|', parsed.error, parsed.trace || '');
+      let msg = FRIENDLY[parsed.errorType] || parsed.error;
+      // Surface a short technical hint for unexpected failures (helps reporting).
+      if ((parsed.errorType === 'parse_error' || parsed.errorType === 'sidecar_error') && parsed.error) {
+        msg += ` (details: ${String(parsed.error).slice(0, 160)})`;
+      }
+      return res.status(status).json({ error: msg });
     }
-    res.json(await buildPreview(parsed, req.user.id));
+    const preview = await buildPreview(parsed, req.user.id);
+    if (parsed.debug) console.warn('[CAS parsed but empty]', JSON.stringify(parsed.debug), 'casparser', parsed.casparser);
+    res.json(preview);
   })
 );
 
