@@ -9,8 +9,10 @@ const KIND_LABEL = { IN_MF: 'Mutual Fund', IN_STOCK: 'Indian Stock', US_STOCK: '
 // Shared review + confirm step for any import source (CAS or broker).
 // `data` = { items, summary, investor?/name?, file_type?/broker_label? }
 export default function ImportReview({ data, source = 'Imported', onBack, onClose, onImported }) {
+  // Duplicates are selected by default now — re-importing UPDATES the existing
+  // holding (refreshes quantity/price) instead of creating a second copy.
   const [items, setItems] = useState(
-    data.items.map((it) => ({ ...it, _selected: it.importable !== false && !it.duplicate }))
+    data.items.map((it) => ({ ...it, _selected: it.importable !== false }))
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -41,8 +43,15 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <CheckCircle2 className="text-emerald-500" size={48} />
         <h3 className="text-lg font-bold text-slate-900">
-          Imported {result.imported} holding{result.imported === 1 ? '' : 's'} 🎉
+          {result.imported} holding{result.imported === 1 ? '' : 's'} imported 🎉
         </h3>
+        {(result.inserted > 0 || result.updated > 0) && (
+          <p className="text-sm text-slate-500">
+            {result.inserted > 0 && `${result.inserted} added`}
+            {result.inserted > 0 && result.updated > 0 && ' · '}
+            {result.updated > 0 && `${result.updated} updated`}
+          </p>
+        )}
         {result.skipped?.length > 0 && (
           <p className="text-sm text-slate-500">{result.skipped.length} row(s) skipped.</p>
         )}
@@ -64,7 +73,7 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
         <span className="text-slate-400">
           {data.summary.mutualFunds != null && `${data.summary.mutualFunds} funds · `}
           {data.summary.stocks} stock{data.summary.stocks === 1 ? '' : 's'}
-          {data.summary.duplicates > 0 && ` · ${data.summary.duplicates} already added`}
+          {data.summary.duplicates > 0 && ` · ${data.summary.duplicates} will update`}
         </span>
       </div>
 
@@ -94,7 +103,7 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
                   <p className="font-medium text-slate-800">{it.name}</p>
                   <p className="text-xs text-slate-400">
                     {KIND_LABEL[it.kind]}
-                    {it.duplicate && <span className="ml-1 font-semibold text-amber-600">· already added</span>}
+                    {it.duplicate && <span className="ml-1 font-semibold text-brand-600">· will update existing</span>}
                   </p>
                 </td>
                 <td className="px-2 text-right tabular-nums text-slate-600">{it.quantity}</td>

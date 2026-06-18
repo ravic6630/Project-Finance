@@ -33,10 +33,16 @@ async function fetchStock(symbol) {
   const meta = json?.chart?.result?.[0]?.meta;
   const price = meta?.regularMarketPrice;
   if (!Number.isFinite(price)) throw new Error('No price in Yahoo response');
+  // longName is the properly-cased full name ("HDFC Bank Limited"); shortName is
+  // an ALL-CAPS abbreviation. Prefer longName. Yahoo occasionally returns a junk
+  // shortName like "SYM,0P0001LR17,171521" for REITs/InvITs — reject anything
+  // with a comma so the importer can fall back to a tidied statement name.
+  const candidate = meta.longName || meta.shortName || symbol;
+  const name = /,/.test(candidate) ? symbol : candidate;
   return {
     price,
     currency: meta.currency || 'USD',
-    name: meta.shortName || meta.longName || symbol,
+    name,
     source: 'yahoo',
   };
 }

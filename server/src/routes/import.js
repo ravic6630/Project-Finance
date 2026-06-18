@@ -3,7 +3,12 @@ import multer from 'multer';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad } from '../util.js';
 import { casAvailable, parseCasBuffer, selfTest } from '../services/cas.js';
-import { dedupSets, insertImportedHoldings, normalizeStockSymbol } from '../services/importer.js';
+import {
+  dedupSets,
+  insertImportedHoldings,
+  normalizeStockSymbol,
+  resolveName,
+} from '../services/importer.js';
 
 export const importRouter = Router();
 importRouter.use(authRequired);
@@ -16,12 +21,30 @@ const upload = multer({
 // Turn the parser's normalized output into a review list, flagging duplicates.
 async function buildPreview(parsed, userId) {
   const have = await dedupSets(userId);
+  const mfsRaw = parsed.mutualFunds || [];
+  const stocksRaw = parsed.stocks || [];
+
+  // Replace the statement's cruft-filled names with clean canonical ones
+  // (Yahoo / AMFI). Resolved in parallel; this also warms the price cache.
+  const [mfNames, stockNames] = await Promise.all([
+    Promise.all(mfsRaw.map((m) => resolveName('IN_MF', { schemeCode: m.amfi || '' }, m.name))),
+    Promise.all(
+      stocksRaw.map((s) =>
+        resolveName(
+          'IN_STOCK',
+          { symbol: s.symbol ? normalizeStockSymbol('IN_STOCK', s.symbol, s.exchange) : '' },
+          s.name
+        )
+      )
+    ),
+  ]);
+
   const items = [];
-  for (const m of parsed.mutualFunds || []) {
+  mfsRaw.forEach((m, i) => {
     items.push({
       kind: 'IN_MF',
       scheme_code: m.amfi || '',
-      name: m.name,
+      name: mfNames[i],
       quantity: m.units || 0,
       avg_cost: m.avgCost ?? m.nav ?? 0,
       currency: 'INR',
@@ -32,15 +55,15 @@ async function buildPreview(parsed, userId) {
       importable: !!m.amfi,
       note: m.amfi ? null : 'No AMFI code in statement — add manually to track live NAV',
     });
-  }
-  for (const s of parsed.stocks || []) {
+  });
+  stocksRaw.forEach((s, i) => {
     const symbol = s.symbol || '';
     const normalized = symbol ? normalizeStockSymbol('IN_STOCK', symbol, s.exchange) : '';
     items.push({
       kind: 'IN_STOCK',
       symbol,
       exchange: s.exchange || null,
-      name: s.name,
+      name: stockNames[i],
       quantity: s.quantity || 0,
       avg_cost: s.avgCost ?? s.nav ?? 0,
       currency: 'INR',
@@ -53,7 +76,7 @@ async function buildPreview(parsed, userId) {
         ? null
         : 'Confirm the NSE ticker (e.g. RELIANCE) so we can fetch its live price',
     });
-  }
+  });
   return {
     investor: parsed.investor || null,
     file_type: parsed.fileType || null,
