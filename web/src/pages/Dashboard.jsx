@@ -15,6 +15,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  ChevronRight,
   PieChart as PieIcon,
   RefreshCw,
   Sparkles,
@@ -30,25 +31,39 @@ const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'
 const MONTH_LABEL = (key) =>
   new Date(`${key}-01T00:00:00`).toLocaleDateString('en-US', { month: 'short' });
 
-function StatCard({ icon: Icon, label, value, sub, tone = 'slate' }) {
+function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600',
     brand: 'bg-brand-100 text-brand-700',
     emerald: 'bg-emerald-100 text-emerald-700',
     amber: 'bg-amber-100 text-amber-700',
   };
-  return (
-    <div className="card p-5">
+  const content = (
+    <>
       <div className="flex items-center gap-3">
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>
           <Icon size={20} />
         </div>
-        <span className="text-sm font-semibold text-slate-500">{label}</span>
+        <span className="flex flex-1 items-center justify-between text-sm font-semibold text-slate-500">
+          {label}
+          {to && <ChevronRight size={16} className="text-slate-300" />}
+        </span>
       </div>
       <p className="mt-4 text-2xl font-extrabold tracking-tight text-slate-900">{value}</p>
       {sub && <div className="mt-1 text-sm">{sub}</div>}
-    </div>
+    </>
   );
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className="card block p-5 transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
+      >
+        {content}
+      </Link>
+    );
+  }
+  return <div className="card p-5">{content}</div>;
 }
 
 export default function Dashboard() {
@@ -131,6 +146,7 @@ export default function Dashboard() {
           icon={TrendingUp}
           tone="brand"
           label="Investments"
+          to="/investments"
           value={money(investments.value, base)}
           sub={
             <span className={gainPositive ? 'text-emerald-600' : 'text-rose-600'}>
@@ -143,6 +159,7 @@ export default function Dashboard() {
           icon={Wallet}
           tone="emerald"
           label="Cash & Bank"
+          to="/cash"
           value={money(cash.total, base)}
           sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
         />
@@ -150,6 +167,7 @@ export default function Dashboard() {
           icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
           tone="amber"
           label="This month's cashflow"
+          to="/transactions"
           value={money(cashflow.this_month_net, base)}
           sub={
             <span className="text-slate-400">
@@ -232,13 +250,17 @@ export default function Dashboard() {
               const gain = k.value - k.cost;
               const up = gain >= 0;
               return (
-                <div key={k.key} className="rounded-xl border border-slate-200 p-4">
+                <Link
+                  key={k.key}
+                  to="/investments"
+                  className="rounded-xl border border-slate-200 p-4 transition hover:border-brand-200 hover:bg-slate-50"
+                >
                   <p className="text-sm font-semibold text-slate-500">{k.label}</p>
                   <p className="mt-1 text-xl font-bold text-slate-900">{money(k.value, base)}</p>
                   <p className={`mt-0.5 text-sm font-medium ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {up ? '▲' : '▼'} {money(Math.abs(gain), base)}
                   </p>
-                </div>
+                </Link>
               );
             })}
           </div>
