@@ -37,6 +37,50 @@ def _to_dict(raw):
     raise TypeError("Unexpected casparser return type: " + type(raw).__name__)
 
 
+class ParseFailed(Exception):
+    def __init__(self, message, where=None, all_errors=None, trace=None):
+        super().__init__(message)
+        self.where = where
+        self.all_errors = all_errors
+        self.trace = trace
+
+
+def _casparser_frame(exc):
+    # Find the deepest traceback frame inside the casparser package (file:line in func).
+    import os
+    try:
+        frames = [f for f in traceback.extract_tb(exc.__traceback__) if "casparser" in (f.filename or "")]
+        if frames:
+            f = frames[-1]
+            return f"{os.path.basename(f.filename)}:{f.lineno} in {f.name}()"
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def read_cas_any(casparser, path, password):
+    # Some statements break one parse path but parse fine via another (different PDF
+    # text backend / transaction handling). Try a few before giving up.
+    strategies = [
+        {},
+        {"force_pdfminer": True},
+        {"sort_transactions": False},
+        {"force_pdfminer": True, "sort_transactions": False},
+    ]
+    errors = []
+    first = None
+    for opts in strategies:
+        try:
+            return _to_dict(casparser.read_cas_pdf(path, password, **opts)), opts
+        except Exception as e:  # noqa: BLE001
+            where = _casparser_frame(e)
+            errors.append(f"[{opts or 'default'}] {type(e).__name__}: {e}" + (f" @ {where}" if where else ""))
+            if first is None:
+                first = (str(e), where, traceback.format_exc())
+    msg, where, tr = first or ("parse failed", None, "")
+    raise ParseFailed(msg, where=where, all_errors=" || ".join(errors), trace=tr)
+
+
 def _num(x):
     try:
         if x is None:
@@ -195,29 +239,33 @@ def main():
 
     version = getattr(casparser, "__version__", "?")
     try:
-        # Call the DEFAULT API (no output= kwarg): works on casparser 0.7.x (returns
-        # a dict) and 1.x (returns a CASData object), then coerce to a dict.
-        data = _to_dict(casparser.read_cas_pdf(args.input, args.password))
+        data, used = read_cas_any(casparser, args.input, args.password)
         result = normalize(data)
         result["casparser"] = version
         if result["counts"]["mutualFunds"] == 0 and result["counts"]["stocks"] == 0:
             result["warning"] = "Parsed the file but found no holdings."
-            # Help diagnose unrecognised structures (e.g. a demat layout we don't map yet).
             result["debug"] = {
                 "fileType": data.get("file_type") or data.get("cas_type"),
                 "topKeys": sorted(list(data.keys()))[:20],
+                "strategy": used,
             }
         print(json.dumps(result))
-    except Exception as e:  # noqa: BLE001
+    except ParseFailed as e:
         msg = str(e)
-        low = msg.lower()
+        low = (e.all_errors or msg).lower()
         etype = "parse_error"
         if any(k in low for k in ("password", "decrypt", "encrypted", "pdfpassword")):
             etype = "bad_password"
-        elif any(k in low for k in ("not a valid", "unsupported", "no startxref", "not a cas")):
+        elif any(k in low for k in ("not a valid", "unsupported", "no startxref", "not a cas", "unable to parse investor")):
             etype = "unsupported_file"
         print(json.dumps({
-            "ok": False, "error": msg, "errorType": etype,
+            "ok": False, "error": msg, "errorType": etype, "casparser": version,
+            "where": e.where, "allErrors": (e.all_errors or "")[-400:],
+            "trace": (e.trace or "")[-700:],
+        }))
+    except Exception as e:  # noqa: BLE001 — safety net
+        print(json.dumps({
+            "ok": False, "error": str(e), "errorType": "sidecar_error",
             "casparser": version, "trace": traceback.format_exc()[-700:],
         }))
 

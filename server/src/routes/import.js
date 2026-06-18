@@ -95,11 +95,15 @@ importRouter.post(
     const parsed = await parseCasBuffer(req.file.buffer, req.body.password || '');
     if (!parsed.ok) {
       const status = parsed.errorType === 'not_installed' ? 503 : 400;
-      console.error('[CAS parse failed]', parsed.errorType, '| casparser', parsed.casparser, '|', parsed.error, parsed.trace || '');
+      console.error(
+        '[CAS parse failed]', parsed.errorType, '| casparser', parsed.casparser,
+        '|', parsed.error, '| where:', parsed.where, '| all:', parsed.allErrors, '\n', parsed.trace || ''
+      );
       let msg = FRIENDLY[parsed.errorType] || parsed.error;
       // Surface a short technical hint for unexpected failures (helps reporting).
       if ((parsed.errorType === 'parse_error' || parsed.errorType === 'sidecar_error') && parsed.error) {
-        msg += ` (details: ${String(parsed.error).slice(0, 160)})`;
+        const where = parsed.where ? ` at ${parsed.where}` : '';
+        msg += ` (details: ${String(parsed.error).slice(0, 140)}${where})`;
       }
       return res.status(status).json({ error: msg });
     }
