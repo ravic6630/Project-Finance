@@ -92,6 +92,13 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at         TEXT
 );
 
+-- One-time password-reset tokens (hashed), with expiry.
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL
+);
+
 -- Per-user email preferences (daily summary opt-in + dedupe of sends).
 CREATE TABLE IF NOT EXISTS email_prefs (
   user_id   INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

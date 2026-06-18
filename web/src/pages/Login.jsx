@@ -67,6 +67,11 @@ export default function Login() {
                 required
               />
             </div>
+            <div className="text-right">
+              <Link to="/forgot" className="text-sm font-medium text-brand-600 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <button className="btn-primary w-full" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>

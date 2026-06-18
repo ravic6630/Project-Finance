@@ -1,6 +1,7 @@
+import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { db } from '../db.js';
-import { applyEffectiveRole, authRequired, requireAdmin } from '../auth.js';
+import { applyEffectiveRole, authRequired, hashPassword, requireAdmin } from '../auth.js';
 import { asyncHandler, HttpError } from '../util.js';
 import { activatePremium, deactivatePremium, premiumState } from '../services/billing.js';
 
@@ -58,5 +59,22 @@ adminRouter.post(
     if (req.body.grant) activatePremium(id, { provider: 'admin', days: 365 });
     else deactivatePremium(id);
     res.json({ ok: true });
+  })
+);
+
+const setPw = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+const clearResets = db.prepare('DELETE FROM password_resets WHERE user_id = ?');
+// Reset a user's password (no email needed) — returns a temp password to share.
+adminRouter.post(
+  '/users/:id/reset-password',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const target = getUser.get(id);
+    if (!target) throw new HttpError(404, 'User not found');
+    const provided = String(req.body.password || '');
+    const password = provided.length >= 6 ? provided : randomBytes(9).toString('base64url');
+    setPw.run(hashPassword(password), id);
+    clearResets.run(id);
+    res.json({ ok: true, email: target.email, password });
   })
 );

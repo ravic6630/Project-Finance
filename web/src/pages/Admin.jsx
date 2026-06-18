@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Crown, Shield, Trash2, Users as UsersIcon } from 'lucide-react';
+import { Crown, KeyRound, Shield, Trash2, Users as UsersIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel } from '../lib/format.js';
@@ -41,6 +41,28 @@ export default function Admin() {
     try {
       await api(`/admin/users/${u.id}/premium`, { method: 'POST', body: { grant: !u.premium } });
       await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(0);
+    }
+  }
+
+  async function resetPw(u) {
+    const custom = window.prompt(
+      `Reset password for ${u.email}.\nType a new password, or leave blank to auto-generate:`,
+      ''
+    );
+    if (custom === null) return; // cancelled
+    setBusy(u.id);
+    try {
+      const r = await api(`/admin/users/${u.id}/reset-password`, {
+        method: 'POST',
+        body: { password: custom || undefined },
+      });
+      window.alert(
+        `New password for ${r.email}:\n\n${r.password}\n\nShare this with them — they can change it after signing in.`
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -130,6 +152,14 @@ export default function Admin() {
                           {u.premium ? 'Revoke' : 'Grant'} premium
                         </button>
                       )}
+                      <button
+                        onClick={() => resetPw(u)}
+                        disabled={busy === u.id}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                        title="Reset password"
+                      >
+                        <KeyRound size={15} />
+                      </button>
                       {u.id !== user.id && (
                         <button
                           onClick={() => remove(u)}
