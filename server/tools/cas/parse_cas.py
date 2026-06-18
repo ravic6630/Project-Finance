@@ -21,6 +21,20 @@ Usage:
 import argparse
 import json
 import sys
+import traceback
+
+
+# casparser returns a dict (0.7.x) or a pydantic CASData object (1.x) — normalise both.
+def _to_dict(raw):
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        return json.loads(raw)
+    if hasattr(raw, "model_dump"):  # pydantic v2
+        return raw.model_dump(mode="json")
+    if hasattr(raw, "dict"):  # pydantic v1
+        return raw.dict()
+    raise TypeError("Unexpected casparser return type: " + type(raw).__name__)
 
 
 def _num(x):
@@ -153,21 +167,33 @@ def main():
                           "errorType": "not_installed"}))
         return
 
+    version = getattr(casparser, "__version__", "?")
     try:
-        data = casparser.read_cas_pdf(args.input, args.password, output="dict")
+        # Call the DEFAULT API (no output= kwarg): works on casparser 0.7.x (returns
+        # a dict) and 1.x (returns a CASData object), then coerce to a dict.
+        data = _to_dict(casparser.read_cas_pdf(args.input, args.password))
         result = normalize(data)
+        result["casparser"] = version
         if result["counts"]["mutualFunds"] == 0 and result["counts"]["stocks"] == 0:
             result["warning"] = "Parsed the file but found no holdings."
+            # Help diagnose unrecognised structures (e.g. a demat layout we don't map yet).
+            result["debug"] = {
+                "fileType": data.get("file_type") or data.get("cas_type"),
+                "topKeys": sorted(list(data.keys()))[:20],
+            }
         print(json.dumps(result))
     except Exception as e:  # noqa: BLE001
         msg = str(e)
-        etype = "parse_error"
         low = msg.lower()
-        if "password" in low or "incorrect" in low or "decrypt" in low:
+        etype = "parse_error"
+        if any(k in low for k in ("password", "decrypt", "encrypted", "pdfpassword")):
             etype = "bad_password"
-        elif "not a valid" in low or "unsupported" in low or "no startxref" in low:
+        elif any(k in low for k in ("not a valid", "unsupported", "no startxref", "not a cas")):
             etype = "unsupported_file"
-        print(json.dumps({"ok": False, "error": msg, "errorType": etype}))
+        print(json.dumps({
+            "ok": False, "error": msg, "errorType": etype,
+            "casparser": version, "trace": traceback.format_exc()[-700:],
+        }))
 
 
 if __name__ == "__main__":
