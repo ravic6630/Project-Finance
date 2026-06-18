@@ -61,12 +61,7 @@ def _casparser_frame(exc):
 def read_cas_any(casparser, path, password):
     # Some statements break one parse path but parse fine via another (different PDF
     # text backend / transaction handling). Try a few before giving up.
-    strategies = [
-        {},
-        {"force_pdfminer": True},
-        {"sort_transactions": False},
-        {"force_pdfminer": True, "sort_transactions": False},
-    ]
+    strategies = [{}, {"sort_transactions": False}]
     errors = []
     first = None
     for opts in strategies:
@@ -155,15 +150,18 @@ def normalize(data):
         for s in folio.get("schemes") or []:
             add_scheme(s, folio.get("amc"), folio.get("folio"))
 
-    # Demat statement (NSDL/CDSL): accounts[] with equities / mutual_funds / folios
+    # Demat statement (NSDL/CDSL): accounts[] with equities / mutual_funds.
+    # NOTE: account["folios"] is a COUNT (int), not a list — never iterate it.
     for acc in data.get("accounts") or []:
         for e in acc.get("equities") or []:
             add_equity(e)
         for m in acc.get("mutual_funds") or []:
             add_demat_mf(m)
-        for folio in acc.get("folios") or []:
-            for s in folio.get("schemes") or []:
-                add_scheme(s, folio.get("amc"), folio.get("folio"))
+        acc_folios = acc.get("folios")
+        if isinstance(acc_folios, list):  # defensive: only if some variant gives a list
+            for folio in acc_folios:
+                for s in folio.get("schemes") or []:
+                    add_scheme(s, folio.get("amc"), folio.get("folio"))
 
     # Legacy/alternate demat shape (harmless if absent)
     for acc in data.get("demat_accounts") or []:
