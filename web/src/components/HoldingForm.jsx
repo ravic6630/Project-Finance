@@ -26,9 +26,14 @@ function MfSearch({ onPick }) {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const timer = useRef(null);
+  const skip = useRef(false);
 
   useEffect(() => {
     clearTimeout(timer.current);
+    if (skip.current) {
+      skip.current = false; // don't re-search right after a pick
+      return undefined;
+    }
     if (q.trim().length < 3) {
       setResults([]);
       return undefined;
@@ -65,8 +70,10 @@ function MfSearch({ onPick }) {
               type="button"
               className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-50"
               onClick={() => {
+                skip.current = true;
                 onPick(r);
                 setQ(r.schemeName);
+                setResults([]);
                 setOpen(false);
               }}
             >
@@ -85,9 +92,14 @@ function StockSearch({ kind, onPick }) {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const timer = useRef(null);
+  const skip = useRef(false);
 
   useEffect(() => {
     clearTimeout(timer.current);
+    if (skip.current) {
+      skip.current = false; // don't re-search right after a pick
+      return undefined;
+    }
     if (q.trim().length < 1) {
       setResults([]);
       return undefined;
@@ -124,8 +136,10 @@ function StockSearch({ kind, onPick }) {
               type="button"
               className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-brand-50"
               onClick={() => {
+                skip.current = true;
                 onPick(r);
                 setQ(`${r.symbol} — ${r.name}`);
+                setResults([]);
                 setOpen(false);
               }}
             >
