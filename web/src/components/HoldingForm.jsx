@@ -80,6 +80,68 @@ function MfSearch({ onPick }) {
   );
 }
 
+function StockSearch({ kind, onPick }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const timer = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(timer.current);
+    if (q.trim().length < 1) {
+      setResults([]);
+      return undefined;
+    }
+    timer.current = setTimeout(async () => {
+      try {
+        const d = await api(`/holdings/stock-search?q=${encodeURIComponent(q)}&kind=${kind}`);
+        setResults(d.results);
+        setOpen(true);
+      } catch {
+        setResults([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer.current);
+  }, [q, kind]);
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+        <input
+          className="input pl-9"
+          placeholder={kind === 'US_STOCK' ? 'Search e.g. Amazon or AMZN…' : 'Search e.g. Reliance or TCS…'}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => results.length && setOpen(true)}
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+          {results.map((r) => (
+            <button
+              key={r.symbol}
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-brand-50"
+              onClick={() => {
+                onPick(r);
+                setQ(`${r.symbol} — ${r.name}`);
+                setOpen(false);
+              }}
+            >
+              <span className="truncate">
+                <span className="font-semibold text-slate-800">{r.symbol}</span>{' '}
+                <span className="text-slate-500">{r.name}</span>
+              </span>
+              <span className="shrink-0 text-xs text-slate-400">{r.exchange}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HoldingForm({ open, onClose, onSaved, editing }) {
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
@@ -205,6 +267,15 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
           </>
         ) : (
           <>
+            <Field
+              label="Find your stock"
+              hint="Search by company or ticker and pick — or type it yourself below."
+            >
+              <StockSearch
+                kind={form.kind}
+                onPick={(r) => set({ symbol: r.symbol, name: r.name })}
+              />
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field
                 label="Ticker symbol"

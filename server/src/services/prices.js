@@ -6,9 +6,9 @@ const FETCH_TIMEOUT_MS = 9000;
 
 const isFresh = (ts, ttl) => !!ts && Date.now() - Date.parse(ts) < ttl;
 
-async function fetchJson(url, headers = {}) {
+async function fetchJson(url, headers = {}, timeout = FETCH_TIMEOUT_MS) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeout);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -53,9 +53,45 @@ async function fetchMfNav(schemeCode) {
   };
 }
 
+// --- Mutual fund search: cache the full AMFI scheme list and match locally
+// (reliable across multi-word queries; mfapi's /search endpoint is flaky). ---
+const normalize = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+let mfList = null;
+let mfListAt = 0;
+const MF_LIST_TTL = 24 * 60 * 60 * 1000;
+
+async function loadMfList() {
+  if (mfList && Date.now() - mfListAt < MF_LIST_TTL) return mfList;
+  const json = await fetchJson('https://api.mfapi.in/mf', {}, 25000);
+  if (Array.isArray(json) && json.length) {
+    mfList = json.map((r) => ({
+      schemeCode: String(r.schemeCode),
+      schemeName: r.schemeName,
+      norm: normalize(r.schemeName),
+    }));
+    mfListAt = Date.now();
+  }
+  return mfList || [];
+}
+
 export async function searchMutualFunds(query) {
   const q = String(query || '').trim();
   if (q.length < 3) return [];
+  let list = [];
+  try {
+    list = await loadMfList();
+  } catch {
+    list = [];
+  }
+  if (list.length) {
+    const toks = q.split(/\s+/).map(normalize).filter(Boolean);
+    return list
+      .filter((x) => toks.every((t) => x.norm.includes(t)))
+      .sort((a, b) => a.schemeName.length - b.schemeName.length)
+      .slice(0, 25)
+      .map(({ schemeCode, schemeName }) => ({ schemeCode, schemeName }));
+  }
+  // Fallback: mfapi's own search.
   try {
     const json = await fetchJson(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(q)}`);
     return (Array.isArray(json) ? json : [])
@@ -64,6 +100,34 @@ export async function searchMutualFunds(query) {
   } catch {
     return [];
   }
+}
+
+// --- Stock search via Yahoo Finance, filtered by market (US vs India). ---
+const US_EXCH = new Set(['NASDAQ', 'NYSE', 'NYSEArca', 'NYSE American', 'NYSEAmerican', 'Cboe US', 'OTC Markets', 'BATS']);
+const IN_EXCH = new Set(['NSE', 'BSE', 'Bombay']);
+
+export async function searchStocks(query, kind) {
+  const q = String(query || '').trim();
+  if (q.length < 1) return [];
+  let json;
+  try {
+    json = await fetchJson(
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=15&newsCount=0&listsCount=0`,
+      { 'User-Agent': 'Mozilla/5.0' }
+    );
+  } catch {
+    return [];
+  }
+  const quotes = (json?.quotes || []).filter((z) => z.symbol && ['EQUITY', 'ETF'].includes(z.quoteType));
+  const isIndian = (z) => z.symbol.endsWith('.NS') || z.symbol.endsWith('.BO') || IN_EXCH.has(z.exchDisp);
+  const keep =
+    kind === 'US_STOCK'
+      ? (z) => !isIndian(z) && (US_EXCH.has(z.exchDisp) || !z.symbol.includes('.'))
+      : isIndian;
+  return quotes
+    .filter(keep)
+    .slice(0, 10)
+    .map((z) => ({ symbol: z.symbol, name: z.longname || z.shortname || z.symbol, exchange: z.exchDisp || z.exchange }));
 }
 
 // ---- Price cache ----------------------------------------------------------

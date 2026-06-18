@@ -3,7 +3,7 @@ import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { enrichHoldings } from '../services/portfolio.js';
-import { searchMutualFunds } from '../services/prices.js';
+import { searchMutualFunds, searchStocks } from '../services/prices.js';
 
 export const holdingsRouter = Router();
 holdingsRouter.use(authRequired);
@@ -86,6 +86,15 @@ holdingsRouter.get(
   '/mf-search',
   asyncHandler(async (req, res) => {
     res.json({ results: await searchMutualFunds(req.query.q) });
+  })
+);
+
+// GET /api/holdings/stock-search?q=amzn&kind=US_STOCK
+holdingsRouter.get(
+  '/stock-search',
+  asyncHandler(async (req, res) => {
+    const kind = req.query.kind === 'US_STOCK' ? 'US_STOCK' : 'IN_STOCK';
+    res.json({ results: await searchStocks(req.query.q, kind) });
   })
 );
 
