@@ -15,14 +15,12 @@ RUN python3 -m venv /opt/cas-venv \
 
 WORKDIR /app
 
-# Install node deps first (better layer caching).
-COPY package.json package-lock.json* ./
-COPY server/package.json ./server/
-COPY web/package.json ./web/
-RUN npm install
-
-# Copy source and build the web app.
+# Copy everything, then do a CLEAN install so Linux-native binaries (esbuild,
+# rollup) resolve correctly. Dropping the host lockfile avoids the cross-platform
+# optional-dependency issue that makes `vite build` fail when the lockfile was
+# generated on a different OS (e.g. macOS).
 COPY . .
+RUN rm -f package-lock.json && npm install
 RUN npm run build
 
 ENV NODE_ENV=production
