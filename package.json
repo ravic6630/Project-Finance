@@ -1,0 +1,25 @@
+{
+  "name": "sampada",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sampada — track your investments (India + US) and full personal finances in one place.",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others --names \"api,web\" --prefix-colors \"green,cyan\" \"npm run dev --workspace server\" \"npm run dev --workspace web\"",
+    "dev:api": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "start": "npm run start --workspace server",
+    "seed": "npm run seed --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
