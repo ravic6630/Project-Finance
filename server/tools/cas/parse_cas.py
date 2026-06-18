@@ -58,58 +58,75 @@ def normalize(data):
         "stocks": [],
     }
 
-    # --- Mutual funds: folios[].schemes[] (all casparser versions) ---
+    mfs = out["mutualFunds"]
+    stocks = out["stocks"]
+
+    def add_scheme(s, amc=None, folio=None):
+        # RTA folio scheme (CAMS/KFintech): scheme, amfi, isin, close, valuation{nav,value,cost}
+        val = s.get("valuation") or {}
+        units = _num(s.get("close"))
+        if units is None:
+            units = _num(s.get("close_calculated"))
+        nav = _num(val.get("nav"))
+        value = _num(val.get("value"))
+        cost = _num(val.get("cost"))
+        avg = (cost / units) if (cost and units) else nav
+        mfs.append({
+            "amfi": s.get("amfi"), "isin": s.get("isin"), "name": s.get("scheme"),
+            "amc": amc, "folio": folio or s.get("folio"), "units": units,
+            "nav": nav, "value": value, "cost": cost, "avgCost": avg,
+            "schemeType": s.get("type"),
+        })
+
+    def add_demat_mf(m):
+        # MF held in demat (NSDL/CDSL): name, isin, amfi, balance, nav, value, avg_cost, total_cost, folio
+        units = _num(m.get("balance"))
+        nav = _num(m.get("nav"))
+        value = _num(m.get("value"))
+        cost = _num(m.get("total_cost"))
+        avg = _num(m.get("avg_cost"))
+        if avg is None:
+            avg = (cost / units) if (cost and units) else nav
+        mfs.append({
+            "amfi": m.get("amfi"), "isin": m.get("isin"), "name": m.get("name"),
+            "folio": m.get("folio"), "units": units, "nav": nav, "value": value,
+            "cost": cost, "avgCost": avg,
+        })
+
+    def add_equity(e):
+        # Equity in demat (NSDL/CDSL): name, isin, num_shares, price, value, symbol, exchange
+        qty = _num(e.get("num_shares"))
+        if qty is None:
+            qty = _num(e.get("units")) or _num(e.get("quantity"))
+        price = _num(e.get("price")) or _num(e.get("nav"))
+        stocks.append({
+            "isin": e.get("isin"), "name": e.get("name") or e.get("company"),
+            "symbol": e.get("symbol"), "exchange": e.get("exchange"),
+            "quantity": qty, "nav": price, "value": _num(e.get("value")),
+            "cost": None, "avgCost": price,
+        })
+
+    # Mutual-fund (RTA) statement: top-level folios[].schemes[]
     for folio in data.get("folios") or []:
-        amc = folio.get("amc")
-        folio_no = folio.get("folio")
         for s in folio.get("schemes") or []:
-            val = s.get("valuation") or {}
-            units = _num(s.get("close"))
-            if units is None:
-                units = _num(s.get("close_calculated"))
-            nav = _num(val.get("nav"))
-            value = _num(val.get("value"))
-            cost = _num(val.get("cost"))
-            avg_cost = (cost / units) if (cost and units) else nav
-            out["mutualFunds"].append({
-                "amfi": s.get("amfi"),
-                "isin": s.get("isin"),
-                "name": s.get("scheme"),
-                "amc": amc,
-                "folio": folio_no,
-                "units": units,
-                "nav": nav,
-                "value": value,
-                "cost": cost,
-                "avgCost": avg_cost,
-                "schemeType": s.get("type"),
-            })
+            add_scheme(s, folio.get("amc"), folio.get("folio"))
 
-    # --- Equities from demat CAS (casparser >= 1.x; absent on 0.7.4) ---
-    # Shape varies across casparser versions, so probe a few likely locations.
+    # Demat statement (NSDL/CDSL): accounts[] with equities / mutual_funds / folios
+    for acc in data.get("accounts") or []:
+        for e in acc.get("equities") or []:
+            add_equity(e)
+        for m in acc.get("mutual_funds") or []:
+            add_demat_mf(m)
+        for folio in acc.get("folios") or []:
+            for s in folio.get("schemes") or []:
+                add_scheme(s, folio.get("amc"), folio.get("folio"))
+
+    # Legacy/alternate demat shape (harmless if absent)
     for acc in data.get("demat_accounts") or []:
-        buckets = []
-        holdings = acc.get("holdings")
-        if isinstance(holdings, dict):
-            buckets += holdings.get("equities") or []
-        buckets += acc.get("equities") or []
-        for h in buckets:
-            qty = _num(h.get("units")) or _num(h.get("quantity"))
-            nav = _num(h.get("nav")) or _num(h.get("price"))
-            value = _num(h.get("value"))
-            cost = _num(h.get("cost"))
-            avg_cost = (cost / qty) if (cost and qty) else nav
-            out["stocks"].append({
-                "isin": h.get("isin"),
-                "name": h.get("name") or h.get("company"),
-                "quantity": qty,
-                "nav": nav,
-                "value": value,
-                "cost": cost,
-                "avgCost": avg_cost,
-            })
+        for e in ((acc.get("holdings") or {}).get("equities") or acc.get("equities") or []):
+            add_equity(e)
 
-    out["counts"] = {"mutualFunds": len(out["mutualFunds"]), "stocks": len(out["stocks"])}
+    out["counts"] = {"mutualFunds": len(mfs), "stocks": len(stocks)}
     return out
 
 
@@ -134,12 +151,21 @@ def self_test():
                  "valuation": {"date": "2026-06-18", "nav": 82.15, "value": 32860.0, "cost": 25000.0}},
             ]},
         ],
-        # demat block as casparser 1.x would provide (proves the equity path end-to-end)
-        "demat_accounts": [
-            {"dp_name": "Zerodha", "holdings": {"equities": [
-                {"isin": "INE002A01018", "name": "RELIANCE INDUSTRIES LTD",
-                 "units": 40, "nav": 1324.7, "value": 52988.0, "cost": 48000.0},
-            ]}},
+        # Demat block matching casparser 1.x NSDLCASData.accounts (CDSL/NSDL).
+        "accounts": [
+            {
+                "name": "CDSL Demat", "dp_id": "12081600", "client_id": "XXXXXXXX",
+                "equities": [
+                    {"name": "RELIANCE INDUSTRIES LTD", "isin": "INE002A01018",
+                     "symbol": "RELIANCE", "exchange": "NSE", "num_shares": 40,
+                     "price": 1324.7, "value": 52988.0},
+                ],
+                "mutual_funds": [
+                    {"name": "Nippon India ETF Nifty 50 BeES", "isin": "INF204KB14I2",
+                     "amfi": "120716", "balance": 200, "nav": 285.4, "value": 57080.0,
+                     "avg_cost": 250.0, "total_cost": 50000.0, "folio": "DEMAT"},
+                ],
+            },
         ],
     }
     return normalize(sample)

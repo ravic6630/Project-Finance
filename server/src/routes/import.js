@@ -3,7 +3,7 @@ import multer from 'multer';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad } from '../util.js';
 import { casAvailable, parseCasBuffer, selfTest } from '../services/cas.js';
-import { dedupSets, insertImportedHoldings } from '../services/importer.js';
+import { dedupSets, insertImportedHoldings, normalizeStockSymbol } from '../services/importer.js';
 
 export const importRouter = Router();
 importRouter.use(authRequired);
@@ -34,19 +34,24 @@ async function buildPreview(parsed, userId) {
     });
   }
   for (const s of parsed.stocks || []) {
+    const symbol = s.symbol || '';
+    const normalized = symbol ? normalizeStockSymbol('IN_STOCK', symbol, s.exchange) : '';
     items.push({
       kind: 'IN_STOCK',
-      symbol: '',
+      symbol,
+      exchange: s.exchange || null,
       name: s.name,
       quantity: s.quantity || 0,
       avg_cost: s.avgCost ?? s.nav ?? 0,
       currency: 'INR',
       isin: s.isin || null,
       value: s.value ?? null,
-      duplicate: false,
+      duplicate: symbol ? have.sym.has(normalized) : false,
       importable: true,
-      needsSymbol: true,
-      note: 'Confirm the NSE ticker (e.g. RELIANCE) so we can fetch its live price',
+      needsSymbol: !symbol,
+      note: symbol
+        ? null
+        : 'Confirm the NSE ticker (e.g. RELIANCE) so we can fetch its live price',
     });
   }
   return {
