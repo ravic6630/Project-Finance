@@ -184,12 +184,25 @@ Payments use **Razorpay** (UPI Autopay / cards).
 obligations with a professional, and publish a privacy policy + terms. For USD pricing, prefer
 **annual** billing (Stripe's per-transaction fee makes monthly $1 uneconomic).
 
+## 📧 Daily summary email (optional, premium)
+
+Subscribers can opt into a **daily "good-morning" email** with their net worth, investments,
+this-month cashflow and asset allocation.
+
+- Turn it on: **Settings → Daily summary email** (toggle). Use **Preview email** to see it, and
+  **Send test** to email yourself one.
+- **To actually send,** add SMTP creds to `server/.env` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`,
+  `EMAIL_FROM`). Works with Gmail (app password), Brevo, Amazon SES, etc.
+- A scheduler sends it daily at `DIGEST_HOUR` (IST, default 8am) to opted-in premium users — so the
+  server needs to be running at that time (i.e., once it's hosted).
+
 ## 🧭 Roadmap status
 
 1. **CAS import** ✅ built — lowest friction, no registrations (this is what Kuvera does).
 2. **Broker connect** ✅ built — Zerodha + Upstox (add their free dev-app keys to go live).
 3. **Payments / Premium** ✅ built — Razorpay subscription + test trial + premium gate.
-4. **Account Aggregator (AA)** ⏳ deferred — RBI's consent network can deliver holdings, but
+4. **Daily summary email** ✅ built — opt-in digest for premium subscribers.
+5. **Account Aggregator (AA)** ⏳ deferred — RBI's consent network can deliver holdings, but
    consuming it requires being (or partnering with) a regulated **FIU**; revisit with a business entity.
 
 ## 🧱 Project structure
@@ -202,8 +215,8 @@ Project Finance/
 │       ├── index.js        # app entry + routes wiring
 │       ├── db.js           # schema (users, holdings, cash, transactions, caches)
 │       ├── auth.js         # signup/login, JWT, password hashing
-│       ├── routes/         # auth, holdings, cash, transactions, dashboard, prices, import, broker, billing
-│       ├── services/       # prices (Yahoo/AMFI), FX, portfolio, CAS bridge, importer, brokers, billing
+│       ├── routes/         # auth, holdings, cash, transactions, dashboard, prices, import, broker, billing, email
+│       ├── services/       # prices, FX, portfolio, summary, CAS bridge, importer, brokers, billing, email, digest, scheduler
 │       └── tools/cas/      # Python CAS parser (casparser) + setup.sh + parse_cas.py
 └── web/                    # React website (Vite + Tailwind + Recharts)
     └── src/
