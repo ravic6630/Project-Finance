@@ -49,12 +49,29 @@ Point DNS: an **A record** for `vyomarafarms.com` → your VPS IP. Updates: `git
 
 ## Option B — Container PaaS (Render / Railway) — easiest
 
+This repo includes a **`render.yaml` blueprint**, so on Render it's nearly one click:
+
 1. Push this repo to GitHub.
-2. Create a new **Web Service** from the repo; it auto-detects the `Dockerfile`.
-3. Add environment variables (from `.env.production.example`).
-4. Add a **persistent disk** mounted at `/app/server/data` (so the SQLite DB + JWT secret survive
-   redeploys). **Without this, data resets on every deploy.**
-5. Add the custom domain `vyomarafarms.com` (the platform gives you a CNAME/A record + free SSL).
+2. Render → **New → Blueprint** → connect the repo. It reads `render.yaml` (Dockerfile + disk + env).
+3. Fill the `sync:false` env vars (SMTP / broker / Razorpay) in the dashboard when you want them.
+4. The blueprint already mounts a **persistent disk** at `/app/server/data`. (On the **free** plan,
+   disks aren't supported and data resets on each deploy/sleep — fine for a quick test; use **Starter**
+   for a real always-on instance.)
+5. Add the custom domain `vyomarafarms.com` in the service settings (free SSL).
+
+## Using your Hostinger domain (vyomarafarms.com)
+
+Hostinger **shared/web hosting (hPanel) cannot run Sampada** (it's a live Node+Python server, not a
+static site). But the *domain* works fine — keep it at Hostinger and just point DNS at wherever the
+app runs:
+
+- **Render/Railway:** in the host, add `vyomarafarms.com`; it gives you a target. In Hostinger →
+  **Domains → DNS / Nameservers**, add the records it asks for (typically an `A`/`ALIAS` for the apex
+  and a `CNAME` for `www`).
+- **Hostinger VPS:** add an `A` record for `vyomarafarms.com` → your VPS IP (Option A above).
+
+If you only have Hostinger **shared** hosting, the cheapest always-on options are a **Hostinger VPS**
+(~₹400–700/mo) or **Render Starter**; for a free quick test, **Render free** + your Hostinger domain.
 
 ---
 

@@ -1,0 +1,50 @@
+# Render Blueprint — one-click deploy of Sampada from this repo's Dockerfile.
+# In Render: New → Blueprint → connect this GitHub repo → it reads this file.
+services:
+  - type: web
+    name: sampada
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # "starter" ($7/mo) supports the persistent disk below; "free" works but RESETS data on each deploy/sleep
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+      - key: JWT_SECRET
+        generateValue: true # Render generates a stable secret
+      - key: ADMIN_EMAILS
+        value: ralathuru@gmail.com
+      - key: BROKER_REDIRECT_BASE
+        value: https://vyomarafarms.com
+      # Fill these in the Render dashboard when you enable each feature (kept out of git):
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ZERODHA_API_KEY
+        sync: false
+      - key: ZERODHA_API_SECRET
+        sync: false
+      - key: UPSTOX_API_KEY
+        sync: false
+      - key: UPSTOX_API_SECRET
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_PLAN_ID
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+    disk:
+      name: sampada-data
+      mountPath: /app/server/data # persists the SQLite DB + JWT secret
+      sizeGB: 1
