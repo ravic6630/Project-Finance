@@ -6,6 +6,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  Shield,
   Sprout,
   TrendingUp,
   Wallet,
@@ -27,6 +28,7 @@ const PAGE_TITLES = {
   '/cash': 'Cash & Bank',
   '/transactions': 'Transactions',
   '/settings': 'Settings',
+  '/admin': 'Admin',
 };
 
 function CurrencyToggle() {
@@ -50,6 +52,8 @@ function CurrencyToggle() {
 }
 
 function SidebarContent({ onNavigate }) {
+  const { user } = useAuth();
+  const nav = user?.role === 'admin' ? [...NAV, { to: '/admin', label: 'Admin', icon: Shield }] : NAV;
   return (
     <>
       <div className="flex items-center gap-2.5 px-2 py-1">
@@ -62,7 +66,7 @@ function SidebarContent({ onNavigate }) {
         </div>
       </div>
       <nav className="mt-8 space-y-1">
-        {NAV.map(({ to, label, icon: Icon, end }) => (
+        {nav.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

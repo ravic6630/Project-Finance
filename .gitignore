@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+.env.production
+.env.local
 # Local data: SQLite DB, auto-generated JWT secret, uploads — never commit
 server/data/
 *.log

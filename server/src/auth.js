@@ -1,8 +1,20 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from './config.js';
+import { ADMIN_EMAILS, JWT_SECRET } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './util.js';
+
+// ADMIN_EMAILS is the live source of truth for admin rights, applied on every
+// request (so promoting someone is just an env change, no DB surgery).
+export function applyEffectiveRole(user) {
+  if (user && ADMIN_EMAILS.includes(String(user.email || '').toLowerCase())) user.role = 'admin';
+  return user;
+}
+
+export function requireAdmin(req, _res, next) {
+  if (req.user?.role === 'admin') return next();
+  next(new HttpError(403, 'Admins only'));
+}
 
 export const hashPassword = (pw) => bcrypt.hashSync(pw, 10);
 export const verifyPassword = (pw, hash) => bcrypt.compareSync(pw, hash);
@@ -30,7 +42,7 @@ export function authRequired(req, _res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = findUserById.get(payload.id);
     if (!user) return next(new HttpError(401, 'Account no longer exists'));
-    req.user = user;
+    req.user = applyEffectiveRole(user);
     next();
   } catch {
     next(new HttpError(401, 'Session expired, please sign in again'));

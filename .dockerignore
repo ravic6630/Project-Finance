@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+.git
+.gitignore
+dist
+web/dist
+server/data
+**/.env
+.env
+server/tools/cas/.venv
+**/__pycache__
+*.log
+.DS_Store
+Dockerfile
+docker-compose.yml
+README.md
+DEPLOY.md

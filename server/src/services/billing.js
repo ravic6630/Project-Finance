@@ -50,6 +50,11 @@ export function activatePremium(userId, { provider, providerSubId, days = 30, pe
   return end;
 }
 
+const deactivateStmt = db.prepare(`
+  UPDATE subscriptions SET plan='free', status='inactive', updated_at=? WHERE user_id=?
+`);
+export const deactivatePremium = (userId) => deactivateStmt.run(now(), userId);
+
 // Record the pending Razorpay subscription id so the webhook can match it to the user.
 const markPendingStmt = db.prepare(`
   INSERT INTO subscriptions (user_id, plan, status, provider, provider_sub_id, updated_at)

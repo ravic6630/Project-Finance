@@ -21,6 +21,8 @@ Built for you, your family and your friends: everyone gets their own private acc
 - **Multi-currency** — hold assets in ₹ and $; switch the whole app between INR and USD using live
   FX rates.
 - **Multi-user** — each person signs up with their own email; their data is completely private.
+- **Admin panel** — admins (set via `ADMIN_EMAILS`) can view all users, grant/revoke premium, and
+  delete accounts.
 - **CAS import** — upload your Consolidated Account Statement (CAS) PDF and Sampada reads all your
   mutual funds (and demat stocks) at once, with duplicate detection and a review step before saving.
 
@@ -149,7 +151,8 @@ You chose *local-first*. When you're ready to put Sampada online:
 3. Deploy that single Node server to any host (Render, Railway, Fly.io, a small VPS, etc.) and keep
    `server/data/` on a persistent disk so your data survives restarts.
 
-A `Dockerfile` / hosting walkthrough can be added when you're ready — just ask.
+A ready-to-use **`Dockerfile`**, **`docker-compose.yml`**, and a full walkthrough (VPS + PaaS +
+domain/SSL) are in **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 

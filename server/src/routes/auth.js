@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ADMIN_EMAILS } from '../config.js';
 import { db, now } from '../db.js';
-import { authRequired, hashPassword, signToken, verifyPassword } from '../auth.js';
+import { applyEffectiveRole, authRequired, hashPassword, signToken, verifyPassword } from '../auth.js';
 import { asyncHandler, bad, oneOf, str } from '../util.js';
 
 export const authRouter = Router();
@@ -47,6 +47,7 @@ authRouter.post(
     if (!user || !verifyPassword(password, user.password_hash)) {
       throw bad('Incorrect email or password');
     }
+    applyEffectiveRole(user);
     res.json({ token: signToken(user), user: publicUser(user) });
   })
 );

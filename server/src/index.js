@@ -18,6 +18,7 @@ import { importRouter } from './routes/import.js';
 import { brokerRouter } from './routes/broker.js';
 import { billingRouter } from './routes/billing.js';
 import { emailRouter } from './routes/email.js';
+import { adminRouter } from './routes/admin.js';
 import { startDigestScheduler } from './services/scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,7 @@ app.use('/api/import', importRouter);
 app.use('/api/broker', brokerRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/email', emailRouter);
+app.use('/api/admin', adminRouter);
 
 // Unknown API route -> JSON 404 (so the SPA fallback never swallows it).
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

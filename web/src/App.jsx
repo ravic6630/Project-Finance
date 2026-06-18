@@ -9,6 +9,7 @@ import Cash from './pages/Cash.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Settings from './pages/Settings.jsx';
 import BrokerCallback from './pages/BrokerCallback.jsx';
+import Admin from './pages/Admin.jsx';
 
 function Splash() {
   return (
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/broker/:broker/callback" element={<BrokerCallback />} />
+        <Route path="/admin" element={<Admin />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
