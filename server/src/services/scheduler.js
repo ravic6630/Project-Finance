@@ -22,8 +22,8 @@ export async function runDigests({ force = false } = {}) {
   if (!emailConfigured()) return { ...report, error: 'email_not_configured' };
 
   const today = istDate();
-  for (const u of eligible.all()) {
-    if (!premiumState(u).premium) {
+  for (const u of await eligible.all()) {
+    if (!(await premiumState(u)).premium) {
       report.skipped += 1;
       continue;
     }
@@ -34,7 +34,7 @@ export async function runDigests({ force = false } = {}) {
     try {
       const { subject, html } = await buildDigest(u);
       await sendMail({ to: u.email, subject, html });
-      markSent.run(now(), u.id);
+      await markSent.run(now(), u.id);
       report.sent += 1;
       report.recipients.push(u.email);
     } catch (err) {

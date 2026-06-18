@@ -45,7 +45,7 @@ const remove = db.prepare('DELETE FROM cash_accounts WHERE id = ? AND user_id = 
 cashRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ accounts: list.all(req.user.id) });
+    res.json({ accounts: await list.all(req.user.id) });
   })
 );
 
@@ -54,32 +54,32 @@ cashRouter.post(
   asyncHandler(async (req, res) => {
     const b = readBody(req.body);
     const ts = now();
-    const info = insert.run(
+    const info = await insert.run(
       req.user.id, b.name, b.type, b.balance, b.currency,
       b.interestRate, b.maturityDate, b.notes, ts, ts
     );
-    res.status(201).json({ account: getOne.get(Number(info.lastInsertRowid), req.user.id) });
+    res.status(201).json({ account: await getOne.get(Number(info.lastInsertRowid), req.user.id) });
   })
 );
 
 cashRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = getOne.get(req.params.id, req.user.id);
+    const existing = await getOne.get(req.params.id, req.user.id);
     if (!existing) throw new HttpError(404, 'Account not found');
     const b = readBody({ ...existing, ...req.body });
-    update.run(
+    await update.run(
       b.name, b.type, b.balance, b.currency, b.interestRate,
       b.maturityDate, b.notes, now(), req.params.id, req.user.id
     );
-    res.json({ account: getOne.get(req.params.id, req.user.id) });
+    res.json({ account: await getOne.get(req.params.id, req.user.id) });
   })
 );
 
 cashRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const info = remove.run(req.params.id, req.user.id);
+    const info = await remove.run(req.params.id, req.user.id);
     if (!info.changes) throw new HttpError(404, 'Account not found');
     res.json({ ok: true });
   })

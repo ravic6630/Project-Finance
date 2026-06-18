@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import { PORT } from './config.js';
-import './db.js'; // initialise schema on boot
+import { initDb } from './db.js';
 import { authRouter } from './routes/auth.js';
 import { holdingsRouter } from './routes/holdings.js';
 import { cashRouter } from './routes/cash.js';
@@ -62,6 +62,7 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message || 'Server error' });
 });
 
+await initDb();
 app.listen(PORT, () => {
   console.log(`Sampada API listening on http://localhost:${PORT}`);
   startDigestScheduler();

@@ -30,9 +30,9 @@ const upsertSub = db.prepare(`
 `);
 
 // Premium if you're an admin, or have an active subscription that hasn't lapsed.
-export function premiumState(user) {
+export async function premiumState(user) {
   if (user.role === 'admin') return { premium: true, plan: 'admin', until: null };
-  const sub = getSub.get(user.id);
+  const sub = await getSub.get(user.id);
   const active =
     sub?.status === 'active' &&
     (!sub.current_period_end || Date.parse(sub.current_period_end) > Date.now());
@@ -44,9 +44,9 @@ export function premiumState(user) {
   };
 }
 
-export function activatePremium(userId, { provider, providerSubId, days = 30, periodEnd } = {}) {
+export async function activatePremium(userId, { provider, providerSubId, days = 30, periodEnd } = {}) {
   const end = periodEnd || new Date(Date.now() + days * 86400000).toISOString();
-  upsertSub.run(userId, provider || 'trial', providerSubId || null, end, now());
+  await upsertSub.run(userId, provider || 'trial', providerSubId || null, end, now());
   return end;
 }
 
@@ -64,7 +64,7 @@ const markPendingStmt = db.prepare(`
 export const markPending = (userId, subId) => markPendingStmt.run(userId, subId, now());
 
 const bySubId = db.prepare('SELECT user_id FROM subscriptions WHERE provider_sub_id = ?');
-export const userIdBySubId = (subId) => bySubId.get(subId)?.user_id || null;
+export const userIdBySubId = async (subId) => (await bySubId.get(subId))?.user_id || null;
 
 async function razorpay(path, method = 'GET', body) {
   const auth = Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString('base64');

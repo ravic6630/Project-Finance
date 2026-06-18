@@ -146,7 +146,7 @@ export async function getPrice(holding, { force = false } = {}) {
   const key = priceKeyFor(holding);
   if (!key || key === 'MF:') return { price: null, currency: holding.currency, stale: true };
 
-  const cached = getCachedPrice.get(key);
+  const cached = await getCachedPrice.get(key);
   if (!force && cached && isFresh(cached.updated_at, PRICE_TTL_MS)) {
     return { ...cached, stale: false };
   }
@@ -157,7 +157,7 @@ export async function getPrice(holding, { force = false } = {}) {
         ? await fetchMfNav(holding.scheme_code)
         : await fetchStock(holding.symbol);
     const ts = now();
-    upsertPrice.run(key, fresh.price, fresh.currency, fresh.name, fresh.source, ts);
+    await upsertPrice.run(key, fresh.price, fresh.currency, fresh.name, fresh.source, ts);
     return { price_key: key, ...fresh, updated_at: ts, stale: false };
   } catch (err) {
     if (cached) return { ...cached, stale: true, error: err.message };
@@ -177,14 +177,14 @@ export async function getFxRate(base, quote, { force = false } = {}) {
   quote = quote.toUpperCase();
   if (base === quote) return 1;
   const pair = `${base}${quote}`;
-  const cached = getCachedFx.get(pair);
+  const cached = await getCachedFx.get(pair);
   if (!force && cached && isFresh(cached.updated_at, FX_TTL_MS)) return cached.rate;
 
   try {
     const json = await fetchJson(`https://open.er-api.com/v6/latest/${base}`);
     const rate = json?.rates?.[quote];
     if (!Number.isFinite(rate)) throw new Error('FX rate missing');
-    upsertFx.run(pair, rate, now());
+    await upsertFx.run(pair, rate, now());
     return rate;
   } catch {
     if (cached) return cached.rate;

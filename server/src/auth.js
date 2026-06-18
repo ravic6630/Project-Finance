@@ -29,18 +29,18 @@ const findUserById = db.prepare(
 // Gate a route behind an active premium subscription (402 if not). Must run after authRequired.
 export async function requirePremium(req, _res, next) {
   const { premiumState } = await import('./services/billing.js');
-  if (premiumState(req.user).premium) return next();
+  if ((await premiumState(req.user)).premium) return next();
   next(new HttpError(402, 'This is a premium feature. Upgrade to Sampada Premium to use it.'));
 }
 
 // Express middleware: require a valid Bearer token and load the user.
-export function authRequired(req, _res, next) {
+export async function authRequired(req, _res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return next(new HttpError(401, 'Not authenticated'));
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = findUserById.get(payload.id);
+    const user = await findUserById.get(payload.id);
     if (!user) return next(new HttpError(401, 'Account no longer exists'));
     req.user = applyEffectiveRole(user);
     next();

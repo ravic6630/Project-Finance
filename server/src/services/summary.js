@@ -10,9 +10,9 @@ export async function buildSummary(user, { refresh = false } = {}) {
   const base = user.base_currency;
   const userId = user.id;
 
-  const holdings = db.prepare('SELECT * FROM holdings WHERE user_id = ?').all(userId);
-  const accounts = db.prepare('SELECT * FROM cash_accounts WHERE user_id = ?').all(userId);
-  const txns = db.prepare('SELECT * FROM transactions WHERE user_id = ?').all(userId);
+  const holdings = await db.prepare('SELECT * FROM holdings WHERE user_id = ?').all(userId);
+  const accounts = await db.prepare('SELECT * FROM cash_accounts WHERE user_id = ?').all(userId);
+  const txns = await db.prepare('SELECT * FROM transactions WHERE user_id = ?').all(userId);
 
   const { items, rates } = await enrichHoldings(holdings, base, { force: refresh });
 

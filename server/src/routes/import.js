@@ -14,8 +14,8 @@ const upload = multer({
 });
 
 // Turn the parser's normalized output into a review list, flagging duplicates.
-function buildPreview(parsed, userId) {
-  const have = dedupSets(userId);
+async function buildPreview(parsed, userId) {
+  const have = await dedupSets(userId);
   const items = [];
   for (const m of parsed.mutualFunds || []) {
     items.push({
@@ -77,7 +77,7 @@ importRouter.post(
   asyncHandler(async (req, res) => {
     const parsed = await selfTest();
     if (!parsed.ok) throw bad(FRIENDLY[parsed.errorType] || parsed.error);
-    res.json(buildPreview(parsed, req.user.id));
+    res.json(await buildPreview(parsed, req.user.id));
   })
 );
 
@@ -92,7 +92,7 @@ importRouter.post(
       const status = parsed.errorType === 'not_installed' ? 503 : 400;
       return res.status(status).json({ error: FRIENDLY[parsed.errorType] || parsed.error });
     }
-    res.json(buildPreview(parsed, req.user.id));
+    res.json(await buildPreview(parsed, req.user.id));
   })
 );
 
@@ -100,7 +100,7 @@ importRouter.post(
 const confirm = asyncHandler(async (req, res) => {
   const rows = Array.isArray(req.body.items) ? req.body.items : [];
   if (rows.length === 0) throw bad('No holdings selected to import');
-  res.json(insertImportedHoldings(req.user.id, rows, req.body.source || 'Imported'));
+  res.json(await insertImportedHoldings(req.user.id, rows, req.body.source || 'Imported'));
 });
 
 importRouter.post('/confirm', confirm);

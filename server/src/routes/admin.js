@@ -8,7 +8,6 @@ import { activatePremium, deactivatePremium, premiumState } from '../services/bi
 export const adminRouter = Router();
 adminRouter.use(authRequired, requireAdmin);
 
-// All users with per-user counts (holdings / accounts / transactions).
 const listUsers = db.prepare(`
   SELECT u.id, u.email, u.name, u.role, u.base_currency, u.created_at,
     (SELECT COUNT(*) FROM holdings h WHERE h.user_id = u.id)      AS holdings,
@@ -18,16 +17,26 @@ const listUsers = db.prepare(`
   FROM users u ORDER BY u.created_at DESC
 `);
 const getUser = db.prepare('SELECT id, email, name, role FROM users WHERE id = ?');
-const delUser = db.prepare('DELETE FROM users WHERE id = ?');
 
 adminRouter.get(
   '/overview',
   asyncHandler(async (_req, res) => {
-    const users = listUsers.all().map((u) => {
-      applyEffectiveRole(u); // reflect ADMIN_EMAILS in the listed role
-      const st = premiumState(u);
-      return { ...u, daily_email: !!u.daily_email, premium: st.premium, plan: st.plan };
-    });
+    const rows = await listUsers.all();
+    const users = await Promise.all(
+      rows.map(async (u) => {
+        applyEffectiveRole(u); // reflect ADMIN_EMAILS in the listed role
+        const st = await premiumState(u);
+        return {
+          ...u,
+          holdings: Number(u.holdings),
+          accounts: Number(u.accounts),
+          transactions: Number(u.transactions),
+          daily_email: !!u.daily_email,
+          premium: st.premium,
+          plan: st.plan,
+        };
+      })
+    );
     res.json({
       counts: {
         users: users.length,
@@ -39,14 +48,23 @@ adminRouter.get(
   })
 );
 
+const CHILD_TABLES = [
+  'holdings', 'cash_accounts', 'transactions', 'subscriptions',
+  'broker_connections', 'email_prefs', 'password_resets',
+];
+
 adminRouter.delete(
   '/users/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (id === req.user.id) throw new HttpError(400, "You can't delete your own admin account here.");
-    const target = getUser.get(id);
+    const target = await getUser.get(id);
     if (!target) throw new HttpError(404, 'User not found');
-    delUser.run(id); // cascades to holdings/cash/transactions/subscriptions/etc.
+    // Explicit child deletes (don't rely on FK cascade across DB backends).
+    await db.batch([
+      ...CHILD_TABLES.map((t) => ({ sql: `DELETE FROM ${t} WHERE user_id = ?`, args: [id] })),
+      { sql: 'DELETE FROM users WHERE id = ?', args: [id] },
+    ]);
     res.json({ ok: true, deleted: target.email });
   })
 );
@@ -55,9 +73,9 @@ adminRouter.post(
   '/users/:id/premium',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    if (!getUser.get(id)) throw new HttpError(404, 'User not found');
-    if (req.body.grant) activatePremium(id, { provider: 'admin', days: 365 });
-    else deactivatePremium(id);
+    if (!(await getUser.get(id))) throw new HttpError(404, 'User not found');
+    if (req.body.grant) await activatePremium(id, { provider: 'admin', days: 365 });
+    else await deactivatePremium(id);
     res.json({ ok: true });
   })
 );
@@ -69,12 +87,12 @@ adminRouter.post(
   '/users/:id/reset-password',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const target = getUser.get(id);
+    const target = await getUser.get(id);
     if (!target) throw new HttpError(404, 'User not found');
     const provided = String(req.body.password || '');
     const password = provided.length >= 6 ? provided : randomBytes(9).toString('base64url');
-    setPw.run(hashPassword(password), id);
-    clearResets.run(id);
+    await setPw.run(hashPassword(password), id);
+    await clearResets.run(id);
     res.json({ ok: true, email: target.email, password });
   })
 );

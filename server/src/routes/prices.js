@@ -11,7 +11,7 @@ pricesRouter.use(authRequired);
 pricesRouter.post(
   '/refresh',
   asyncHandler(async (req, res) => {
-    const holdings = db.prepare('SELECT * FROM holdings WHERE user_id = ?').all(req.user.id);
+    const holdings = await db.prepare('SELECT * FROM holdings WHERE user_id = ?').all(req.user.id);
     const result = await refreshUserPrices(holdings, { force: true });
     res.json(result);
   })

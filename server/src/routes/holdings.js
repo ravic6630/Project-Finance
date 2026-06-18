@@ -73,7 +73,7 @@ const remove = db.prepare('DELETE FROM holdings WHERE id = ? AND user_id = ?');
 holdingsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = listForUser.all(req.user.id);
+    const rows = await listForUser.all(req.user.id);
     const { items, rates } = await enrichHoldings(rows, req.user.base_currency, {
       force: req.query.refresh === '1',
     });
@@ -103,11 +103,11 @@ holdingsRouter.post(
   asyncHandler(async (req, res) => {
     const b = readBody(req.body);
     const ts = now();
-    const info = insert.run(
+    const info = await insert.run(
       req.user.id, b.kind, b.symbol, b.schemeCode, b.name, b.quantity,
       b.avgCost, b.currency, b.manualPrice, b.notes, ts, ts
     );
-    const row = getOne.get(Number(info.lastInsertRowid), req.user.id);
+    const row = await getOne.get(Number(info.lastInsertRowid), req.user.id);
     const { items } = await enrichHoldings([row], req.user.base_currency);
     res.status(201).json({ holding: items[0] });
   })
@@ -116,14 +116,14 @@ holdingsRouter.post(
 holdingsRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = getOne.get(req.params.id, req.user.id);
+    const existing = await getOne.get(req.params.id, req.user.id);
     if (!existing) throw new HttpError(404, 'Holding not found');
     const b = readBody({ ...existing, ...req.body });
-    update.run(
+    await update.run(
       b.kind, b.symbol, b.schemeCode, b.name, b.quantity, b.avgCost,
       b.currency, b.manualPrice, b.notes, now(), req.params.id, req.user.id
     );
-    const row = getOne.get(req.params.id, req.user.id);
+    const row = await getOne.get(req.params.id, req.user.id);
     const { items } = await enrichHoldings([row], req.user.base_currency);
     res.json({ holding: items[0] });
   })
@@ -132,7 +132,7 @@ holdingsRouter.patch(
 holdingsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const info = remove.run(req.params.id, req.user.id);
+    const info = await remove.run(req.params.id, req.user.id);
     if (!info.changes) throw new HttpError(404, 'Holding not found');
     res.json({ ok: true });
   })

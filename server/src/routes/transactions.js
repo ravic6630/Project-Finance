@@ -64,7 +64,7 @@ transactionsRouter.get(
       params.push(req.query.to);
     }
     const limit = Math.min(Number(req.query.limit) || 500, 2000);
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT * FROM transactions WHERE ${clauses.join(' AND ')} ORDER BY date DESC, id DESC LIMIT ?`
       )
@@ -77,31 +77,31 @@ transactionsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const b = readBody(req.body);
-    const info = insert.run(
+    const info = await insert.run(
       req.user.id, b.type, b.amount, b.currency, b.category, b.account, b.date, b.note, now()
     );
-    res.status(201).json({ transaction: getOne.get(Number(info.lastInsertRowid), req.user.id) });
+    res.status(201).json({ transaction: await getOne.get(Number(info.lastInsertRowid), req.user.id) });
   })
 );
 
 transactionsRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = getOne.get(req.params.id, req.user.id);
+    const existing = await getOne.get(req.params.id, req.user.id);
     if (!existing) throw new HttpError(404, 'Transaction not found');
     const b = readBody({ ...existing, ...req.body });
-    update.run(
+    await update.run(
       b.type, b.amount, b.currency, b.category, b.account, b.date, b.note,
       req.params.id, req.user.id
     );
-    res.json({ transaction: getOne.get(req.params.id, req.user.id) });
+    res.json({ transaction: await getOne.get(req.params.id, req.user.id) });
   })
 );
 
 transactionsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const info = remove.run(req.params.id, req.user.id);
+    const info = await remove.run(req.params.id, req.user.id);
     if (!info.changes) throw new HttpError(404, 'Transaction not found');
     res.json({ ok: true });
   })

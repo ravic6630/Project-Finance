@@ -16,26 +16,29 @@ const setPrefs = db.prepare(`
   ON CONFLICT(user_id) DO UPDATE SET daily = excluded.daily
 `);
 
-emailRouter.get('/prefs', (req, res) => {
-  const p = getPrefs.get(req.user.id);
-  res.json({
-    daily: !!p?.daily,
-    last_sent: p?.last_sent || null,
-    email: req.user.email,
-    configured: emailConfigured(),
-    premium: premiumState(req.user).premium,
-  });
-});
+emailRouter.get(
+  '/prefs',
+  asyncHandler(async (req, res) => {
+    const p = await getPrefs.get(req.user.id);
+    res.json({
+      daily: !!p?.daily,
+      last_sent: p?.last_sent || null,
+      email: req.user.email,
+      configured: emailConfigured(),
+      premium: (await premiumState(req.user)).premium,
+    });
+  })
+);
 
 emailRouter.put(
   '/prefs',
   asyncHandler(async (req, res) => {
     const daily = req.body.daily ? 1 : 0;
     // Turning ON the daily email is a premium perk.
-    if (daily && !premiumState(req.user).premium) {
+    if (daily && !(await premiumState(req.user)).premium) {
       throw new HttpError(402, 'Daily summary emails are a premium feature. Upgrade to enable.');
     }
-    setPrefs.run(req.user.id, daily);
+    await setPrefs.run(req.user.id, daily);
     res.json({ daily: !!daily });
   })
 );
@@ -53,7 +56,7 @@ emailRouter.get(
 emailRouter.post(
   '/test',
   asyncHandler(async (req, res) => {
-    if (!premiumState(req.user).premium) {
+    if (!(await premiumState(req.user)).premium) {
       throw new HttpError(402, 'Daily summary emails are a premium feature. Upgrade to enable.');
     }
     const { subject, html } = await buildDigest(req.user);

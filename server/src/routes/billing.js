@@ -26,10 +26,10 @@ billingRouter.post(
     const event = JSON.parse(req.rawBody.toString());
     const sub = event?.payload?.subscription?.entity;
     if (sub && /subscription\.(activated|charged|completed)/.test(event.event)) {
-      const userId = userIdBySubId(sub.id);
+      const userId = await userIdBySubId(sub.id);
       if (userId) {
         const periodEnd = sub.current_end ? new Date(sub.current_end * 1000).toISOString() : undefined;
-        activatePremium(userId, { provider: 'razorpay', providerSubId: sub.id, periodEnd });
+        await activatePremium(userId, { provider: 'razorpay', providerSubId: sub.id, periodEnd });
       }
     }
     res.json({ ok: true });
@@ -39,14 +39,17 @@ billingRouter.post(
 // --- Authenticated billing endpoints ---
 billingRouter.use(authRequired);
 
-billingRouter.get('/status', (req, res) => {
-  res.json({
-    plan: PLAN,
-    state: premiumState(req.user),
-    configured: billingConfigured(),
-    can_subscribe: canSubscribe(),
-  });
-});
+billingRouter.get(
+  '/status',
+  asyncHandler(async (req, res) => {
+    res.json({
+      plan: PLAN,
+      state: await premiumState(req.user),
+      configured: billingConfigured(),
+      can_subscribe: canSubscribe(),
+    });
+  })
+);
 
 billingRouter.post(
   '/subscribe',
@@ -58,7 +61,7 @@ billingRouter.post(
       });
     }
     const { subscriptionId, keyId, shortUrl } = await createSubscription();
-    markPending(req.user.id, subscriptionId);
+    await markPending(req.user.id, subscriptionId);
     res.json({ subscription_id: subscriptionId, key_id: keyId, short_url: shortUrl, plan: PLAN });
   })
 );
@@ -67,7 +70,7 @@ billingRouter.post(
 billingRouter.post(
   '/demo-activate',
   asyncHandler(async (req, res) => {
-    activatePremium(req.user.id, { provider: 'trial', days: 30 });
-    res.json({ state: premiumState(req.user) });
+    await activatePremium(req.user.id, { provider: 'trial', days: 30 });
+    res.json({ state: await premiumState(req.user) });
   })
 );

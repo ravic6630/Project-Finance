@@ -34,8 +34,8 @@ function requireBroker(req) {
 }
 
 // Map broker holdings → the shared import-preview item shape, flagging duplicates.
-function buildPreview(broker, name, holdings, userId) {
-  const have = dedupSets(userId);
+async function buildPreview(broker, name, holdings, userId) {
+  const have = await dedupSets(userId);
   const items = holdings.map((h) => ({
     kind: 'IN_STOCK',
     symbol: h.symbol,
@@ -60,10 +60,14 @@ function buildPreview(broker, name, holdings, userId) {
   };
 }
 
-brokerRouter.get('/status', (req, res) => {
-  const connected = Object.fromEntries(listConns.all(req.user.id).map((c) => [c.broker, c.updated_at]));
-  res.json({ configured: brokerStatus(), connected });
-});
+brokerRouter.get(
+  '/status',
+  asyncHandler(async (req, res) => {
+    const rows = await listConns.all(req.user.id);
+    const connected = Object.fromEntries(rows.map((c) => [c.broker, c.updated_at]));
+    res.json({ configured: brokerStatus(), connected });
+  })
+);
 
 brokerRouter.get(
   '/:broker/login-url',
@@ -86,11 +90,11 @@ brokerRouter.post(
     const broker = requireBroker(req);
 
     if (req.body.demo) {
-      return res.json(buildPreview(broker, 'Sample User', demoHoldings(broker), req.user.id));
+      return res.json(await buildPreview(broker, 'Sample User', demoHoldings(broker), req.user.id));
     }
 
     // Live broker connect is premium-only (sample/demo above stays free).
-    if (!premiumState(req.user).premium) {
+    if (!(await premiumState(req.user)).premium) {
       throw new HttpError(402, 'Connecting a broker is a premium feature. Upgrade to Sampada Premium.');
     }
     if (!brokerConfigured(broker)) {
@@ -100,8 +104,8 @@ brokerRouter.post(
     if (!request_token && !code) throw bad('Missing login token from broker callback');
 
     const { accessToken, name } = await exchangeToken(broker, { request_token, code });
-    saveToken.run(req.user.id, broker, accessToken, JSON.stringify({ name }), now());
+    await saveToken.run(req.user.id, broker, accessToken, JSON.stringify({ name }), now());
     const holdings = await fetchHoldings(broker, accessToken);
-    res.json(buildPreview(broker, name, holdings, req.user.id));
+    res.json(await buildPreview(broker, name, holdings, req.user.id));
   })
 );

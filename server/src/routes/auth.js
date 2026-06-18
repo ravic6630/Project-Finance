@@ -31,10 +31,10 @@ authRouter.post(
     const name = str(req.body.name);
     if (!emailOk(email)) throw bad('Please enter a valid email address');
     if (password.length < 6) throw bad('Password must be at least 6 characters');
-    if (findByEmail.get(email)) throw bad('An account with that email already exists');
+    if (await findByEmail.get(email)) throw bad('An account with that email already exists');
 
     const role = ADMIN_EMAILS.includes(email) ? 'admin' : 'user';
-    const info = insertUser.run(email, name, hashPassword(password), 'INR', role, now());
+    const info = await insertUser.run(email, name, hashPassword(password), 'INR', role, now());
     const user = { id: Number(info.lastInsertRowid), email, name, base_currency: 'INR', role };
     res.status(201).json({ token: signToken(user), user: publicUser(user) });
   })
@@ -45,7 +45,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
-    const user = findByEmail.get(email);
+    const user = await findByEmail.get(email);
     if (!user || !verifyPassword(password, user.password_hash)) {
       throw new HttpError(401, 'Incorrect email or password');
     }
@@ -67,7 +67,7 @@ authRouter.patch(
     const base = req.body.base_currency
       ? oneOf(req.body.base_currency, ['INR', 'USD'], 'base_currency')
       : req.user.base_currency;
-    updateUser.run(name, base, req.user.id);
+    await updateUser.run(name, base, req.user.id);
     res.json({ user: { ...req.user, name, base_currency: base } });
   })
 );
@@ -99,11 +99,11 @@ authRouter.post(
   '/forgot',
   asyncHandler(async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
-    const user = findByEmail.get(email);
+    const user = await findByEmail.get(email);
     if (user) {
-      delResetsForUser.run(user.id);
+      await delResetsForUser.run(user.id);
       const token = randomBytes(32).toString('hex');
-      insertReset.run(sha256(token), user.id, new Date(Date.now() + 3600e3).toISOString());
+      await insertReset.run(sha256(token), user.id, new Date(Date.now() + 3600e3).toISOString());
       const link = `${appUrl(req)}/reset?token=${token}`;
       if (emailConfigured()) {
         sendMail({ to: email, subject: 'Reset your Sampada password', html: resetEmailHtml(user, link) })
@@ -123,12 +123,12 @@ authRouter.post(
     const token = String(req.body.token || '');
     const password = String(req.body.password || '');
     if (password.length < 6) throw bad('Password must be at least 6 characters');
-    const row = token ? getReset.get(sha256(token)) : null;
+    const row = token ? await getReset.get(sha256(token)) : null;
     if (!row || Date.parse(row.expires_at) < Date.now()) {
       throw bad('This reset link is invalid or has expired. Please request a new one.');
     }
-    setPasswordHash.run(hashPassword(password), row.user_id);
-    delResetsForUser.run(row.user_id);
+    await setPasswordHash.run(hashPassword(password), row.user_id);
+    await delResetsForUser.run(row.user_id);
     res.json({ ok: true });
   })
 );
