@@ -111,6 +111,14 @@ function StockSearch({ kind, onPick }) {
     return () => clearTimeout(timer.current);
   }, [q, kind]);
 
+  // Switching market clears the search box (and its stale results).
+  useEffect(() => {
+    skip.current = true;
+    setQ('');
+    setResults([]);
+    setOpen(false);
+  }, [kind]);
+
   return (
     <div className="relative">
       <div className="relative">
@@ -177,9 +185,13 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
   }, [open, editing]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const onKind = (kind) => set({ kind, currency: currencyForKind(kind) });
+  // Changing market/asset clears the instrument fields so a stale ticker/name
+  // from the previous market can't carry over.
+  const onKind = (kind) => set({ kind, currency: currencyForKind(kind), symbol: '', name: '' });
   const onAsset = (type) =>
-    type === 'MF' ? set({ kind: 'IN_MF', currency: 'INR' }) : onKind('IN_STOCK');
+    type === 'MF'
+      ? set({ kind: 'IN_MF', currency: 'INR', symbol: '', scheme_code: '', name: '' })
+      : set({ kind: 'IN_STOCK', currency: 'INR', symbol: '', scheme_code: '', name: '' });
 
   async function onSubmit(e) {
     e.preventDefault();
