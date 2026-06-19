@@ -20,10 +20,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Elegant serif for display moments — app name, big numbers, section titles. */
+/* Elegant serif for display moments — app name, big numbers, section titles.
+   Force lining + tabular figures so numbers line up cleanly (Fraunces defaults
+   to old-style figures, which made amounts look uneven / "zigzag"). */
 .font-display {
   font-family: 'Fraunces', Georgia, Cambria, serif;
   letter-spacing: -0.01em;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'lnum' 1, 'tnum' 1;
 }
 
 /* Thin champagne hairline used as a subtle premium accent under hero numbers. */

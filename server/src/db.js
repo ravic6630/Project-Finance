@@ -146,6 +146,13 @@ CREATE TABLE IF NOT EXISTS broker_connections (
   updated_at   TEXT,
   UNIQUE(user_id, broker)
 );
+CREATE TABLE IF NOT EXISTS net_worth_snapshots (
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date      TEXT NOT NULL,
+  net_worth REAL NOT NULL,
+  currency  TEXT NOT NULL DEFAULT 'INR',
+  PRIMARY KEY (user_id, date)
+);
 `;
 
 export async function initDb() {
