@@ -90,6 +90,21 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_txn_user ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(user_id, date);
+CREATE TABLE IF NOT EXISTS goals (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name                 TEXT NOT NULL,
+  type                 TEXT NOT NULL DEFAULT 'CUSTOM',
+  target_amount        REAL NOT NULL DEFAULT 0,
+  target_date          TEXT,
+  current_amount       REAL NOT NULL DEFAULT 0,
+  monthly_contribution REAL NOT NULL DEFAULT 0,
+  expected_return      REAL NOT NULL DEFAULT 12,
+  currency             TEXT NOT NULL DEFAULT 'INR',
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
 CREATE TABLE IF NOT EXISTS price_cache (
   price_key  TEXT PRIMARY KEY,
   price      REAL,
