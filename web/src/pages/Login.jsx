@@ -83,6 +83,12 @@ export default function Login() {
               Create an account
             </Link>
           </p>
+          <p className="mt-2 text-center text-sm text-slate-400">
+            Just exploring?{' '}
+            <Link to="/calculators" className="font-medium text-brand-600 hover:underline">
+              Try our free calculators
+            </Link>
+          </p>
         </div>
       </div>
     </div>

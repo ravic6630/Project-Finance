@@ -90,6 +90,21 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_txn_user ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(user_id, date);
+CREATE TABLE IF NOT EXISTS goals (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name                 TEXT NOT NULL,
+  type                 TEXT NOT NULL DEFAULT 'CUSTOM',
+  target_amount        REAL NOT NULL DEFAULT 0,
+  target_date          TEXT,
+  current_amount       REAL NOT NULL DEFAULT 0,
+  monthly_contribution REAL NOT NULL DEFAULT 0,
+  expected_return      REAL NOT NULL DEFAULT 12,
+  currency             TEXT NOT NULL DEFAULT 'INR',
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
 CREATE TABLE IF NOT EXISTS price_cache (
   price_key  TEXT PRIMARY KEY,
   price      REAL,
@@ -131,6 +146,29 @@ CREATE TABLE IF NOT EXISTS broker_connections (
   updated_at   TEXT,
   UNIQUE(user_id, broker)
 );
+CREATE TABLE IF NOT EXISTS net_worth_snapshots (
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date      TEXT NOT NULL,
+  net_worth REAL NOT NULL,
+  currency  TEXT NOT NULL DEFAULT 'INR',
+  PRIMARY KEY (user_id, date)
+);
+CREATE TABLE IF NOT EXISTS alerts (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind              TEXT NOT NULL DEFAULT 'IN_STOCK',
+  symbol            TEXT,
+  scheme_code       TEXT,
+  label             TEXT NOT NULL,
+  direction         TEXT NOT NULL DEFAULT 'above',
+  threshold         REAL NOT NULL,
+  currency          TEXT NOT NULL DEFAULT 'INR',
+  active            INTEGER NOT NULL DEFAULT 1,
+  last_triggered_at TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);
 `;
 
 export async function initDb() {

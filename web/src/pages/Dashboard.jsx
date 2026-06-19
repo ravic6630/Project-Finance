@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
+  CartesianGrid,
   Cell,
   Legend,
   Pie,
@@ -16,6 +19,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   ChevronRight,
+  Crown,
+  LineChart as LineChartIcon,
   PieChart as PieIcon,
   RefreshCw,
   Sparkles,
@@ -24,8 +29,9 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
-import { money, percent } from '../lib/format.js';
+import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
+import UpgradeModal from '../components/UpgradeModal.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
 const MONTH_LABEL = (key) =>
@@ -49,7 +55,7 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
           {to && <ChevronRight size={16} className="text-slate-300" />}
         </span>
       </div>
-      <p className="mt-4 font-display text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="num mt-4 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
       {sub && <div className="mt-1 text-sm">{sub}</div>}
     </>
   );
@@ -66,6 +72,62 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
   return <div className="card p-5">{content}</div>;
 }
 
+const shortDate = (d) =>
+  new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+
+// Premium: net-worth trend chart. Free: a teaser that upsells (we record the
+// history for everyone, so it's already waiting when they upgrade).
+function NetWorthHistory({ data, base, onUpgrade }) {
+  if (!data.premium) {
+    return (
+      <div className="card p-5">
+        <h3 className="mb-1 flex flex-wrap items-center gap-2 font-display text-lg font-bold text-slate-900">
+          <LineChartIcon size={18} className="text-brand-600" /> Net worth over time
+          <span className="chip bg-amber-100 text-amber-700">
+            <Crown size={12} className="mr-1" /> Premium
+          </span>
+        </h3>
+        <p className="max-w-md text-sm text-slate-500">
+          Watch your wealth grow with a daily net-worth trend. We&apos;re already recording your
+          history — upgrade to unlock the chart.
+        </p>
+        <button className="btn-primary mt-4" onClick={onUpgrade}>
+          <Sparkles size={16} /> Upgrade to Premium
+        </button>
+      </div>
+    );
+  }
+  const hist = data.net_worth_history || [];
+  return (
+    <div className="card p-5">
+      <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-slate-900">
+        <LineChartIcon size={18} className="text-brand-600" /> Net worth over time
+      </h3>
+      {hist.length < 2 ? (
+        <p className="py-16 text-center text-sm text-slate-400">
+          Your net-worth history will build here day by day — check back tomorrow to see the trend.
+        </p>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={hist} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+            <defs>
+              <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1f3a66" stopOpacity={0.25} />
+                <stop offset="100%" stopColor="#1f3a66" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#ece6d8" vertical={false} />
+            <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={28} />
+            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => money(v, base, { compact: true })} />
+            <Tooltip formatter={(v) => [money(v, base), 'Net worth']} labelFormatter={(d) => dateLabel(d)} />
+            <Area type="monotone" dataKey="net_worth" stroke="#1f3a66" strokeWidth={2} fill="url(#nwFill)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const base = user.base_currency;
@@ -73,6 +135,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const load = useCallback(async (refresh = false) => {
     try {
@@ -105,7 +168,7 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-500">Total net worth</p>
-          <p className="font-display text-4xl font-bold tracking-tight text-brand-900">
+          <p className="num text-4xl font-bold tracking-tight text-brand-900">
             {money(net_worth, base)}
           </p>
           <div className="gold-rule mt-2.5" />
@@ -177,6 +240,8 @@ export default function Dashboard() {
           }
         />
       </div>
+
+      {!isEmpty && <NetWorthHistory data={data} base={base} onUpgrade={() => setUpgradeOpen(true)} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Allocation */}
@@ -267,6 +332,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={() => load()} />
     </div>
   );
 }

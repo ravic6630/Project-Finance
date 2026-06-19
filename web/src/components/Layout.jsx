@@ -8,6 +8,7 @@ import {
   Settings,
   Shield,
   Sprout,
+  Target,
   TrendingUp,
   Wallet,
   X,
@@ -17,6 +18,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/investments', label: 'Investments', icon: TrendingUp },
+  { to: '/goals', label: 'Goals', icon: Target },
   { to: '/cash', label: 'Cash & Bank', icon: Wallet },
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -25,6 +27,7 @@ const NAV = [
 const PAGE_TITLES = {
   '/': 'Dashboard',
   '/investments': 'Investments',
+  '/goals': 'Goals',
   '/cash': 'Cash & Bank',
   '/transactions': 'Transactions',
   '/settings': 'Settings',
