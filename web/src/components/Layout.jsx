@@ -93,6 +93,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const title = PAGE_TITLES[location.pathname] || 'Sampada';
   const initial = (user.name || user.email)[0].toUpperCase();
 
@@ -126,22 +127,36 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <CurrencyToggle />
-            <div className="group relative">
-              <button className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700">
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700 ring-1 ring-gold-200 transition hover:ring-gold-300"
+              >
                 {initial}
               </button>
-              <div className="invisible absolute right-0 top-11 z-40 w-52 rounded-xl border border-slate-200 bg-white p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-                <p className="truncate px-3 py-1.5 text-sm font-semibold text-slate-700">
-                  {user.name || 'Account'}
-                </p>
-                <p className="truncate px-3 pb-2 text-xs text-slate-400">{user.email}</p>
-                <button
-                  onClick={logout}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
-                >
-                  <LogOut size={16} /> Sign out
-                </button>
-              </div>
+              {menuOpen && (
+                <>
+                  {/* Click-away backdrop — keeps the menu open until you act or click out. */}
+                  <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-12 z-40 w-56 rounded-xl border border-[#e8e2d4] bg-white p-2 shadow-lg">
+                    <p className="truncate px-3 py-1.5 text-sm font-semibold text-slate-700">
+                      {user.name || 'Account'}
+                    </p>
+                    <p className="truncate px-3 pb-2 text-xs text-slate-400">{user.email}</p>
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        logout();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
+                    >
+                      <LogOut size={16} /> Sign out
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
