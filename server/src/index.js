@@ -21,6 +21,7 @@ import { emailRouter } from './routes/email.js';
 import { cronRouter } from './routes/cron.js';
 import { goalsRouter } from './routes/goals.js';
 import { alertsRouter } from './routes/alerts.js';
+import { returnsRouter } from './routes/returns.js';
 import { adminRouter } from './routes/admin.js';
 import { startDigestScheduler } from './services/scheduler.js';
 
@@ -48,6 +49,7 @@ app.use('/api/email', emailRouter);
 app.use('/api/cron', cronRouter);
 app.use('/api/goals', goalsRouter);
 app.use('/api/alerts', alertsRouter);
+app.use('/api/returns', returnsRouter);
 app.use('/api/admin', adminRouter);
 
 // Unknown API route -> JSON 404 (so the SPA fallback never swallows it).
