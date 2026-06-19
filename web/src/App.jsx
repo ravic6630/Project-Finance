@@ -8,6 +8,7 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calculators from './pages/Calculators.jsx';
 import Investments from './pages/Investments.jsx';
+import Goals from './pages/Goals.jsx';
 import Cash from './pages/Cash.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Settings from './pages/Settings.jsx';
@@ -45,6 +46,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/investments" element={<Investments />} />
+        <Route path="/goals" element={<Goals />} />
         <Route path="/cash" element={<Cash />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/settings" element={<Settings />} />
