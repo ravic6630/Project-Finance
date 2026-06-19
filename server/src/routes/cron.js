@@ -1,0 +1,31 @@
+import { Router } from 'express';
+import { asyncHandler, HttpError } from '../util.js';
+import { runDigests } from '../services/scheduler.js';
+
+export const cronRouter = Router();
+
+// Public trigger for an external scheduler (e.g. cron-job.org / UptimeRobot) to
+// run the daily digest batch. On Render's free tier the in-process node-cron
+// can't fire while the server is asleep — but an inbound HTTP request wakes it,
+// and this endpoint then runs the batch. runDigests() is guarded to once per IST
+// day per user, so pinging it repeatedly is safe (no duplicate emails).
+//
+// Protected by a shared secret in CRON_SECRET; supply it as either
+//   Authorization: Bearer <secret>   or   ?key=<secret>
+function assertSecret(req) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) throw new HttpError(503, 'CRON_SECRET is not configured on the server');
+  const header = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const provided = header || req.query.key || '';
+  if (provided !== secret) throw new HttpError(401, 'Invalid cron secret');
+}
+
+const handler = asyncHandler(async (req, res) => {
+  assertSecret(req);
+  const report = await runDigests();
+  res.json({ ok: !report.error, ...report });
+});
+
+// GET is easiest for most cron/ping services; POST also accepted.
+cronRouter.get('/digests', handler);
+cronRouter.post('/digests', handler);
