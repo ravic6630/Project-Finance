@@ -27,7 +27,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
 
-const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'];
+const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
 const MONTH_LABEL = (key) =>
   new Date(`${key}-01T00:00:00`).toLocaleDateString('en-US', { month: 'short' });
 
@@ -49,7 +49,7 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
           {to && <ChevronRight size={16} className="text-slate-300" />}
         </span>
       </div>
-      <p className="mt-4 text-2xl font-extrabold tracking-tight text-slate-900">{value}</p>
+      <p className="mt-4 font-display text-2xl font-bold tracking-tight text-slate-900">{value}</p>
       {sub && <div className="mt-1 text-sm">{sub}</div>}
     </>
   );
@@ -105,9 +105,10 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-500">Total net worth</p>
-          <p className="text-4xl font-extrabold tracking-tight text-slate-900">
+          <p className="font-display text-4xl font-bold tracking-tight text-brand-900">
             {money(net_worth, base)}
           </p>
+          <div className="gold-rule mt-2.5" />
         </div>
         <button
           className="btn-ghost"
@@ -180,7 +181,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Allocation */}
         <div className="card p-5">
-          <h3 className="mb-1 flex items-center gap-2 font-bold text-slate-900">
+          <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-slate-900">
             <PieIcon size={18} className="text-brand-600" /> Asset allocation
           </h3>
           {allocation.length === 0 ? (
@@ -211,7 +212,7 @@ export default function Dashboard() {
 
         {/* Cashflow */}
         <div className="card p-5">
-          <h3 className="mb-1 flex items-center gap-2 font-bold text-slate-900">
+          <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-slate-900">
             <ArrowUpRight size={18} className="text-emerald-600" /> Income vs expense (6 months)
           </h3>
           <ResponsiveContainer width="100%" height={280}>
@@ -234,8 +235,8 @@ export default function Dashboard() {
                 formatter={(v, n) => [money(v, base), n === 'income' ? 'Income' : 'Expense']}
                 labelFormatter={MONTH_LABEL}
               />
-              <Bar dataKey="income" fill="#10b981" radius={[6, 6, 0, 0]} maxBarSize={28} />
-              <Bar dataKey="expense" fill="#f43f5e" radius={[6, 6, 0, 0]} maxBarSize={28} />
+              <Bar dataKey="income" fill="#2f7a53" radius={[6, 6, 0, 0]} maxBarSize={28} />
+              <Bar dataKey="expense" fill="#b0455a" radius={[6, 6, 0, 0]} maxBarSize={28} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -244,7 +245,7 @@ export default function Dashboard() {
       {/* Investments by class */}
       {investments.by_kind.length > 0 && (
         <div className="card p-5">
-          <h3 className="mb-4 font-bold text-slate-900">Investments by class</h3>
+          <h3 className="mb-4 font-display text-lg font-bold text-slate-900">Investments by class</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {investments.by_kind.map((k) => {
               const gain = k.value - k.cost;

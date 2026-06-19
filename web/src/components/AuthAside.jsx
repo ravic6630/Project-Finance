@@ -9,16 +9,16 @@ const POINTS = [
 export default function AuthAside() {
   return (
     <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-brand-700 p-12 text-white lg:flex">
-      <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-brand-500/40 blur-3xl" />
+      <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-gold-400/20 blur-3xl" />
       <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-brand-900/50 blur-3xl" />
       <div className="relative flex items-center gap-2.5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-gold-300 ring-1 ring-gold-400/30">
           <Sprout size={22} />
         </div>
-        <span className="text-xl font-extrabold">Sampada</span>
+        <span className="font-display text-2xl font-bold">Sampada</span>
       </div>
       <div className="relative">
-        <h2 className="text-3xl font-extrabold leading-tight">
+        <h2 className="font-display text-4xl font-bold leading-tight">
           All your wealth,
           <br />
           in one place.
