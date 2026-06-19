@@ -57,11 +57,11 @@ function SidebarContent({ onNavigate }) {
   return (
     <>
       <div className="flex items-center gap-2.5 px-2 py-1">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-700 text-gold-300 ring-1 ring-gold-400/30">
           <Sprout size={20} />
         </div>
         <div>
-          <p className="text-lg font-extrabold leading-none text-slate-900">Sampada</p>
+          <p className="font-display text-xl font-bold leading-none text-brand-800">Sampada</p>
           <p className="text-[11px] font-medium text-slate-400">Wealth, all in one place</p>
         </div>
       </div>
@@ -75,7 +75,7 @@ function SidebarContent({ onNavigate }) {
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
                 isActive
-                  ? 'bg-brand-50 text-brand-700'
+                  ? 'bg-brand-50 text-brand-800 ring-1 ring-gold-200'
                   : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
               }`
             }
@@ -93,13 +93,14 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const title = PAGE_TITLES[location.pathname] || 'Sampada';
   const initial = (user.name || user.email)[0].toUpperCase();
 
   return (
     <div className="min-h-screen lg:flex">
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
+      <aside className="hidden w-64 shrink-0 border-r border-[#e8e2d4] bg-white p-4 lg:block">
         <SidebarContent />
       </aside>
 
@@ -114,7 +115,7 @@ export default function Layout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur lg:px-8">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[#e8e2d4] bg-[#faf9f5]/80 px-4 py-3 backdrop-blur lg:px-8">
           <div className="flex items-center gap-3">
             <button
               className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
@@ -122,26 +123,40 @@ export default function Layout() {
             >
               <Menu size={20} />
             </button>
-            <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+            <h1 className="font-display text-xl font-bold text-brand-900">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
             <CurrencyToggle />
-            <div className="group relative">
-              <button className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700">
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700 ring-1 ring-gold-200 transition hover:ring-gold-300"
+              >
                 {initial}
               </button>
-              <div className="invisible absolute right-0 top-11 z-40 w-52 rounded-xl border border-slate-200 bg-white p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-                <p className="truncate px-3 py-1.5 text-sm font-semibold text-slate-700">
-                  {user.name || 'Account'}
-                </p>
-                <p className="truncate px-3 pb-2 text-xs text-slate-400">{user.email}</p>
-                <button
-                  onClick={logout}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
-                >
-                  <LogOut size={16} /> Sign out
-                </button>
-              </div>
+              {menuOpen && (
+                <>
+                  {/* Click-away backdrop — keeps the menu open until you act or click out. */}
+                  <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-12 z-40 w-56 rounded-xl border border-[#e8e2d4] bg-white p-2 shadow-lg">
+                    <p className="truncate px-3 py-1.5 text-sm font-semibold text-slate-700">
+                      {user.name || 'Account'}
+                    </p>
+                    <p className="truncate px-3 pb-2 text-xs text-slate-400">{user.email}</p>
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        logout();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
+                    >
+                      <LogOut size={16} /> Sign out
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
