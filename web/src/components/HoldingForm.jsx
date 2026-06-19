@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { CURRENCIES, STOCK_MARKETS, currencyForKind } from '../lib/markets.js';
 import { ErrorBanner, Field, Modal } from './ui.jsx';
-
-const KINDS = [
-  { value: 'IN_STOCK', label: 'Indian Stock', currency: 'INR' },
-  { value: 'US_STOCK', label: 'US Stock', currency: 'USD' },
-  { value: 'IN_MF', label: 'Indian Mutual Fund', currency: 'INR' },
-];
 
 const blank = {
   kind: 'IN_STOCK',
@@ -116,13 +111,21 @@ function StockSearch({ kind, onPick }) {
     return () => clearTimeout(timer.current);
   }, [q, kind]);
 
+  // Switching market clears the search box (and its stale results).
+  useEffect(() => {
+    skip.current = true;
+    setQ('');
+    setResults([]);
+    setOpen(false);
+  }, [kind]);
+
   return (
     <div className="relative">
       <div className="relative">
         <Search size={16} className="absolute left-3 top-3 text-slate-400" />
         <input
           className="input pl-9"
-          placeholder={kind === 'US_STOCK' ? 'Search e.g. Amazon or AMZN…' : 'Search e.g. Reliance or TCS…'}
+          placeholder={`Search a ${STOCK_MARKETS.find((m) => m.kind === kind)?.label || ''} stock…`}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => results.length && setOpen(true)}
@@ -182,10 +185,13 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
   }, [open, editing]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const onKind = (kind) => {
-    const k = KINDS.find((x) => x.value === kind);
-    set({ kind, currency: k.currency });
-  };
+  // Changing market/asset clears the instrument fields so a stale ticker/name
+  // from the previous market can't carry over.
+  const onKind = (kind) => set({ kind, currency: currencyForKind(kind), symbol: '', name: '' });
+  const onAsset = (type) =>
+    type === 'MF'
+      ? set({ kind: 'IN_MF', currency: 'INR', symbol: '', scheme_code: '', name: '' })
+      : set({ kind: 'IN_STOCK', currency: 'INR', symbol: '', scheme_code: '', name: '' });
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -219,6 +225,7 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
   }
 
   const isMf = form.kind === 'IN_MF';
+  const market = STOCK_MARKETS.find((m) => m.kind === form.kind);
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit holding' : 'Add holding'}>
@@ -226,23 +233,38 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
         <ErrorBanner message={error} />
 
         <Field label="Type">
-          <div className="grid grid-cols-3 gap-2">
-            {KINDS.map((k) => (
-              <button
-                key={k.value}
-                type="button"
-                onClick={() => onKind(k.value)}
-                className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition ${
-                  form.kind === k.value
-                    ? 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                }`}
-              >
-                {k.label}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            {[['STOCK', 'Stock / ETF'], ['MF', 'Mutual fund']].map(([t, label]) => {
+              const active = t === 'MF' ? isMf : !isMf;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onAsset(t)}
+                  className={`rounded-xl border px-2 py-2.5 text-sm font-semibold transition ${
+                    active
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </Field>
+
+        {!isMf && (
+          <Field label="Market">
+            <select className="input" value={form.kind} onChange={(e) => onKind(e.target.value)}>
+              {STOCK_MARKETS.map((m) => (
+                <option key={m.kind} value={m.kind}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         {isMf ? (
           <>
@@ -291,15 +313,12 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field
-                label="Ticker symbol"
-                hint={form.kind === 'IN_STOCK' ? 'e.g. RELIANCE, TCS (NSE)' : 'e.g. AAPL, MSFT'}
-              >
+              <Field label="Ticker symbol" hint={`e.g. ${market?.ph || 'AAPL'} (${market?.label})`}>
                 <input
                   className="input uppercase"
                   value={form.symbol}
                   onChange={(e) => set({ symbol: e.target.value })}
-                  placeholder={form.kind === 'IN_STOCK' ? 'RELIANCE' : 'AAPL'}
+                  placeholder={market?.ph || 'AAPL'}
                   required
                 />
               </Field>
@@ -343,8 +362,11 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
               value={form.currency}
               onChange={(e) => set({ currency: e.target.value })}
             >
-              <option value="INR">₹ INR</option>
-              <option value="USD">$ USD</option>
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
+                </option>
+              ))}
             </select>
           </Field>
         </div>

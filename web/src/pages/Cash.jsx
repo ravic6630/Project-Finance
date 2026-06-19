@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Banknote, Landmark, Lock, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
+import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 
 const TYPES = [
@@ -121,8 +122,11 @@ function CashForm({ open, onClose, onSaved, editing }) {
               value={form.currency}
               onChange={(e) => set({ currency: e.target.value })}
             >
-              <option value="INR">₹ INR</option>
-              <option value="USD">$ USD</option>
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
+                </option>
+              ))}
             </select>
           </Field>
         </div>

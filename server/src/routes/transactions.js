@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
+import { CURRENCIES } from '../markets.js';
 
 export const transactionsRouter = Router();
 transactionsRouter.use(authRequired);
@@ -25,7 +26,7 @@ function readBody(body) {
     type,
     amount: num(body.amount, 'amount'),
     currency: body.currency
-      ? oneOf(String(body.currency).toUpperCase(), ['INR', 'USD'], 'currency')
+      ? oneOf(String(body.currency).toUpperCase(), CURRENCIES, 'currency')
       : 'INR',
     category: str(body.category),
     account: str(body.account),

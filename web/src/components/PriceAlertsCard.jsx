@@ -117,7 +117,7 @@ export default function PriceAlertsCard({ premium, onUpgrade }) {
 
       {adding && (
         <form onSubmit={add} className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-[#e8e2d4] bg-[#faf8f1] p-4 sm:grid-cols-5">
-          <select className="input col-span-2 sm:col-span-1" value={form.kind} onChange={(e) => set({ kind: e.target.value })}>
+          <select className="input col-span-2 sm:col-span-1" value={form.kind} onChange={(e) => set({ kind: e.target.value, symbol: '' })}>
             {MARKETS.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}

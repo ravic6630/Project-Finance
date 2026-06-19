@@ -4,29 +4,21 @@ import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { enrichHoldings } from '../services/portfolio.js';
 import { searchMutualFunds, searchStocks } from '../services/prices.js';
+import { ALL_KINDS, CURRENCIES, STOCK_MARKETS, currencyForKind, symbolForMarket } from '../markets.js';
 
 export const holdingsRouter = Router();
 holdingsRouter.use(authRequired);
 
-const KINDS = ['IN_STOCK', 'US_STOCK', 'IN_MF'];
-
-// "RELIANCE" -> "RELIANCE.NS" for Indian stocks; US symbols left as-is.
-function normalizeSymbol(kind, symbol) {
-  let s = String(symbol || '').trim().toUpperCase();
-  if (!s) return null;
-  if (kind === 'IN_STOCK' && !s.includes('.')) s += '.NS';
-  return s;
-}
+const KINDS = ALL_KINDS;
+const normalizeSymbol = symbolForMarket;
 
 function readBody(body) {
   const kind = oneOf(body.kind, KINDS, 'kind');
   const name = str(body.name);
   if (!name) throw bad('name is required');
   const currency = body.currency
-    ? oneOf(String(body.currency).toUpperCase(), ['INR', 'USD'], 'currency')
-    : kind === 'US_STOCK'
-      ? 'USD'
-      : 'INR';
+    ? oneOf(String(body.currency).toUpperCase(), CURRENCIES, 'currency')
+    : currencyForKind(kind);
 
   let symbol = null;
   let schemeCode = null;
@@ -89,11 +81,11 @@ holdingsRouter.get(
   })
 );
 
-// GET /api/holdings/stock-search?q=amzn&kind=US_STOCK
+// GET /api/holdings/stock-search?q=amzn&kind=UK_STOCK
 holdingsRouter.get(
   '/stock-search',
   asyncHandler(async (req, res) => {
-    const kind = req.query.kind === 'US_STOCK' ? 'US_STOCK' : 'IN_STOCK';
+    const kind = STOCK_MARKETS[req.query.kind] ? req.query.kind : 'IN_STOCK';
     res.json({ results: await searchStocks(req.query.q, kind) });
   })
 );
@@ -134,6 +126,50 @@ holdingsRouter.delete(
   asyncHandler(async (req, res) => {
     const info = await remove.run(req.params.id, req.user.id);
     if (!info.changes) throw new HttpError(404, 'Holding not found');
+    res.json({ ok: true });
+  })
+);
+
+// --- Investment transaction ledger (buy/sell) — powers returns & capital gains ---
+const txnList = db.prepare(
+  'SELECT * FROM investment_txns WHERE holding_id = ? AND user_id = ? ORDER BY trade_date, id'
+);
+const txnInsert = db.prepare(`
+  INSERT INTO investment_txns (user_id, holding_id, type, trade_date, quantity, price, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const txnRemove = db.prepare('DELETE FROM investment_txns WHERE id = ? AND user_id = ?');
+
+holdingsRouter.get(
+  '/:id/txns',
+  asyncHandler(async (req, res) => {
+    const h = await getOne.get(req.params.id, req.user.id);
+    if (!h) throw new HttpError(404, 'Holding not found');
+    res.json({ txns: await txnList.all(req.params.id, req.user.id) });
+  })
+);
+
+holdingsRouter.post(
+  '/:id/txns',
+  asyncHandler(async (req, res) => {
+    const h = await getOne.get(req.params.id, req.user.id);
+    if (!h) throw new HttpError(404, 'Holding not found');
+    const type = oneOf(String(req.body.type || 'BUY').toUpperCase(), ['BUY', 'SELL'], 'type');
+    const tradeDate = str(req.body.trade_date);
+    if (!tradeDate) throw bad('trade_date is required');
+    const quantity = num(req.body.quantity ?? 0, 'quantity');
+    const price = num(req.body.price ?? 0, 'price');
+    if (quantity <= 0) throw bad('quantity must be greater than 0');
+    await txnInsert.run(req.user.id, Number(req.params.id), type, tradeDate, quantity, price, now());
+    res.status(201).json({ txns: await txnList.all(req.params.id, req.user.id) });
+  })
+);
+
+holdingsRouter.delete(
+  '/:id/txns/:txnId',
+  asyncHandler(async (req, res) => {
+    const info = await txnRemove.run(req.params.txnId, req.user.id);
+    if (!info.changes) throw new HttpError(404, 'Transaction not found');
     res.json({ ok: true });
   })
 );

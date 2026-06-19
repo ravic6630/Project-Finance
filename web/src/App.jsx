@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Calculators from './pages/Calculators.jsx';
 import Investments from './pages/Investments.jsx';
 import Goals from './pages/Goals.jsx';
+import Returns from './pages/Returns.jsx';
 import Cash from './pages/Cash.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Settings from './pages/Settings.jsx';
@@ -35,7 +36,8 @@ export default function App() {
         <Route path="/forgot" element={<ForgotPassword />} />
         <Route path="/reset" element={<ResetPassword />} />
         <Route path="/calculators" element={<Calculators />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        {/* Logged-out visitors land on the public calculators by default. */}
+        <Route path="*" element={<Navigate to="/calculators" replace />} />
       </Routes>
     );
   }
@@ -47,6 +49,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/investments" element={<Investments />} />
         <Route path="/goals" element={<Goals />} />
+        <Route path="/returns" element={<Returns />} />
         <Route path="/cash" element={<Cash />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/settings" element={<Settings />} />

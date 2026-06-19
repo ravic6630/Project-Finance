@@ -169,6 +169,18 @@ CREATE TABLE IF NOT EXISTS alerts (
   updated_at        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);
+CREATE TABLE IF NOT EXISTS investment_txns (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  holding_id INTEGER NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+  type       TEXT NOT NULL DEFAULT 'BUY',
+  trade_date TEXT NOT NULL,
+  quantity   REAL NOT NULL DEFAULT 0,
+  price      REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_itxn_user ON investment_txns(user_id);
+CREATE INDEX IF NOT EXISTS idx_itxn_holding ON investment_txns(holding_id);
 `;
 
 export async function initDb() {

@@ -12,6 +12,7 @@ import {
 import { Sprout, TrendingUp, Coins, Target } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money } from '../lib/format.js';
+import { CURRENCIES } from '../lib/markets.js';
 
 const GOLD = '#c2a368';
 const NAVY = '#1f3a66';
@@ -57,7 +58,7 @@ function requiredSip({ target, annualReturn, years }) {
 }
 
 const realValue = (nominal, inflation, years) => nominal / (1 + inflation / 100) ** years;
-const inr = (v) => money(v, 'INR', { compact: true });
+const compactMoney = (v, cur) => money(v, cur, { compact: true });
 
 const MODES = [
   { key: 'sip', label: 'SIP', icon: TrendingUp },
@@ -98,6 +99,7 @@ function Chip({ label, value, gold }) {
 export default function Calculators() {
   const { user } = useAuth();
   const [mode, setMode] = useState('sip');
+  const [cur, setCur] = useState(user?.base_currency || 'INR');
 
   const [annualReturn, setReturn] = useState(12);
   const [years, setYears] = useState(15);
@@ -152,19 +154,33 @@ export default function Calculators() {
           </p>
         </div>
 
-        {/* Mode tabs */}
-        <div className="mt-5 inline-flex w-full overflow-x-auto rounded-xl border border-[#e8e2d4] bg-white p-1 sm:w-auto">
-          {MODES.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setMode(key)}
-              className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition sm:flex-none ${
-                mode === key ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
-              }`}
-            >
-              <Icon size={16} /> {label}
-            </button>
-          ))}
+        {/* Mode tabs + currency picker */}
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex w-full overflow-x-auto rounded-xl border border-[#e8e2d4] bg-white p-1 sm:w-auto">
+            {MODES.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition sm:flex-none ${
+                  mode === key ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
+                }`}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            ))}
+          </div>
+          <select
+            aria-label="Currency"
+            value={cur}
+            onChange={(e) => setCur(e.target.value)}
+            className="rounded-xl border border-[#e8e2d4] bg-white px-3 py-2 text-sm font-semibold text-brand-700"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.symbol} {c.code}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* STICKY RESULT — always visible while you drag the sliders below */}
@@ -173,28 +189,28 @@ export default function Calculators() {
             {mode === 'goal' ? (
               <>
                 <p className="text-sm font-medium text-brand-200">
-                  To reach {money(target, 'INR')} in {years} years, invest
+                  To reach {money(target, cur)} in {years} years, invest
                 </p>
                 <p className="num text-3xl font-bold tracking-tight sm:text-4xl">
-                  {money(result.requiredMonthly, 'INR')}
+                  {money(result.requiredMonthly, cur)}
                   <span className="text-lg font-medium text-brand-200"> /month</span>
                 </p>
                 <div className="mt-3 h-0.5 w-12 rounded bg-gold-400" />
                 <div className="mt-4 flex flex-wrap gap-2.5">
-                  <Chip label="Or one-time, today" value={money(result.requiredLumpsum, 'INR')} gold />
+                  <Chip label="Or one-time, today" value={money(result.requiredLumpsum, cur)} gold />
                   <Chip label="Assumed return" value={`${annualReturn}% p.a.`} />
                 </div>
               </>
             ) : (
               <>
                 <p className="text-sm font-medium text-brand-200">Estimated value in {years} years</p>
-                <p className="num text-3xl font-bold tracking-tight sm:text-4xl">{money(fv, 'INR')}</p>
+                <p className="num text-3xl font-bold tracking-tight sm:text-4xl">{money(fv, cur)}</p>
                 <div className="mt-3 h-0.5 w-12 rounded bg-gold-400" />
                 <div className="mt-4 flex flex-wrap gap-2.5">
-                  <Chip label="You invest" value={money(result.invested, 'INR')} />
-                  <Chip label="Est. returns" value={money(gains, 'INR')} gold />
+                  <Chip label="You invest" value={money(result.invested, cur)} />
+                  <Chip label="Est. returns" value={money(gains, cur)} gold />
                   {showReal && (
-                    <Chip label={`Today's value (${inflation}% infl.)`} value={money(realValue(fv, inflation, years), 'INR')} />
+                    <Chip label={`Today's value (${inflation}% infl.)`} value={money(realValue(fv, inflation, years), cur)} />
                   )}
                 </div>
               </>
@@ -208,24 +224,24 @@ export default function Calculators() {
             <h2 className="font-display text-lg font-bold text-slate-900">Your plan</h2>
             {mode === 'sip' && (
               <>
-                <Slider label="Monthly investment" value={monthly} set={setMonthly} min={500} max={200000} step={500} fmt={(v) => money(v, 'INR')} />
+                <Slider label="Monthly investment" value={monthly} set={setMonthly} min={500} max={200000} step={500} fmt={(v) => money(v, cur)} />
                 <Slider label="Annual step-up" value={stepUp} set={setStepUp} min={0} max={25} step={1} fmt={(v) => `${v}%`} />
               </>
             )}
             {mode === 'lumpsum' && (
-              <Slider label="One-time investment" value={amount} set={setAmount} min={10000} max={10000000} step={10000} fmt={(v) => money(v, 'INR')} />
+              <Slider label="One-time investment" value={amount} set={setAmount} min={10000} max={10000000} step={10000} fmt={(v) => money(v, cur)} />
             )}
             {mode === 'goal' && (
               <div>
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-sm font-medium text-slate-600">Target amount</span>
-                  <span className="num text-base font-bold text-brand-800">{money(target, 'INR')}</span>
+                  <span className="num text-base font-bold text-brand-800">{money(target, cur)}</span>
                 </div>
                 <input type="range" min={500000} max={100000000} step={500000} value={target} onChange={(e) => setTarget(Number(e.target.value))} className="mt-2 w-full accent-brand-600" />
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   {[5000000, 10000000, 50000000].map((t) => (
                     <button key={t} onClick={() => setTarget(t)} className={`chip border transition ${target === t ? 'border-gold-400 bg-gold-50 text-gold-700' : 'border-[#e8e2d4] bg-white text-slate-500 hover:border-gold-300'}`}>
-                      {inr(t)}
+                      {compactMoney(t, cur)}
                     </button>
                   ))}
                 </div>
@@ -250,8 +266,8 @@ export default function Calculators() {
                 <AreaChart data={result.series} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ece6d8" vertical={false} />
                   <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(y) => `${y}y`} />
-                  <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => inr(v)} />
-                  <Tooltip formatter={(v, n) => [money(v, 'INR'), n === 'invested' ? 'Invested' : 'Gains']} labelFormatter={(y) => `Year ${y}`} />
+                  <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => compactMoney(v, cur)} />
+                  <Tooltip formatter={(v, n) => [money(v, cur), n === 'invested' ? 'Invested' : 'Gains']} labelFormatter={(y) => `Year ${y}`} />
                   <Area type="monotone" dataKey="invested" stackId="1" stroke={GOLD} fill={GOLD} fillOpacity={0.85} />
                   <Area type="monotone" dataKey="gains" stackId="1" stroke={NAVY} fill={NAVY} fillOpacity={0.9} />
                 </AreaChart>

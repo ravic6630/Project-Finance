@@ -1,10 +1,6 @@
 import { getFxRate, getPrice } from './prices.js';
 
-export const KIND_LABELS = {
-  IN_STOCK: 'Indian Stocks',
-  US_STOCK: 'US Stocks',
-  IN_MF: 'Indian Mutual Funds',
-};
+export { KIND_LABELS } from '../markets.js';
 
 // Price every holding, then express cost & market value in `base` currency.
 // `manual_price` (if set) always wins over the fetched price.

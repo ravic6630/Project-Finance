@@ -3,6 +3,7 @@ import { db, now } from '../db.js';
 import { authRequired, requirePremium } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { projectGoal } from '../services/goals.js';
+import { CURRENCIES } from '../markets.js';
 
 export const goalsRouter = Router();
 goalsRouter.use(authRequired);
@@ -23,7 +24,7 @@ function readBody(body) {
     currentAmount: num(body.current_amount ?? 0, 'current_amount'),
     monthly: num(body.monthly_contribution ?? 0, 'monthly_contribution'),
     expectedReturn: num(body.expected_return ?? 12, 'expected_return'),
-    currency: body.currency ? oneOf(String(body.currency).toUpperCase(), ['INR', 'USD'], 'currency') : 'INR',
+    currency: body.currency ? oneOf(String(body.currency).toUpperCase(), CURRENCIES, 'currency') : 'INR',
   };
 }
 
