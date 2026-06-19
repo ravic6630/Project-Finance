@@ -20,7 +20,7 @@ dashboardRouter.get(
     // ... but the trend chart itself is a premium feature.
     const premium = (await premiumState(req.user)).premium;
     summary.premium = premium;
-    summary.net_worth_history = premium ? await getHistory(req.user.id) : null;
+    summary.net_worth_history = premium ? await getHistory(req.user.id, req.user.base_currency) : null;
 
     res.json(summary);
   })
