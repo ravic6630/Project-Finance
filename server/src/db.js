@@ -153,6 +153,22 @@ CREATE TABLE IF NOT EXISTS net_worth_snapshots (
   currency  TEXT NOT NULL DEFAULT 'INR',
   PRIMARY KEY (user_id, date)
 );
+CREATE TABLE IF NOT EXISTS alerts (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind              TEXT NOT NULL DEFAULT 'IN_STOCK',
+  symbol            TEXT,
+  scheme_code       TEXT,
+  label             TEXT NOT NULL,
+  direction         TEXT NOT NULL DEFAULT 'above',
+  threshold         REAL NOT NULL,
+  currency          TEXT NOT NULL DEFAULT 'INR',
+  active            INTEGER NOT NULL DEFAULT 1,
+  last_triggered_at TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);
 `;
 
 export async function initDb() {

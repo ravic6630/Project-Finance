@@ -6,6 +6,7 @@ import { dateLabel } from '../lib/format.js';
 import { ErrorBanner, Field } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import EmailDigestCard from '../components/EmailDigestCard.jsx';
+import PriceAlertsCard from '../components/PriceAlertsCard.jsx';
 
 export default function Settings() {
   const { user, updateProfile, logout } = useAuth();
@@ -103,6 +104,8 @@ export default function Settings() {
       </div>
 
       <EmailDigestCard onUpgrade={() => setUpgradeOpen(true)} />
+
+      <PriceAlertsCard premium={billing?.state?.premium} onUpgrade={() => setUpgradeOpen(true)} />
 
       <div className="card flex items-start gap-4 p-6">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
