@@ -5,6 +5,7 @@ import { db, now } from '../db.js';
 import { applyEffectiveRole, authRequired, hashPassword, signToken, verifyPassword } from '../auth.js';
 import { asyncHandler, bad, HttpError, oneOf, str } from '../util.js';
 import { emailConfigured, sendMail } from '../services/email.js';
+import { CURRENCIES } from '../markets.js';
 
 export const authRouter = Router();
 
@@ -65,7 +66,7 @@ authRouter.patch(
   asyncHandler(async (req, res) => {
     const name = req.body.name !== undefined ? str(req.body.name) : req.user.name;
     const base = req.body.base_currency
-      ? oneOf(req.body.base_currency, ['INR', 'USD'], 'base_currency')
+      ? oneOf(String(req.body.base_currency).toUpperCase(), CURRENCIES, 'base_currency')
       : req.user.base_currency;
     await updateUser.run(name, base, req.user.id);
     res.json({ user: { ...req.user, name, base_currency: base } });

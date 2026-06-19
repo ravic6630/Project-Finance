@@ -35,7 +35,8 @@ export default function App() {
         <Route path="/forgot" element={<ForgotPassword />} />
         <Route path="/reset" element={<ResetPassword />} />
         <Route path="/calculators" element={<Calculators />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        {/* Logged-out visitors land on the public calculators by default. */}
+        <Route path="*" element={<Navigate to="/calculators" replace />} />
       </Routes>
     );
   }

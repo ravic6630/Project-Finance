@@ -1,4 +1,5 @@
 import { db, now } from '../db.js';
+import { STOCK_MARKETS } from '../markets.js';
 
 const PRICE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const FX_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -31,20 +32,25 @@ async function fetchStock(symbol) {
   )}?interval=1d&range=1d`;
   const json = await fetchJson(url, { 'User-Agent': 'Mozilla/5.0' });
   const meta = json?.chart?.result?.[0]?.meta;
-  const price = meta?.regularMarketPrice;
+  let price = meta?.regularMarketPrice;
   if (!Number.isFinite(price)) throw new Error('No price in Yahoo response');
+  // LSE and some other exchanges quote in pence (GBp / GBX) — normalise to the
+  // major unit so currency formatting isn't 100x off.
+  let currency = meta.currency || 'USD';
+  if (currency === 'GBp' || currency === 'GBX') {
+    price /= 100;
+    currency = 'GBP';
+  } else if (currency === 'ZAc') {
+    price /= 100;
+    currency = 'ZAR';
+  }
   // longName is the properly-cased full name ("HDFC Bank Limited"); shortName is
   // an ALL-CAPS abbreviation. Prefer longName. Yahoo occasionally returns a junk
   // shortName like "SYM,0P0001LR17,171521" for REITs/InvITs — reject anything
   // with a comma so the importer can fall back to a tidied statement name.
   const candidate = meta.longName || meta.shortName || symbol;
   const name = /,/.test(candidate) ? symbol : candidate;
-  return {
-    price,
-    currency: meta.currency || 'USD',
-    name,
-    source: 'yahoo',
-  };
+  return { price, currency, name, source: 'yahoo' };
 }
 
 async function fetchMfNav(schemeCode) {
@@ -108,9 +114,19 @@ export async function searchMutualFunds(query) {
   }
 }
 
-// --- Stock search via Yahoo Finance, filtered by market (US vs India). ---
-const US_EXCH = new Set(['NASDAQ', 'NYSE', 'NYSEArca', 'NYSE American', 'NYSEAmerican', 'Cboe US', 'OTC Markets', 'BATS']);
-const IN_EXCH = new Set(['NSE', 'BSE', 'Bombay']);
+// --- Stock search via Yahoo Finance, filtered to the requested market. ---
+const SUFFIX_KIND = { '.NS': 'IN_STOCK', '.BO': 'IN_STOCK', '.L': 'UK_STOCK', '.IR': 'IE_STOCK', '.AX': 'AU_STOCK', '.NZ': 'NZ_STOCK' };
+
+// Which market does a Yahoo search result belong to?
+function quoteKind(z) {
+  const m = String(z.symbol || '').match(/(\.[A-Z]{1,3})$/);
+  if (m && SUFFIX_KIND[m[1]]) return SUFFIX_KIND[m[1]];
+  if (!String(z.symbol || '').includes('.')) return 'US_STOCK';
+  for (const [k, mk] of Object.entries(STOCK_MARKETS)) {
+    if (mk.exch.includes(z.exchDisp)) return k;
+  }
+  return null;
+}
 
 export async function searchStocks(query, kind) {
   const q = String(query || '').trim();
@@ -118,20 +134,16 @@ export async function searchStocks(query, kind) {
   let json;
   try {
     json = await fetchJson(
-      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=15&newsCount=0&listsCount=0`,
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=20&newsCount=0&listsCount=0`,
       { 'User-Agent': 'Mozilla/5.0' }
     );
   } catch {
     return [];
   }
+  const wanted = STOCK_MARKETS[kind] ? kind : 'US_STOCK';
   const quotes = (json?.quotes || []).filter((z) => z.symbol && ['EQUITY', 'ETF'].includes(z.quoteType));
-  const isIndian = (z) => z.symbol.endsWith('.NS') || z.symbol.endsWith('.BO') || IN_EXCH.has(z.exchDisp);
-  const keep =
-    kind === 'US_STOCK'
-      ? (z) => !isIndian(z) && (US_EXCH.has(z.exchDisp) || !z.symbol.includes('.'))
-      : isIndian;
   return quotes
-    .filter(keep)
+    .filter((z) => quoteKind(z) === wanted)
     .slice(0, 10)
     .map((z) => ({ symbol: z.symbol, name: z.longname || z.shortname || z.symbol, exchange: z.exchDisp || z.exchange }));
 }

@@ -2,15 +2,14 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired, requirePremium } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
+import { ALL_KINDS, CURRENCIES, currencyForKind, symbolForMarket } from '../markets.js';
 
 export const alertsRouter = Router();
 alertsRouter.use(authRequired);
 alertsRouter.use(requirePremium); // Price alerts are a premium feature.
 
-const KINDS = ['IN_STOCK', 'US_STOCK', 'IN_MF'];
-
 function readBody(body) {
-  const kind = body.kind ? oneOf(String(body.kind).toUpperCase(), KINDS, 'kind') : 'IN_STOCK';
+  const kind = body.kind ? oneOf(String(body.kind).toUpperCase(), ALL_KINDS, 'kind') : 'IN_STOCK';
   const label = str(body.label) || str(body.symbol) || str(body.scheme_code);
   if (!label) throw bad('A label or symbol is required');
   const threshold = num(body.threshold ?? 0, 'threshold');
@@ -22,10 +21,8 @@ function readBody(body) {
     schemeCode = str(body.scheme_code);
     if (!schemeCode) throw bad('scheme_code is required for a mutual fund alert');
   } else {
-    symbol = str(body.symbol);
+    symbol = symbolForMarket(kind, body.symbol);
     if (!symbol) throw bad('symbol is required for a stock alert');
-    symbol = symbol.toUpperCase();
-    if (kind === 'IN_STOCK' && !symbol.includes('.')) symbol += '.NS';
   }
   return {
     kind,
@@ -34,7 +31,7 @@ function readBody(body) {
     label,
     direction: oneOf(String(body.direction || 'above').toLowerCase(), ['above', 'below'], 'direction'),
     threshold,
-    currency: body.currency ? oneOf(String(body.currency).toUpperCase(), ['INR', 'USD'], 'currency') : 'INR',
+    currency: body.currency ? oneOf(String(body.currency).toUpperCase(), CURRENCIES, 'currency') : currencyForKind(kind),
     active: body.active === false || body.active === 0 ? 0 : 1,
   };
 }

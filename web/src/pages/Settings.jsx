@@ -3,6 +3,7 @@ import { Check, Crown, Globe2, LogOut, Users } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { api } from '../lib/api.js';
 import { dateLabel } from '../lib/format.js';
+import { CURRENCIES } from '../lib/markets.js';
 import { ErrorBanner, Field } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import EmailDigestCard from '../components/EmailDigestCard.jsx';
@@ -57,8 +58,11 @@ export default function Settings() {
             hint="Everything across the app is converted to this currency using live exchange rates."
           >
             <select className="input" value={base} onChange={(e) => setBase(e.target.value)}>
-              <option value="INR">₹ Indian Rupee (INR)</option>
-              <option value="USD">$ US Dollar (USD)</option>
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label} ({c.code})
+                </option>
+              ))}
             </select>
           </Field>
           <div className="flex items-center gap-3">

@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
+import { CURRENCIES } from '../lib/markets.js';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -36,21 +37,19 @@ const PAGE_TITLES = {
 
 function CurrencyToggle() {
   const { user, updateProfile } = useAuth();
-  const set = (c) => c !== user.base_currency && updateProfile({ base_currency: c });
   return (
-    <div className="flex items-center rounded-xl bg-slate-100 p-1 text-sm font-semibold">
-      {['INR', 'USD'].map((c) => (
-        <button
-          key={c}
-          onClick={() => set(c)}
-          className={`rounded-lg px-3 py-1.5 transition ${
-            user.base_currency === c ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'
-          }`}
-        >
-          {c === 'INR' ? '₹ INR' : '$ USD'}
-        </button>
+    <select
+      aria-label="Base currency"
+      value={user.base_currency}
+      onChange={(e) => e.target.value !== user.base_currency && updateProfile({ base_currency: e.target.value })}
+      className="rounded-xl border border-[#e8e2d4] bg-white px-3 py-2 text-sm font-semibold text-brand-700"
+    >
+      {CURRENCIES.map((c) => (
+        <option key={c.code} value={c.code}>
+          {c.symbol} {c.code}
+        </option>
       ))}
-    </div>
+    </select>
   );
 }
 

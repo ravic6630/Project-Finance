@@ -4,29 +4,21 @@ import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { enrichHoldings } from '../services/portfolio.js';
 import { searchMutualFunds, searchStocks } from '../services/prices.js';
+import { ALL_KINDS, CURRENCIES, STOCK_MARKETS, currencyForKind, symbolForMarket } from '../markets.js';
 
 export const holdingsRouter = Router();
 holdingsRouter.use(authRequired);
 
-const KINDS = ['IN_STOCK', 'US_STOCK', 'IN_MF'];
-
-// "RELIANCE" -> "RELIANCE.NS" for Indian stocks; US symbols left as-is.
-function normalizeSymbol(kind, symbol) {
-  let s = String(symbol || '').trim().toUpperCase();
-  if (!s) return null;
-  if (kind === 'IN_STOCK' && !s.includes('.')) s += '.NS';
-  return s;
-}
+const KINDS = ALL_KINDS;
+const normalizeSymbol = symbolForMarket;
 
 function readBody(body) {
   const kind = oneOf(body.kind, KINDS, 'kind');
   const name = str(body.name);
   if (!name) throw bad('name is required');
   const currency = body.currency
-    ? oneOf(String(body.currency).toUpperCase(), ['INR', 'USD'], 'currency')
-    : kind === 'US_STOCK'
-      ? 'USD'
-      : 'INR';
+    ? oneOf(String(body.currency).toUpperCase(), CURRENCIES, 'currency')
+    : currencyForKind(kind);
 
   let symbol = null;
   let schemeCode = null;
@@ -89,11 +81,11 @@ holdingsRouter.get(
   })
 );
 
-// GET /api/holdings/stock-search?q=amzn&kind=US_STOCK
+// GET /api/holdings/stock-search?q=amzn&kind=UK_STOCK
 holdingsRouter.get(
   '/stock-search',
   asyncHandler(async (req, res) => {
-    const kind = req.query.kind === 'US_STOCK' ? 'US_STOCK' : 'IN_STOCK';
+    const kind = STOCK_MARKETS[req.query.kind] ? req.query.kind : 'IN_STOCK';
     res.json({ results: await searchStocks(req.query.q, kind) });
   })
 );
