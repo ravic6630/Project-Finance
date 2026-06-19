@@ -20,14 +20,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Elegant serif for display moments — app name, big numbers, section titles.
-   Force lining + tabular figures so numbers line up cleanly (Fraunces defaults
-   to old-style figures, which made amounts look uneven / "zigzag"). */
+/* Elegant serif for headings & the app name (text only — not numbers). */
 .font-display {
   font-family: 'Fraunces', Georgia, Cambria, serif;
   letter-spacing: -0.01em;
+}
+
+/* Numbers/amounts: a clean, modern sans with crisp uniform (lining + tabular)
+   numerals — so big totals read sharp and aligned, never "zigzag". */
+.num {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
   font-variant-numeric: lining-nums tabular-nums;
-  font-feature-settings: 'lnum' 1, 'tnum' 1;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  letter-spacing: -0.01em;
 }
 
 /* Thin champagne hairline used as a subtle premium accent under hero numbers. */

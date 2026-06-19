@@ -70,7 +70,7 @@ function Slider({ label, value, set, min, max, step, fmt }) {
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-sm font-medium text-slate-600">{label}</span>
-        <span className="font-display text-base font-bold text-brand-800">{fmt(value)}</span>
+        <span className="num text-base font-bold text-brand-800">{fmt(value)}</span>
       </div>
       <input
         type="range"
@@ -90,7 +90,7 @@ function Chip({ label, value, gold }) {
   return (
     <div className="rounded-xl bg-white/10 px-3.5 py-2">
       <p className="text-[11px] font-medium text-brand-200">{label}</p>
-      <p className={`font-display text-sm font-bold ${gold ? 'text-gold-300' : 'text-white'}`}>{value}</p>
+      <p className={`num text-sm font-bold ${gold ? 'text-gold-300' : 'text-white'}`}>{value}</p>
     </div>
   );
 }
@@ -175,7 +175,7 @@ export default function Calculators() {
                 <p className="text-sm font-medium text-brand-200">
                   To reach {money(target, 'INR')} in {years} years, invest
                 </p>
-                <p className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
+                <p className="num text-3xl font-bold tracking-tight sm:text-4xl">
                   {money(result.requiredMonthly, 'INR')}
                   <span className="text-lg font-medium text-brand-200"> /month</span>
                 </p>
@@ -188,7 +188,7 @@ export default function Calculators() {
             ) : (
               <>
                 <p className="text-sm font-medium text-brand-200">Estimated value in {years} years</p>
-                <p className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{money(fv, 'INR')}</p>
+                <p className="num text-3xl font-bold tracking-tight sm:text-4xl">{money(fv, 'INR')}</p>
                 <div className="mt-3 h-0.5 w-12 rounded bg-gold-400" />
                 <div className="mt-4 flex flex-wrap gap-2.5">
                   <Chip label="You invest" value={money(result.invested, 'INR')} />
@@ -219,7 +219,7 @@ export default function Calculators() {
               <div>
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-sm font-medium text-slate-600">Target amount</span>
-                  <span className="font-display text-base font-bold text-brand-800">{money(target, 'INR')}</span>
+                  <span className="num text-base font-bold text-brand-800">{money(target, 'INR')}</span>
                 </div>
                 <input type="range" min={500000} max={100000000} step={500000} value={target} onChange={(e) => setTarget(Number(e.target.value))} className="mt-2 w-full accent-brand-600" />
                 <div className="mt-2.5 flex flex-wrap gap-2">

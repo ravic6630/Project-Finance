@@ -195,7 +195,7 @@ function GoalCard({ goal, onEdit, onDelete }) {
         {p.years_to_target ? ` · ${p.years_to_target}y` : ''}
       </p>
 
-      <p className="font-display mt-2 text-2xl font-bold tracking-tight text-brand-900">{money(goal.target_amount, cur)}</p>
+      <p className="num mt-2 text-2xl font-bold tracking-tight text-brand-900">{money(goal.target_amount, cur)}</p>
 
       {/* progress saved so far */}
       <div className="mt-3">

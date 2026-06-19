@@ -55,7 +55,7 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
           {to && <ChevronRight size={16} className="text-slate-300" />}
         </span>
       </div>
-      <p className="mt-4 font-display text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="num mt-4 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
       {sub && <div className="mt-1 text-sm">{sub}</div>}
     </>
   );
@@ -168,7 +168,7 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-500">Total net worth</p>
-          <p className="font-display text-4xl font-bold tracking-tight text-brand-900">
+          <p className="num text-4xl font-bold tracking-tight text-brand-900">
             {money(net_worth, base)}
           </p>
           <div className="gold-rule mt-2.5" />
