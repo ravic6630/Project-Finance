@@ -111,8 +111,9 @@ export default function EmailDigestCard({ onUpgrade }) {
       )}
       {prefs && !prefs.configured && (
         <p className="mt-2 text-xs text-slate-400">
-          Sending isn’t set up on this server yet — add SMTP keys in{' '}
-          <code className="rounded bg-slate-100 px-1">server/.env</code>. Preview still works.
+          Sending isn’t set up on this server yet — add a{' '}
+          <code className="rounded bg-slate-100 px-1">BREVO_API_KEY</code> (works on hosts that block
+          SMTP) or SMTP keys in the server environment. Preview still works.
         </p>
       )}
 
