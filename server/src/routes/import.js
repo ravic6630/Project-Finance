@@ -51,6 +51,8 @@ async function buildPreview(parsed, userId) {
       isin: m.isin || null,
       folio: m.folio || null,
       value: m.value ?? null,
+      // MFs usually carry a real cost in the statement; flag as estimate only when they don't.
+      cost_is_estimate: !(Number(m.cost) > 0 || (Number(m.avgCost) > 0 && Number(m.avgCost) !== Number(m.nav))),
       duplicate: m.amfi ? have.mf.has(String(m.amfi)) : false,
       importable: !!m.amfi,
       note: m.amfi ? null : 'No AMFI code in statement — add manually to track live NAV',
@@ -69,6 +71,8 @@ async function buildPreview(parsed, userId) {
       currency: 'INR',
       isin: s.isin || null,
       value: s.value ?? null,
+      // CDSL never reports a stock buy price — avg is the current price, an estimate.
+      cost_is_estimate: true,
       duplicate: symbol ? have.sym.has(normalized) : false,
       importable: true,
       needsSymbol: !symbol,

@@ -119,7 +119,7 @@ const UPDATE_SQL = `
 // pre-existing duplicates of the same instrument are merged into one row.
 export async function insertImportedHoldings(userId, rows, sourceLabel = 'Imported') {
   const existing = await db
-    .prepare('SELECT id, kind, symbol, scheme_code FROM holdings WHERE user_id = ?')
+    .prepare('SELECT id, kind, symbol, scheme_code, avg_cost FROM holdings WHERE user_id = ?')
     .all(userId);
   const byKey = new Map();
   for (const h of existing) {
@@ -160,6 +160,7 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
       key, kind, symbol, schemeCode, name,
       quantity: num(r.quantity ?? 0, 'quantity'),
       avgCost: num(r.avg_cost ?? 0, 'avg_cost'),
+      costIsEstimate: r.cost_is_estimate === true,
       currency: r.currency === 'USD' ? 'USD' : 'INR',
     };
     if (seen.has(key)) normalized[seen.get(key)] = item;
@@ -177,7 +178,13 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
     const matches = byKey.get(it.key);
     if (matches && matches.length) {
       const keep = matches[0];
-      stmts.push({ sql: UPDATE_SQL, args: [it.name, it.quantity, it.avgCost, it.currency, ts, keep.id, userId] });
+      // Quantity always reflects the statement (it's the authoritative total). But
+      // a CDSL statement has no buy price for stocks — their imported avg is just
+      // the current price — so don't overwrite an avg the user already entered/kept.
+      // MFs (and broker imports) carry a real cost, so those refresh normally.
+      const existingAvg = Number(keep.avg_cost) || 0;
+      const avg = it.costIsEstimate && existingAvg > 0 ? existingAvg : it.avgCost;
+      stmts.push({ sql: UPDATE_SQL, args: [it.name, it.quantity, avg, it.currency, ts, keep.id, userId] });
       for (const extra of matches.slice(1)) {
         stmts.push({ sql: 'DELETE FROM holdings WHERE id = ? AND user_id = ?', args: [extra.id, userId] });
       }
