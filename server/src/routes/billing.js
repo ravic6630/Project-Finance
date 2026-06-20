@@ -43,18 +43,34 @@ billingRouter.post(
     const event = verifyStripeWebhook(req.rawBody, req.headers['stripe-signature']);
     if (!event) return res.status(400).json({ error: 'Invalid signature' });
     const obj = event.data?.object || {};
-    if (event.type === 'checkout.session.completed' || event.type === 'invoice.paid') {
-      const md = obj.metadata || obj.subscription_details?.metadata || {};
+    if (event.type === 'checkout.session.completed') {
+      // First purchase — the session carries our metadata. Only provision once
+      // the payment has actually settled; otherwise invoice.paid is the backstop.
+      const md = obj.metadata || {};
       const userId = Number(md.user_id);
-      if (userId) {
+      const settled = !obj.payment_status || obj.payment_status === 'paid' || obj.payment_status === 'no_payment_required';
+      if (userId && settled) {
         await activatePremium(userId, {
           provider: 'stripe',
-          providerSubId: obj.subscription || obj.id,
+          providerSubId: obj.subscription,
           days: md.interval === 'annual' ? 366 : 31,
         });
       }
+    } else if (event.type === 'invoice.paid') {
+      // Each charge incl. renewals. The invoice's own metadata is empty, so find
+      // the user by the subscription's metadata or the stored subscription id,
+      // and trust Stripe's exact period end.
+      const md = obj.subscription_details?.metadata || {};
+      let userId = Number(md.user_id) || null;
+      if (!userId && obj.subscription) userId = await userIdBySubId(obj.subscription);
+      if (userId) {
+        const endUnix = obj.lines?.data?.[0]?.period?.end || obj.period_end;
+        const periodEnd = endUnix ? new Date(endUnix * 1000).toISOString() : undefined;
+        await activatePremium(userId, { provider: 'stripe', providerSubId: obj.subscription, periodEnd, days: 31 });
+      }
     } else if (event.type === 'customer.subscription.deleted') {
-      const userId = Number(obj.metadata?.user_id);
+      let userId = Number(obj.metadata?.user_id) || null;
+      if (!userId && obj.id) userId = await userIdBySubId(obj.id);
       if (userId) await deactivatePremium(userId);
     }
     res.json({ received: true });

@@ -56,16 +56,37 @@ export async function createCheckout({ user, plan, baseUrl }) {
   return { url: session.url, id: session.id };
 }
 
-// Verify a Stripe webhook signature (Stripe-Signature: t=...,v1=...).
-export function verifyStripeWebhook(rawBody, sigHeader) {
+// Verify a Stripe webhook signature (Stripe-Signature: t=...,v1=...,v1=...).
+// Returns the parsed event, or null if the signature is missing/forged/stale.
+// toleranceSec rejects replayed events outside the window (Stripe signs each
+// delivery attempt — incl. retries — with a fresh timestamp, so 5 min is safe).
+export function verifyStripeWebhook(rawBody, sigHeader, toleranceSec = 300) {
   if (!WEBHOOK_SECRET || !sigHeader) return null;
-  const parts = Object.fromEntries(String(sigHeader).split(',').map((kv) => kv.split('=')));
-  if (!parts.t || !parts.v1) return null;
-  const expected = createHmac('sha256', WEBHOOK_SECRET).update(`${parts.t}.${rawBody}`).digest('hex');
+  let t;
+  const candidates = []; // may be several v1's during secret rotation
+  for (const part of String(sigHeader).split(',')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    const k = part.slice(0, i);
+    const v = part.slice(i + 1);
+    if (k === 't') t = v;
+    else if (k === 'v1') candidates.push(v);
+  }
+  if (!t || !candidates.length) return null;
+  const ts = Number(t);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > toleranceSec) return null;
+  const expected = Buffer.from(createHmac('sha256', WEBHOOK_SECRET).update(`${t}.${rawBody}`).digest('hex'));
+  const matched = candidates.some((sig) => {
+    try {
+      const got = Buffer.from(sig);
+      return got.length === expected.length && timingSafeEqual(got, expected);
+    } catch {
+      return false;
+    }
+  });
+  if (!matched) return null;
   try {
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1))
-      ? JSON.parse(rawBody.toString())
-      : null;
+    return JSON.parse(rawBody.toString());
   } catch {
     return null;
   }
