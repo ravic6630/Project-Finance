@@ -12,7 +12,7 @@ import {
 import { Sprout, TrendingUp, Coins, Target } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money } from '../lib/format.js';
-import { CURRENCIES } from '../lib/markets.js';
+import { CURRENCIES, guessCurrency } from '../lib/markets.js';
 
 const GOLD = '#c2a368';
 const NAVY = '#1f3a66';
@@ -99,7 +99,7 @@ function Chip({ label, value, gold }) {
 export default function Calculators() {
   const { user } = useAuth();
   const [mode, setMode] = useState('sip');
-  const [cur, setCur] = useState(user?.base_currency || 'INR');
+  const [cur, setCur] = useState(user?.base_currency || guessCurrency());
 
   // Money inputs start at 0 so visitors enter their own figures — no pre-filled
   // amounts that could be mistaken for a recommendation. Return / time / inflation
@@ -124,9 +124,6 @@ export default function Calculators() {
 
   const fv = result.futureValue;
   const gains = fv - result.invested;
-  // Until the visitor enters their own amount, show a prompt instead of ₹0.
-  const primaryAmount = mode === 'sip' ? monthly : mode === 'lumpsum' ? amount : target;
-  const empty = !(primaryAmount > 0);
 
   return (
     <div className="min-h-screen bg-[#f4f2ec]">
@@ -193,20 +190,7 @@ export default function Calculators() {
         {/* STICKY RESULT — always visible while you drag the sliders below */}
         <div className="sticky top-2 z-20 mt-5">
           <div className="rounded-2xl bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-white shadow-lg sm:p-6">
-            {empty ? (
-              <div className="py-2">
-                <p className="text-sm font-medium text-brand-200">
-                  {mode === 'goal' ? 'Plan a goal' : 'Plan your investment'}
-                </p>
-                <p className="num mt-1 text-2xl font-bold tracking-tight text-white/90 sm:text-3xl">
-                  {mode === 'goal' ? 'Set your target below' : 'Enter an amount below'}
-                </p>
-                <div className="mt-3 h-0.5 w-12 rounded bg-gold-400" />
-                <p className="mt-3 text-sm text-brand-100">
-                  We&apos;ll show your projection here — your numbers, no presets.
-                </p>
-              </div>
-            ) : mode === 'goal' ? (
+            {mode === 'goal' ? (
               <>
                 <p className="text-sm font-medium text-brand-200">
                   To reach {money(target, cur)} in {years} years, invest
