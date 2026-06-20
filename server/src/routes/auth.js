@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { Router } from 'express';
 import { ADMIN_EMAILS } from '../config.js';
 import { db, now } from '../db.js';
@@ -23,7 +23,62 @@ const publicUser = (u) => ({
 });
 
 const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+const sha256 = (s) => createHash('sha256').update(String(s)).digest('hex');
 
+// ---- Email-verified signup (6-digit OTP) ----
+const OTP_TTL_MS = 10 * 60 * 1000; // codes last 10 minutes
+const RESEND_COOLDOWN_MS = 30 * 1000; // minimum gap between code requests
+const MAX_OTP_ATTEMPTS = 5;
+const genOtp = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
+
+const upsertPending = db.prepare(`
+  INSERT INTO pending_signups (email, name, password_hash, base_currency, otp_hash, expires_at, attempts, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+  ON CONFLICT(email) DO UPDATE SET
+    name=excluded.name, password_hash=excluded.password_hash, base_currency=excluded.base_currency,
+    otp_hash=excluded.otp_hash, expires_at=excluded.expires_at, attempts=0, created_at=excluded.created_at
+`);
+const getPending = db.prepare('SELECT * FROM pending_signups WHERE email = ?');
+const delPending = db.prepare('DELETE FROM pending_signups WHERE email = ?');
+const bumpPending = db.prepare('UPDATE pending_signups SET attempts = attempts + 1 WHERE email = ?');
+
+function otpEmailHtml(name, code) {
+  const who = name ? String(name).split(' ')[0] : 'there';
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+    <h2 style="color:#1f3a66;margin:0 0 6px">🌱 Sampada</h2>
+    <p>Hi ${who}, here's your verification code to finish creating your account:</p>
+    <p style="font-size:34px;font-weight:800;letter-spacing:10px;color:#1f3a66;background:#f4f2ec;border:1px solid #e8e2d4;border-radius:12px;padding:16px 0;text-align:center;margin:18px 0">${code}</p>
+    <p style="color:#64748b;font-size:13px">This code expires in 10 minutes. If you didn't try to sign up, you can safely ignore this email.</p>
+  </div>`;
+}
+
+const pickCurrency = (v) => (v ? oneOf(String(v).toUpperCase(), CURRENCIES, 'base_currency') : 'INR');
+
+// Generate a code, persist the pending signup, and email the code. Returns
+// whether the email actually went out (false if email isn't configured/failed).
+async function issueOtp({ email, name, passwordHash, baseCurrency }) {
+  const code = genOtp();
+  await upsertPending.run(
+    email, name, passwordHash, baseCurrency, sha256(code),
+    new Date(Date.now() + OTP_TTL_MS).toISOString(), now()
+  );
+  let emailSent = false;
+  if (emailConfigured()) {
+    try {
+      await sendMail({ to: email, subject: 'Your Sampada verification code', html: otpEmailHtml(name, code) });
+      emailSent = true;
+    } catch (e) {
+      console.error('signup OTP email failed:', e.message);
+    }
+  }
+  // If the code couldn't be emailed (mail unconfigured or failing), log it so the
+  // owner can still retrieve it rather than the signup being stuck. When email
+  // works, the code is never logged.
+  if (!emailSent) console.warn(`[signup-otp] email not delivered — code for ${email}: ${code}`);
+  return emailSent;
+}
+
+// Step 1: validate details and email a verification code. No user created yet.
 authRouter.post(
   '/signup',
   asyncHandler(async (req, res) => {
@@ -33,11 +88,61 @@ authRouter.post(
     if (!emailOk(email)) throw bad('Please enter a valid email address');
     if (password.length < 6) throw bad('Password must be at least 6 characters');
     if (await findByEmail.get(email)) throw bad('An account with that email already exists');
+    const baseCurrency = pickCurrency(req.body.base_currency);
+    const email_sent = await issueOtp({ email, name, passwordHash: hashPassword(password), baseCurrency });
+    res.status(202).json({ pending: true, email, email_sent });
+  })
+);
 
+// Step 2: confirm the code → create the real account and log them in.
+authRouter.post(
+  '/signup/verify',
+  asyncHandler(async (req, res) => {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const code = String(req.body.code || '').trim();
+    const pending = await getPending.get(email);
+    if (!pending) throw bad('Your code has expired. Please sign up again.');
+    if (Date.parse(pending.expires_at) < Date.now()) {
+      await delPending.run(email);
+      throw bad('Your code has expired. Please request a new one.');
+    }
+    if (pending.attempts >= MAX_OTP_ATTEMPTS) {
+      await delPending.run(email);
+      throw bad('Too many incorrect attempts. Please sign up again.');
+    }
+    if (sha256(code) !== pending.otp_hash) {
+      await bumpPending.run(email);
+      throw bad('That code is incorrect. Please check and try again.');
+    }
+    if (await findByEmail.get(email)) {
+      await delPending.run(email);
+      throw bad('An account with that email already exists');
+    }
     const role = ADMIN_EMAILS.includes(email) ? 'admin' : 'user';
-    const info = await insertUser.run(email, name, hashPassword(password), 'INR', role, now());
-    const user = { id: Number(info.lastInsertRowid), email, name, base_currency: 'INR', role };
+    const info = await insertUser.run(email, pending.name, pending.password_hash, pending.base_currency, role, now());
+    await delPending.run(email);
+    const user = { id: Number(info.lastInsertRowid), email, name: pending.name, base_currency: pending.base_currency, role };
     res.status(201).json({ token: signToken(user), user: publicUser(user) });
+  })
+);
+
+// Resend a fresh code for an in-progress signup (light cooldown to curb abuse).
+authRouter.post(
+  '/signup/resend',
+  asyncHandler(async (req, res) => {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const pending = await getPending.get(email);
+    if (!pending) throw bad('Start signing up first.');
+    if (Date.now() - Date.parse(pending.created_at) < RESEND_COOLDOWN_MS) {
+      throw new HttpError(429, 'Please wait a few seconds before requesting a new code.');
+    }
+    const email_sent = await issueOtp({
+      email,
+      name: pending.name,
+      passwordHash: pending.password_hash,
+      baseCurrency: pending.base_currency,
+    });
+    res.json({ pending: true, email, email_sent });
   })
 );
 
@@ -81,7 +186,6 @@ const insertReset = db.prepare(
 const getReset = db.prepare('SELECT user_id, expires_at FROM password_resets WHERE token_hash = ?');
 const delResetsForUser = db.prepare('DELETE FROM password_resets WHERE user_id = ?');
 
-const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const appUrl = (req) =>
   process.env.APP_URL || process.env.BROKER_REDIRECT_BASE || `${req.protocol}://${req.get('host')}`;
 

@@ -24,10 +24,20 @@ export function AuthProvider({ children }) {
     setUser(d.user);
   }
 
-  async function signup(name, email, password) {
-    const d = await api('/auth/signup', { method: 'POST', body: { name, email, password } });
+  // Step 1 — email a verification code (no account yet). Returns { email_sent }.
+  async function startSignup({ name, email, password, base_currency }) {
+    return api('/auth/signup', { method: 'POST', body: { name, email, password, base_currency } });
+  }
+
+  // Step 2 — confirm the code, which creates the account and logs them in.
+  async function verifySignup(email, code) {
+    const d = await api('/auth/signup/verify', { method: 'POST', body: { email, code } });
     setToken(d.token);
     setUser(d.user);
+  }
+
+  function resendSignup(email) {
+    return api('/auth/signup/resend', { method: 'POST', body: { email } });
   }
 
   function logout() {
@@ -42,7 +52,9 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, updateProfile }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, startSignup, verifySignup, resendSignup, logout, updateProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

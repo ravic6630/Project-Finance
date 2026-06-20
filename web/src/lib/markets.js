@@ -22,3 +22,32 @@ export const STOCK_MARKETS = [
 
 export const currencyForKind = (kind) =>
   STOCK_MARKETS.find((m) => m.kind === kind)?.currency || 'INR';
+
+// Best-effort guess of the visitor's home currency from their device timezone /
+// locale, limited to the currencies we support. Always overridable by the user.
+const TZ_CURRENCY = {
+  'Asia/Kolkata': 'INR',
+  'Asia/Calcutta': 'INR',
+  'Europe/London': 'GBP',
+  'Europe/Dublin': 'EUR',
+  'Pacific/Auckland': 'NZD',
+  'Pacific/Chatham': 'NZD',
+};
+const REGION_CURRENCY = { IN: 'INR', US: 'USD', GB: 'GBP', IE: 'EUR', AU: 'AUD', NZ: 'NZD' };
+
+export function guessCurrency(fallback = 'USD') {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (TZ_CURRENCY[tz]) return TZ_CURRENCY[tz];
+    if (tz.startsWith('America/')) return 'USD';
+    if (tz.startsWith('Australia/')) return 'AUD';
+    const langs = navigator.languages?.length ? navigator.languages : [navigator.language || ''];
+    for (const l of langs) {
+      const region = (String(l).split('-')[1] || '').toUpperCase();
+      if (REGION_CURRENCY[region]) return REGION_CURRENCY[region];
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return CURRENCY_CODES.includes(fallback) ? fallback : 'USD';
+}

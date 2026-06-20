@@ -12,7 +12,7 @@ import {
 import { Sprout, TrendingUp, Coins, Target } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money } from '../lib/format.js';
-import { CURRENCIES } from '../lib/markets.js';
+import { CURRENCIES, guessCurrency } from '../lib/markets.js';
 
 const GOLD = '#c2a368';
 const NAVY = '#1f3a66';
@@ -99,16 +99,20 @@ function Chip({ label, value, gold }) {
 export default function Calculators() {
   const { user } = useAuth();
   const [mode, setMode] = useState('sip');
-  const [cur, setCur] = useState(user?.base_currency || 'INR');
+  const [cur, setCur] = useState(user?.base_currency || guessCurrency());
 
+  // Money inputs start at 0 so visitors enter their own figures — no pre-filled
+  // amounts that could be mistaken for a recommendation. Return / time / inflation
+  // keep sensible assumptions (clearly labelled) so the tool works the moment an
+  // amount is typed.
   const [annualReturn, setReturn] = useState(12);
   const [years, setYears] = useState(15);
   const [inflation, setInflation] = useState(6);
   const [showReal, setShowReal] = useState(false);
-  const [monthly, setMonthly] = useState(10000);
-  const [stepUp, setStepUp] = useState(10);
-  const [amount, setAmount] = useState(500000);
-  const [target, setTarget] = useState(10000000);
+  const [monthly, setMonthly] = useState(0);
+  const [stepUp, setStepUp] = useState(0);
+  const [amount, setAmount] = useState(0);
+  const [target, setTarget] = useState(0);
 
   const result = useMemo(() => {
     if (mode === 'sip') return simulateSip({ monthly, annualReturn, years, stepUp });
@@ -224,12 +228,12 @@ export default function Calculators() {
             <h2 className="font-display text-lg font-bold text-slate-900">Your plan</h2>
             {mode === 'sip' && (
               <>
-                <Slider label="Monthly investment" value={monthly} set={setMonthly} min={500} max={200000} step={500} fmt={(v) => money(v, cur)} />
+                <Slider label="Monthly investment" value={monthly} set={setMonthly} min={0} max={200000} step={500} fmt={(v) => money(v, cur)} />
                 <Slider label="Annual step-up" value={stepUp} set={setStepUp} min={0} max={25} step={1} fmt={(v) => `${v}%`} />
               </>
             )}
             {mode === 'lumpsum' && (
-              <Slider label="One-time investment" value={amount} set={setAmount} min={10000} max={10000000} step={10000} fmt={(v) => money(v, cur)} />
+              <Slider label="One-time investment" value={amount} set={setAmount} min={0} max={10000000} step={10000} fmt={(v) => money(v, cur)} />
             )}
             {mode === 'goal' && (
               <div>
@@ -237,7 +241,7 @@ export default function Calculators() {
                   <span className="text-sm font-medium text-slate-600">Target amount</span>
                   <span className="num text-base font-bold text-brand-800">{money(target, cur)}</span>
                 </div>
-                <input type="range" min={500000} max={100000000} step={500000} value={target} onChange={(e) => setTarget(Number(e.target.value))} className="mt-2 w-full accent-brand-600" />
+                <input type="range" min={0} max={100000000} step={500000} value={target} onChange={(e) => setTarget(Number(e.target.value))} className="mt-2 w-full accent-brand-600" />
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   {[5000000, 10000000, 50000000].map((t) => (
                     <button key={t} onClick={() => setTarget(t)} className={`chip border transition ${target === t ? 'border-gold-400 bg-gold-50 text-gold-700' : 'border-[#e8e2d4] bg-white text-slate-500 hover:border-gold-300'}`}>
