@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Crown, Loader2, Sparkles } from 'lucide-react';
+import { Check, Crown, Loader2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { ErrorBanner, Modal } from './ui.jsx';
@@ -58,20 +58,6 @@ export default function UpgradeModal({ open, onClose, onChanged }) {
         },
       });
       rzp.open();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function trial() {
-    setError('');
-    setBusy('trial');
-    try {
-      await api('/billing/demo-activate', { method: 'POST' });
-      await refresh();
-      onChanged?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -148,21 +134,15 @@ export default function UpgradeModal({ open, onClose, onChanged }) {
 
           <ErrorBanner message={error} />
 
-          <div className="space-y-2">
-            <button className="btn-primary w-full" onClick={checkout} disabled={!!busy}>
-              {busy === 'pay' ? <Loader2 size={16} className="animate-spin" /> : <Crown size={16} />}
-              {payLabel}
-            </button>
-            <button className="btn-ghost w-full" onClick={trial} disabled={!!busy}>
-              {busy === 'trial' ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              Start 30-day test trial (no charge)
-            </button>
-          </div>
+          <button className="btn-primary w-full" onClick={checkout} disabled={!!busy}>
+            {busy === 'pay' ? <Loader2 size={16} className="animate-spin" /> : <Crown size={16} />}
+            {payLabel}
+          </button>
 
           {info && !info.can_subscribe && (
             <p className="text-center text-xs text-slate-400">
-              Live payments aren&apos;t configured yet — use the test trial, or add the{' '}
-              {info.provider === 'razorpay' ? 'Razorpay' : 'Stripe'} keys on the server.
+              Live payments aren&apos;t set up yet — add the{' '}
+              {info.provider === 'razorpay' ? 'Razorpay' : 'Stripe'} keys on the server to enable checkout.
             </p>
           )}
           <p className="text-center text-[11px] text-slate-400">

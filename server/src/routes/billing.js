@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authRequired } from '../auth.js';
-import { asyncHandler } from '../util.js';
+import { asyncHandler, HttpError } from '../util.js';
 import {
   activatePremium,
   canSubscribe,
@@ -113,10 +113,12 @@ billingRouter.post(
   })
 );
 
-// Test/trial activation — flips on premium without a real charge (dev + free trial).
+// Owner-only: flip premium on without a real charge, for testing before the
+// payment keys are live. NOT a customer free trial — admins only.
 billingRouter.post(
   '/demo-activate',
   asyncHandler(async (req, res) => {
+    if (req.user.role !== 'admin') throw new HttpError(403, 'Not available');
     await activatePremium(req.user.id, { provider: 'trial', days: 30 });
     res.json({ state: await premiumState(req.user) });
   })
