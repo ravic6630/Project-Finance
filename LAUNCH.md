@@ -21,16 +21,19 @@ is no free trial. You (admin) are always premium.
 
 Deploy on Render (Docker) per `DEPLOY.md`. Without Turso, data resets on every redeploy.
 
-## 2. Email — for the daily digest & price alerts (recommended)
+## 2. Email — REQUIRED (account verification + daily digest + alerts)
 
-Render's free tier blocks SMTP, so use **Brevo's HTTP API**:
+New signups must confirm a 6-digit code emailed to them, so **email must be
+configured or no one can create an account** (the daily digest and price alerts
+use the same channel). Render's free tier blocks SMTP, so use **Brevo's HTTP API**:
 
 | Key | What |
 |---|---|
 | `BREVO_API_KEY` | From brevo.com → SMTP & API → API Keys. |
 | `EMAIL_FROM` | e.g. `Sampada <ralathuru@gmail.com>` (verify this sender in Brevo). |
 
-(Gmail SMTP also works on a paid host — see `.env.production.example`.)
+(Gmail SMTP also works on a paid host — see `.env.production.example`.) If email
+ever fails to send, the verification code is written to the server logs as a fallback.
 
 ## 3. Daily automation — so the 8am email actually fires
 
@@ -76,13 +79,14 @@ be `https://<your-domain>/broker/<broker>/callback`.
 
 ## Go-live order
 
-1. Deploy with **section 1** set → sign up with the admin email → confirm login.
-2. Add **email** (section 2) → Settings → *Send test* lands in your inbox.
-3. Add **daily automation** (section 3).
-4. Add **payments** (section 4) in **test mode** first → upgrade a non-admin test
+1. Deploy with **section 1 + section 2 (email)** set — email must work *before* the
+   first signup. Create your admin account, confirm the 6-digit code lands in your
+   inbox, then sign in. (Settings → *Send test* should also reach you.)
+2. Add **daily automation** (section 3).
+3. Add **payments** (section 4) in **test mode** first → upgrade a non-admin test
    account end-to-end → then swap to live keys.
-5. (Optional) Add brokers (section 5).
-6. Point your domain (`vyomarafarms.com`) at the host's custom-domain records.
+4. (Optional) Add brokers (section 5).
+5. Point your domain (`vyomarafarms.com`) at the host's custom-domain records.
 
 To preview premium before payment keys are live: the **admin** account is premium
 automatically (`ADMIN_EMAILS`), so you can demo every paid feature immediately.
