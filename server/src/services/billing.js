@@ -4,7 +4,10 @@ import { db, now } from '../db.js';
 const KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const PLAN_ID = process.env.RAZORPAY_PLAN_ID || '';
+const PLAN_ID_ANNUAL = process.env.RAZORPAY_PLAN_ID_ANNUAL || '';
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+
+const razorpayPlanId = (interval) => (interval === 'annual' ? PLAN_ID_ANNUAL : PLAN_ID);
 
 // What the upgrade screen shows. Razorpay handles the actual amount via the plan.
 export const PLAN = {
@@ -16,7 +19,7 @@ export const PLAN = {
 };
 
 export const billingConfigured = () => !!(KEY_ID && KEY_SECRET);
-export const canSubscribe = () => billingConfigured() && !!PLAN_ID;
+export const canSubscribe = (interval = 'monthly') => billingConfigured() && !!razorpayPlanId(interval);
 export const publicKeyId = () => KEY_ID;
 
 const getSub = db.prepare('SELECT * FROM subscriptions WHERE user_id = ?');
@@ -79,10 +82,10 @@ async function razorpay(path, method = 'GET', body) {
 }
 
 // Create a Razorpay subscription (UPI Autopay / card mandate) for checkout.
-export async function createSubscription() {
+export async function createSubscription(interval = 'monthly') {
   const sub = await razorpay('/subscriptions', 'POST', {
-    plan_id: PLAN_ID,
-    total_count: 12, // 12 billing cycles
+    plan_id: razorpayPlanId(interval),
+    total_count: interval === 'annual' ? 5 : 12, // 5 yearly or 12 monthly cycles
     customer_notify: 1,
   });
   return { subscriptionId: sub.id, shortUrl: sub.short_url, keyId: KEY_ID };
