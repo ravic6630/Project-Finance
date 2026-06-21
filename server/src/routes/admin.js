@@ -49,8 +49,9 @@ adminRouter.get(
 );
 
 const CHILD_TABLES = [
-  'holdings', 'cash_accounts', 'transactions', 'subscriptions',
-  'broker_connections', 'email_prefs', 'password_resets',
+  'holdings', 'cash_accounts', 'transactions', 'goals', 'alerts',
+  'net_worth_snapshots', 'investment_txns', 'subscriptions',
+  'broker_connections', 'email_prefs', 'password_resets', 'password_reset_codes',
 ];
 
 adminRouter.delete(
@@ -81,7 +82,7 @@ adminRouter.post(
 );
 
 const setPw = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-const clearResets = db.prepare('DELETE FROM password_resets WHERE user_id = ?');
+const clearResets = db.prepare('DELETE FROM password_reset_codes WHERE user_id = ?');
 // Reset a user's password (no email needed) — returns a temp password to share.
 adminRouter.post(
   '/users/:id/reset-password',

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { Router } from 'express';
 import { ADMIN_EMAILS } from '../config.js';
 import { db, now } from '../db.js';
@@ -178,62 +178,80 @@ authRouter.patch(
   })
 );
 
-// ---- Password reset (forgot password) ----
+// ---- Password reset (forgot password → emailed 6-digit code) ----
 const setPasswordHash = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-const insertReset = db.prepare(
-  'INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)'
-);
-const getReset = db.prepare('SELECT user_id, expires_at FROM password_resets WHERE token_hash = ?');
-const delResetsForUser = db.prepare('DELETE FROM password_resets WHERE user_id = ?');
+const upsertResetCode = db.prepare(`
+  INSERT INTO password_reset_codes (user_id, otp_hash, expires_at, attempts, created_at)
+  VALUES (?, ?, ?, 0, ?)
+  ON CONFLICT(user_id) DO UPDATE SET
+    otp_hash=excluded.otp_hash, expires_at=excluded.expires_at, attempts=0, created_at=excluded.created_at
+`);
+const getResetCode = db.prepare('SELECT * FROM password_reset_codes WHERE user_id = ?');
+const delResetCode = db.prepare('DELETE FROM password_reset_codes WHERE user_id = ?');
+const bumpResetCode = db.prepare('UPDATE password_reset_codes SET attempts = attempts + 1 WHERE user_id = ?');
 
-const appUrl = (req) =>
-  process.env.APP_URL || process.env.BROKER_REDIRECT_BASE || `${req.protocol}://${req.get('host')}`;
+const RESET_TTL_MS = 15 * 60 * 1000; // reset codes last 15 minutes
 
-function resetEmailHtml(user, link) {
-  const name = user.name ? user.name.split(' ')[0] : 'there';
-  return `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
-    <h2 style="color:#4f46e5">🌱 Sampada</h2>
-    <p>Hi ${name}, we got a request to reset your password.</p>
-    <p><a href="${link}" style="display:inline-block;background:#4f46e5;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">Reset my password</a></p>
-    <p style="color:#64748b;font-size:13px">This link expires in 1 hour. If you didn't request it, you can ignore this email.</p>
+function resetEmailHtml(name, code) {
+  const who = name ? String(name).split(' ')[0] : 'there';
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+    <h2 style="color:#1f3a66;margin:0 0 6px">🌱 Sampada</h2>
+    <p>Hi ${who}, use this code to reset your password:</p>
+    <p style="font-size:34px;font-weight:800;letter-spacing:10px;color:#1f3a66;background:#f4f2ec;border:1px solid #e8e2d4;border-radius:12px;padding:16px 0;text-align:center;margin:18px 0">${code}</p>
+    <p style="color:#64748b;font-size:13px">This code expires in 15 minutes. If you didn't request it, you can ignore this email — your password won't change.</p>
   </div>`;
 }
 
-// Request a reset link. Always responds generically (no email enumeration).
+// Request a reset code. Always responds generically (no email enumeration).
 authRouter.post(
   '/forgot',
   asyncHandler(async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const user = await findByEmail.get(email);
     if (user) {
-      await delResetsForUser.run(user.id);
-      const token = randomBytes(32).toString('hex');
-      await insertReset.run(sha256(token), user.id, new Date(Date.now() + 3600e3).toISOString());
-      const link = `${appUrl(req)}/reset?token=${token}`;
+      const code = genOtp();
+      await upsertResetCode.run(user.id, sha256(code), new Date(Date.now() + RESET_TTL_MS).toISOString(), now());
+      let sent = false;
       if (emailConfigured()) {
-        sendMail({ to: email, subject: 'Reset your Sampada password', html: resetEmailHtml(user, link) })
-          .catch((e) => console.error('reset email failed:', e.message));
-      } else {
-        console.log(`[forgot-password] SMTP off — reset link for ${email}: ${link}`);
+        try {
+          await sendMail({ to: email, subject: 'Your Sampada password reset code', html: resetEmailHtml(user.name, code) });
+          sent = true;
+        } catch (e) {
+          console.error('reset code email failed:', e.message);
+        }
       }
+      if (!sent) console.warn(`[reset-otp] email not delivered — code for ${email}: ${code}`);
     }
-    res.json({ ok: true });
+    // email_configured is server-wide, so it reveals nothing about this account.
+    res.json({ ok: true, email_configured: emailConfigured() });
   })
 );
 
-// Complete the reset with a valid, unexpired token.
+// Complete the reset with a valid, unexpired code.
 authRouter.post(
   '/reset',
   asyncHandler(async (req, res) => {
-    const token = String(req.body.token || '');
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const code = String(req.body.code || '').trim();
     const password = String(req.body.password || '');
     if (password.length < 6) throw bad('Password must be at least 6 characters');
-    const row = token ? await getReset.get(sha256(token)) : null;
-    if (!row || Date.parse(row.expires_at) < Date.now()) {
-      throw bad('This reset link is invalid or has expired. Please request a new one.');
+    const user = await findByEmail.get(email);
+    const row = user ? await getResetCode.get(user.id) : null;
+    // Same message whether the email is unknown or the code is wrong — no enumeration.
+    if (!user || !row || Date.parse(row.expires_at) < Date.now()) {
+      if (row) await delResetCode.run(user.id);
+      throw bad('That code is invalid or has expired. Please request a new one.');
     }
-    await setPasswordHash.run(hashPassword(password), row.user_id);
-    await delResetsForUser.run(row.user_id);
+    if (row.attempts >= MAX_OTP_ATTEMPTS) {
+      await delResetCode.run(user.id);
+      throw bad('Too many incorrect attempts. Please request a new code.');
+    }
+    if (sha256(code) !== row.otp_hash) {
+      await bumpResetCode.run(user.id);
+      throw bad('That code is incorrect. Please check and try again.');
+    }
+    await setPasswordHash.run(hashPassword(password), user.id);
+    await delResetCode.run(user.id);
     res.json({ ok: true });
   })
 );
