@@ -4,7 +4,6 @@ import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
-import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calculators from './pages/Calculators.jsx';
 import Investments from './pages/Investments.jsx';
@@ -34,7 +33,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot" element={<ForgotPassword />} />
-        <Route path="/reset" element={<ResetPassword />} />
+        {/* Reset is now code-based and lives on /forgot; redirect old links. */}
+        <Route path="/reset" element={<Navigate to="/forgot" replace />} />
         <Route path="/calculators" element={<Calculators />} />
         {/* Logged-out visitors land on the login page; the public calculators
             stay reachable via the "Try our free calculators" link there. */}

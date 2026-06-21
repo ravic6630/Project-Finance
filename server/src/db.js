@@ -144,6 +144,14 @@ CREATE TABLE IF NOT EXISTS pending_signups (
   attempts      INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL
 );
+-- Password reset via emailed 6-digit code (one active code per user).
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  otp_hash   TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS email_prefs (
   user_id   INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   daily     INTEGER NOT NULL DEFAULT 0,
