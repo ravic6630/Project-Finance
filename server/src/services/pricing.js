@@ -4,8 +4,8 @@
 const ANNUAL_DISCOUNT = 0.1;
 
 // Monthly price in each supported currency.
-const MONTHLY = { INR: 99, USD: 1.99, GBP: 1.49, EUR: 1.79, AUD: 2.99, NZD: 3.49 };
-const SYMBOL = { INR: '₹', USD: '$', GBP: '£', EUR: '€', AUD: 'A$', NZD: 'NZ$' };
+const MONTHLY = { INR: 99, USD: 1.99, GBP: 1.49, EUR: 1.79, AUD: 2.99, NZD: 3.49, CAD: 2.79 };
+const SYMBOL = { INR: '₹', USD: '$', GBP: '£', EUR: '€', AUD: 'A$', NZD: 'NZ$', CAD: 'C$' };
 
 const round2 = (n) => Math.round(n * 100) / 100;
 

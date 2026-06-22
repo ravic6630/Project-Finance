@@ -1,7 +1,7 @@
 // Single source of truth for the markets/currencies Sampada supports.
 // Adding a country = add a stock market here (+ mirror in web/src/lib/markets.js).
 
-export const CURRENCIES = ['INR', 'USD', 'GBP', 'EUR', 'AUD', 'NZD'];
+export const CURRENCIES = ['INR', 'USD', 'GBP', 'EUR', 'AUD', 'NZD', 'CAD'];
 
 // Stock kinds → Yahoo Finance exchange suffix, native currency, label, and the
 // Yahoo `exchDisp` values used to filter search results to that market.
@@ -12,6 +12,7 @@ export const STOCK_MARKETS = {
   IE_STOCK: { suffix: '.IR', currency: 'EUR', label: 'Ireland Stocks', exch: ['Dublin', 'ISEQ', 'Euronext Dublin'] },
   AU_STOCK: { suffix: '.AX', currency: 'AUD', label: 'Australia Stocks', exch: ['ASX', 'Australian'] },
   NZ_STOCK: { suffix: '.NZ', currency: 'NZD', label: 'New Zealand Stocks', exch: ['NZSX', 'NZX', 'New Zealand'] },
+  CA_STOCK: { suffix: '.TO', currency: 'CAD', label: 'Canada Stocks', exch: ['Toronto', 'TSX', 'TSXV'] },
 };
 
 export const STOCK_KINDS = Object.keys(STOCK_MARKETS);

@@ -9,6 +9,7 @@ const MARKET = {
   IE_STOCK: 'Ireland',
   AU_STOCK: 'Australia',
   NZ_STOCK: 'NZ',
+  CA_STOCK: 'Canada',
   IN_MF: 'India (MF)',
 };
 
