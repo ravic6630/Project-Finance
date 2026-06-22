@@ -18,6 +18,7 @@ import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
+import { useConfirm } from '../lib/confirm.jsx';
 
 const TYPES = [
   { value: 'RETIREMENT', label: 'Retirement', icon: Palmtree },
@@ -254,6 +255,7 @@ export default function Goals() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -277,7 +279,7 @@ export default function Goals() {
   }, [load]);
 
   async function onDelete(g) {
-    if (!window.confirm(`Delete goal "${g.name}"?`)) return;
+    if (!(await confirm({ title: `Delete “${g.name}”?`, message: 'This permanently removes the goal.', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await api(`/goals/${g.id}`, { method: 'DELETE' });
       load();

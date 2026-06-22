@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
 import { downloadHoldingsCsv } from '../lib/exportCsv.js';
+import { useConfirm } from '../lib/confirm.jsx';
 import { EmptyState, ErrorBanner, Spinner } from '../components/ui.jsx';
 import HoldingForm from '../components/HoldingForm.jsx';
 import CasImport from '../components/CasImport.jsx';
@@ -87,6 +88,7 @@ function HoldingRow({ h, base, onEdit, onDelete }) {
 export default function Investments() {
   const { user } = useAuth();
   const base = user.base_currency;
+  const confirm = useConfirm();
   const [holdings, setHoldings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -135,7 +137,7 @@ export default function Investments() {
   }, [load]);
 
   async function onDelete(h) {
-    if (!window.confirm(`Delete "${h.name}"? This cannot be undone.`)) return;
+    if (!(await confirm({ title: `Delete “${h.name}”?`, message: 'This permanently removes the holding and its transactions. This cannot be undone.', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await api(`/holdings/${h.id}`, { method: 'DELETE' });
       load();

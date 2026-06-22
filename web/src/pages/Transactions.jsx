@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { dateLabel, money, todayISO } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
+import { useConfirm } from '../lib/confirm.jsx';
 
 const FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -175,6 +176,7 @@ export default function Transactions() {
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async (f) => {
     try {
@@ -196,7 +198,7 @@ export default function Transactions() {
   }, [load, filter]);
 
   async function onDelete(t) {
-    if (!window.confirm('Delete this transaction?')) return;
+    if (!(await confirm({ title: 'Delete this transaction?', message: 'This permanently removes the transaction.', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await api(`/transactions/${t.id}`, { method: 'DELETE' });
       load(filter);
