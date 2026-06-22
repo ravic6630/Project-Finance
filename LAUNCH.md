@@ -72,8 +72,9 @@ pre-make Stripe Products/Prices.
 ## 5. Broker auto-sync — optional (India; all free APIs)
 
 `ZERODHA_API_KEY/_SECRET`, `UPSTOX_API_KEY/_SECRET`, `ANGELONE_API_KEY/_SECRET`,
-and `BROKER_REDIRECT_BASE=https://<your-domain>`. Each broker app's redirect URL
-must be `https://<your-domain>/broker/<broker>/callback` (e.g. `…/broker/angelone/callback`).
+`FYERS_API_KEY/_SECRET`, and `BROKER_REDIRECT_BASE=https://<your-domain>`. Each
+broker app's redirect URL must be `https://<your-domain>/broker/<broker>/callback`
+(e.g. `…/broker/fyers/callback`).
 
 Brokers without a free API are covered by **Import CSV** (Investments → Import CSV)
 — works for any broker in any country, no keys needed.

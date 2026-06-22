@@ -10,6 +10,7 @@ const BROKERS = [
   { id: 'zerodha', label: 'Zerodha', blurb: 'Kite Connect — free holdings API', country: 'India', flag: '🇮🇳', color: '#387ED1' },
   { id: 'upstox', label: 'Upstox', blurb: 'OAuth 2.0 holdings API', country: 'India', flag: '🇮🇳', color: '#6C5CE7' },
   { id: 'angelone', label: 'Angel One', blurb: 'SmartAPI — free holdings API', country: 'India', flag: '🇮🇳', color: '#F04E3E' },
+  { id: 'fyers', label: 'Fyers', blurb: 'API v3 — free holdings API', country: 'India', flag: '🇮🇳', color: '#00B386' },
 ];
 
 function Monogram({ broker, lg }) {
@@ -175,6 +176,9 @@ export default function BrokerConnect({ open, onClose, onImported }) {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filtered.length) pick(filtered[0]);
+                }}
                 placeholder="Search brokers…"
                 className="input pl-9"
               />
