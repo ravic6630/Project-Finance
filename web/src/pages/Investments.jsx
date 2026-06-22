@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
+import { Building2, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Spinner } from '../components/ui.jsx';
 import HoldingForm from '../components/HoldingForm.jsx';
 import CasImport from '../components/CasImport.jsx';
+import CsvImport from '../components/CsvImport.jsx';
 import BrokerConnect from '../components/BrokerConnect.jsx';
 
 const SECTIONS = [
@@ -89,6 +90,7 @@ export default function Investments() {
   const [editing, setEditing] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [brokerOpen, setBrokerOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const load = useCallback(async ({ refresh = false, live = false } = {}) => {
@@ -204,6 +206,9 @@ export default function Investments() {
           <button className="btn-ghost" onClick={() => setImportOpen(true)}>
             <FileUp size={16} /> Import CAS
           </button>
+          <button className="btn-ghost" onClick={() => setCsvOpen(true)}>
+            <FileSpreadsheet size={16} /> Import CSV
+          </button>
           <button className="btn-primary" onClick={openAdd}>
             <Plus size={16} /> Add holding
           </button>
@@ -281,6 +286,8 @@ export default function Investments() {
         onClose={() => setImportOpen(false)}
         onImported={() => load()}
       />
+
+      <CsvImport open={csvOpen} onClose={() => setCsvOpen(false)} onImported={() => load()} />
 
       <BrokerConnect
         open={brokerOpen}

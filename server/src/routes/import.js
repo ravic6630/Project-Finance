@@ -9,6 +9,7 @@ import {
   normalizeStockSymbol,
   resolveName,
 } from '../services/importer.js';
+import { buildCsvPreview } from '../services/csvImport.js';
 
 export const importRouter = Router();
 importRouter.use(authRequired);
@@ -137,6 +138,20 @@ importRouter.post(
     const preview = await buildPreview(parsed, req.user.id);
     if (parsed.debug) console.warn('[CAS parsed but empty]', JSON.stringify(parsed.debug), 'casparser', parsed.casparser);
     res.json(preview);
+  })
+);
+
+// Generic CSV holdings import (any broker, any country). The user picks the
+// market; we map the columns and preview, then reuse /confirm to import.
+importRouter.post(
+  '/csv/preview',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await buildCsvPreview(
+        { text: String(req.body.csv || ''), kind: req.body.kind, mapping: req.body.mapping },
+        req.user.id
+      )
+    );
   })
 );
 
