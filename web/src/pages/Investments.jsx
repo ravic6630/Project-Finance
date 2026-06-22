@@ -13,6 +13,10 @@ import BrokerConnect from '../components/BrokerConnect.jsx';
 const SECTIONS = [
   { kind: 'IN_STOCK', label: 'Indian Stocks' },
   { kind: 'US_STOCK', label: 'US Stocks' },
+  { kind: 'UK_STOCK', label: 'UK Stocks' },
+  { kind: 'IE_STOCK', label: 'Irish Stocks' },
+  { kind: 'AU_STOCK', label: 'Australian Stocks' },
+  { kind: 'NZ_STOCK', label: 'New Zealand Stocks' },
   { kind: 'IN_MF', label: 'Indian Mutual Funds' },
 ];
 
@@ -153,6 +157,21 @@ export default function Investments() {
   const totalCost = holdings.reduce((s, h) => s + (h.cost_value_base || 0), 0);
   const totalGain = totalValue - totalCost;
 
+  // Group holdings by market for display. Any holding whose kind isn't a known
+  // section still shows under "Other" — so nothing is ever silently hidden.
+  const knownKinds = new Set(SECTIONS.map((s) => s.kind));
+  const groups = [
+    ...SECTIONS,
+    { kind: '_other', label: 'Other holdings' },
+  ]
+    .map((s) => ({
+      ...s,
+      rows: s.kind === '_other'
+        ? holdings.filter((h) => !knownKinds.has(h.kind))
+        : holdings.filter((h) => h.kind === s.kind),
+    }))
+    .filter((g) => g.rows.length > 0);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -237,9 +256,7 @@ export default function Investments() {
           }
         />
       ) : (
-        SECTIONS.map(({ kind, label }) => {
-          const rows = holdings.filter((h) => h.kind === kind);
-          if (rows.length === 0) return null;
+        groups.map(({ kind, label, rows }) => {
           const secValue = rows.reduce((s, h) => s + (h.market_value_base || 0), 0);
           return (
             <div key={kind} className="card overflow-hidden">

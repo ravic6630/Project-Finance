@@ -140,6 +140,11 @@ const txnInsert = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 const txnRemove = db.prepare('DELETE FROM investment_txns WHERE id = ? AND user_id = ?');
+const txnGet = db.prepare('SELECT * FROM investment_txns WHERE id = ? AND user_id = ?');
+// Keep the holding's live position in sync with its buy/sell ledger.
+const setHoldingPosition = db.prepare(
+  'UPDATE holdings SET quantity = ?, avg_cost = ?, updated_at = ? WHERE id = ? AND user_id = ?'
+);
 
 holdingsRouter.get(
   '/:id/txns',
@@ -161,7 +166,24 @@ holdingsRouter.post(
     const quantity = num(req.body.quantity ?? 0, 'quantity');
     const price = num(req.body.price ?? 0, 'price');
     if (quantity <= 0) throw bad('quantity must be greater than 0');
-    await txnInsert.run(req.user.id, Number(req.params.id), type, tradeDate, quantity, price, now());
+
+    // Apply the trade to the holding's position so it shows on the Investments
+    // tab too. BUY raises quantity (weighted-average cost); SELL lowers it.
+    const curQty = Number(h.quantity) || 0;
+    const curAvg = Number(h.avg_cost) || 0;
+    let newQty;
+    let newAvg = curAvg;
+    if (type === 'BUY') {
+      newQty = curQty + quantity;
+      newAvg = newQty > 0 ? (curQty * curAvg + quantity * price) / newQty : price;
+    } else {
+      if (quantity > curQty) throw bad(`You only hold ${curQty} of ${h.name} — can't sell ${quantity}.`);
+      newQty = curQty - quantity;
+    }
+
+    const ts = now();
+    await txnInsert.run(req.user.id, Number(req.params.id), type, tradeDate, quantity, price, ts);
+    await setHoldingPosition.run(newQty, newAvg, ts, Number(req.params.id), req.user.id);
     res.status(201).json({ txns: await txnList.all(req.params.id, req.user.id) });
   })
 );
@@ -169,8 +191,16 @@ holdingsRouter.post(
 holdingsRouter.delete(
   '/:id/txns/:txnId',
   asyncHandler(async (req, res) => {
-    const info = await txnRemove.run(req.params.txnId, req.user.id);
-    if (!info.changes) throw new HttpError(404, 'Transaction not found');
+    const h = await getOne.get(req.params.id, req.user.id);
+    if (!h) throw new HttpError(404, 'Holding not found');
+    const t = await txnGet.get(req.params.txnId, req.user.id);
+    if (!t || Number(t.holding_id) !== Number(req.params.id)) throw new HttpError(404, 'Transaction not found');
+    // Reverse this trade's effect on the position (avg cost left as-is).
+    const curQty = Number(h.quantity) || 0;
+    const q = Number(t.quantity) || 0;
+    const newQty = t.type === 'BUY' ? Math.max(0, curQty - q) : curQty + q;
+    await setHoldingPosition.run(newQty, Number(h.avg_cost) || 0, now(), Number(req.params.id), req.user.id);
+    await txnRemove.run(req.params.txnId, req.user.id);
     res.json({ ok: true });
   })
 );
