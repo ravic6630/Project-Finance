@@ -4,7 +4,8 @@ import { api } from '../lib/api.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
 import ImportReview from '../components/ImportReview.jsx';
 
-// Brokers redirect here after login (Zerodha → ?request_token=…, Upstox → ?code=…).
+// Brokers redirect here after login (Zerodha → ?request_token=…, Upstox → ?code=…,
+// Angel One → ?auth_token=…, Fyers → ?auth_code=…).
 export default function BrokerCallback() {
   const { broker } = useParams();
   const [params] = useSearchParams();
@@ -19,12 +20,14 @@ export default function BrokerCallback() {
     ran.current = true;
     const request_token = params.get('request_token');
     const code = params.get('code');
-    if (!request_token && !code) {
+    const auth_token = params.get('auth_token');
+    const auth_code = params.get('auth_code');
+    if (!request_token && !code && !auth_token && !auth_code) {
       setError('No login token came back from the broker. Please try connecting again.');
       setLoading(false);
       return;
     }
-    api(`/broker/${broker}/connect`, { method: 'POST', body: { request_token, code } })
+    api(`/broker/${broker}/connect`, { method: 'POST', body: { request_token, code, auth_token, auth_code } })
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
