@@ -3,7 +3,7 @@ import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { enrichHoldings } from '../services/portfolio.js';
-import { searchMutualFunds, searchStocks } from '../services/prices.js';
+import { LIVE_PRICE_TTL_MS, searchMutualFunds, searchStocks } from '../services/prices.js';
 import { ALL_KINDS, CURRENCIES, STOCK_MARKETS, currencyForKind, symbolForMarket } from '../markets.js';
 
 export const holdingsRouter = Router();
@@ -61,13 +61,14 @@ const update = db.prepare(`
 `);
 const remove = db.prepare('DELETE FROM holdings WHERE id = ? AND user_id = ?');
 
-// GET /api/holdings?refresh=1
+// GET /api/holdings?refresh=1 (force live fetch) | ?live=1 (short-TTL auto-poll)
 holdingsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const rows = await listForUser.all(req.user.id);
     const { items, rates } = await enrichHoldings(rows, req.user.base_currency, {
       force: req.query.refresh === '1',
+      ttl: req.query.live === '1' ? LIVE_PRICE_TTL_MS : undefined,
     });
     res.json({ holdings: items, base_currency: req.user.base_currency, rates });
   })

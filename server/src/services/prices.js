@@ -2,6 +2,7 @@ import { db, now } from '../db.js';
 import { STOCK_MARKETS } from '../markets.js';
 
 const PRICE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const LIVE_PRICE_TTL_MS = 20 * 1000; // fast path for the auto-refreshing Investments page
 const FX_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const FETCH_TIMEOUT_MS = 9000;
 
@@ -160,12 +161,17 @@ const upsertPrice = db.prepare(`
 
 // Get a live/cached price for one holding. Never throws — on failure it
 // returns the last cached value (if any) flagged as stale.
-export async function getPrice(holding, { force = false } = {}) {
+export async function getPrice(holding, { force = false, ttl } = {}) {
   const key = priceKeyFor(holding);
   if (!key || key === 'MF:') return { price: null, currency: holding.currency, stale: true };
 
+  // Mutual-fund NAVs publish once a day, so never refetch them on fast live
+  // polls — keep them on the normal cache window even when a short ttl is asked.
+  const baseTtl = ttl ?? PRICE_TTL_MS;
+  const maxAge = force ? 0 : holding.kind === 'IN_MF' ? Math.max(baseTtl, PRICE_TTL_MS) : baseTtl;
+
   const cached = await getCachedPrice.get(key);
-  if (!force && cached && isFresh(cached.updated_at, PRICE_TTL_MS)) {
+  if (cached && isFresh(cached.updated_at, maxAge)) {
     return { ...cached, stale: false };
   }
 
