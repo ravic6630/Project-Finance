@@ -100,10 +100,10 @@ brokerRouter.post(
     if (!brokerConfigured(broker)) {
       return res.status(503).json({ error: `${BROKER_LABELS[broker]} isn't set up on this server.` });
     }
-    const { request_token, code } = req.body;
-    if (!request_token && !code) throw bad('Missing login token from broker callback');
+    const { request_token, code, auth_token } = req.body;
+    if (!request_token && !code && !auth_token) throw bad('Missing login token from broker callback');
 
-    const { accessToken, name } = await exchangeToken(broker, { request_token, code });
+    const { accessToken, name } = await exchangeToken(broker, { request_token, code, auth_token });
     await saveToken.run(req.user.id, broker, accessToken, JSON.stringify({ name }), now());
     const holdings = await fetchHoldings(broker, accessToken);
     res.json(await buildPreview(broker, name, holdings, req.user.id));

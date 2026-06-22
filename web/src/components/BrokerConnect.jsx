@@ -8,6 +8,7 @@ import UpgradeModal from './UpgradeModal.jsx';
 const BROKERS = [
   { id: 'zerodha', label: 'Zerodha', blurb: 'Kite Connect — holdings API is free' },
   { id: 'upstox', label: 'Upstox', blurb: 'OAuth 2.0 holdings API' },
+  { id: 'angelone', label: 'Angel One', blurb: 'SmartAPI — free holdings API' },
 ];
 
 export default function BrokerConnect({ open, onClose, onImported }) {
