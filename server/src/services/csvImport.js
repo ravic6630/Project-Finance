@@ -2,10 +2,26 @@ import { bad } from '../util.js';
 import { STOCK_MARKETS, currencyForKind, isStockKind, symbolForMarket } from '../markets.js';
 import { dedupSets, resolveName } from './importer.js';
 
-// Minimal RFC4180-ish CSV parser: handles quoted fields, escaped quotes ("") and
-// commas/newlines inside quotes. Returns a grid (array of string-cell rows).
-export function parseCsv(text) {
-  const s = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+// Pick the most likely delimiter from the header line — some locales' Excel uses
+// ';', and data pasted from a spreadsheet is often tab-separated.
+function detectDelimiter(text) {
+  const header = String(text).replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
+  const counts = { ',': 0, ';': 0, '\t': 0 };
+  let inQ = false;
+  for (const c of header) {
+    if (c === '"') inQ = !inQ;
+    else if (!inQ && c in counts) counts[c] += 1;
+  }
+  const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return best[1] > 0 ? best[0] : ',';
+}
+
+// Minimal RFC4180-ish CSV parser: strips a leading UTF-8 BOM (Excel adds one),
+// auto-detects the delimiter (comma/semicolon/tab), and handles quoted fields,
+// escaped quotes ("") and delimiters/newlines inside quotes. Returns a grid.
+export function parseCsv(text, delimiter) {
+  const s = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const delim = delimiter || detectDelimiter(s);
   const rows = [];
   let row = [];
   let field = '';
@@ -20,7 +36,7 @@ export function parseCsv(text) {
         } else inQuotes = false;
       } else field += c;
     } else if (c === '"') inQuotes = true;
-    else if (c === ',') {
+    else if (c === delim) {
       row.push(field);
       field = '';
     } else if (c === '\n') {
@@ -37,6 +53,9 @@ export function parseCsv(text) {
   // Drop fully-blank lines.
   return rows.filter((r) => r.some((cell) => String(cell).trim() !== ''));
 }
+
+// "NSE:RELIANCE" / "NASDAQ:AAPL" → bare ticker (the market is chosen separately).
+const stripExchangePrefix = (s) => (String(s).includes(':') ? String(s).split(':').pop().trim() : s);
 
 // Header aliases per target column, matched case/punctuation-insensitively.
 const ALIASES = {
@@ -91,7 +110,7 @@ export async function buildCsvPreview({ text, kind, mapping }, userId) {
   const parsed = grid
     .slice(1)
     .map((cols) => ({
-      symbol: cell(cols, map.symbol),
+      symbol: stripExchangePrefix(cell(cols, map.symbol)),
       rawName: cell(cols, map.name),
       quantity: parseNum(cell(cols, map.quantity)),
       avg_cost: parseNum(cell(cols, map.avg_cost)),

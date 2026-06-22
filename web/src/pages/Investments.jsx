@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
+import { Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
+import { downloadHoldingsCsv } from '../lib/exportCsv.js';
 import { EmptyState, ErrorBanner, Spinner } from '../components/ui.jsx';
 import HoldingForm from '../components/HoldingForm.jsx';
 import CasImport from '../components/CasImport.jsx';
@@ -209,6 +210,11 @@ export default function Investments() {
           <button className="btn-ghost" onClick={() => setCsvOpen(true)}>
             <FileSpreadsheet size={16} /> Import CSV
           </button>
+          {holdings.length > 0 && (
+            <button className="btn-ghost" onClick={() => downloadHoldingsCsv(holdings, base)}>
+              <Download size={16} /> Export CSV
+            </button>
+          )}
           <button className="btn-primary" onClick={openAdd}>
             <Plus size={16} /> Add holding
           </button>
