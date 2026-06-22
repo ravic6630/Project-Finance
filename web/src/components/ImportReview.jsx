@@ -12,6 +12,7 @@ const KIND_LABEL = {
   IE_STOCK: 'Ireland Stock',
   AU_STOCK: 'Australia Stock',
   NZ_STOCK: 'NZ Stock',
+  CA_STOCK: 'Canada Stock',
 };
 
 // Shared review + confirm step for any import source (CAS or broker).

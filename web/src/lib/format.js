@@ -1,5 +1,5 @@
-const LOCALE = { INR: 'en-IN', USD: 'en-US', GBP: 'en-GB', EUR: 'en-IE', AUD: 'en-AU', NZD: 'en-NZ' };
-const SYMBOL = { INR: '₹', USD: '$', GBP: '£', EUR: '€', AUD: 'A$', NZD: 'NZ$' };
+const LOCALE = { INR: 'en-IN', USD: 'en-US', GBP: 'en-GB', EUR: 'en-IE', AUD: 'en-AU', NZD: 'en-NZ', CAD: 'en-CA' };
+const SYMBOL = { INR: '₹', USD: '$', GBP: '£', EUR: '€', AUD: 'A$', NZD: 'NZ$', CAD: 'C$' };
 
 export function money(amount, currency = 'INR', { compact = false } = {}) {
   if (amount == null || Number.isNaN(Number(amount))) return '—';

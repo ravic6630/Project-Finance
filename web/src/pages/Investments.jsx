@@ -18,6 +18,7 @@ const SECTIONS = [
   { kind: 'IE_STOCK', label: 'Irish Stocks' },
   { kind: 'AU_STOCK', label: 'Australian Stocks' },
   { kind: 'NZ_STOCK', label: 'New Zealand Stocks' },
+  { kind: 'CA_STOCK', label: 'Canadian Stocks' },
   { kind: 'IN_MF', label: 'Indian Mutual Funds' },
 ];
 

@@ -116,7 +116,7 @@ export async function searchMutualFunds(query) {
 }
 
 // --- Stock search via Yahoo Finance, filtered to the requested market. ---
-const SUFFIX_KIND = { '.NS': 'IN_STOCK', '.BO': 'IN_STOCK', '.L': 'UK_STOCK', '.IR': 'IE_STOCK', '.AX': 'AU_STOCK', '.NZ': 'NZ_STOCK' };
+const SUFFIX_KIND = { '.NS': 'IN_STOCK', '.BO': 'IN_STOCK', '.L': 'UK_STOCK', '.IR': 'IE_STOCK', '.AX': 'AU_STOCK', '.NZ': 'NZ_STOCK', '.TO': 'CA_STOCK', '.V': 'CA_STOCK' };
 
 // Which market does a Yahoo search result belong to?
 function quoteKind(z) {
