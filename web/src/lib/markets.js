@@ -1,12 +1,12 @@
 // Markets/currencies Sampada supports (mirror of server/src/markets.js).
 
 export const CURRENCIES = [
-  { code: 'INR', label: '₹ Indian Rupee', symbol: '₹' },
-  { code: 'USD', label: '$ US Dollar', symbol: '$' },
-  { code: 'GBP', label: '£ British Pound', symbol: '£' },
-  { code: 'EUR', label: '€ Euro', symbol: '€' },
-  { code: 'AUD', label: 'A$ Australian Dollar', symbol: 'A$' },
-  { code: 'NZD', label: 'NZ$ New Zealand Dollar', symbol: 'NZ$' },
+  { code: 'INR', label: '₹ Indian Rupee', symbol: '₹', flag: '🇮🇳', name: 'Indian Rupee' },
+  { code: 'USD', label: '$ US Dollar', symbol: '$', flag: '🇺🇸', name: 'US Dollar' },
+  { code: 'GBP', label: '£ British Pound', symbol: '£', flag: '🇬🇧', name: 'British Pound' },
+  { code: 'EUR', label: '€ Euro', symbol: '€', flag: '🇪🇺', name: 'Euro' },
+  { code: 'AUD', label: 'A$ Australian Dollar', symbol: 'A$', flag: '🇦🇺', name: 'Australian Dollar' },
+  { code: 'NZD', label: 'NZ$ New Zealand Dollar', symbol: 'NZ$', flag: '🇳🇿', name: 'New Zealand Dollar' },
 ];
 export const CURRENCY_CODES = CURRENCIES.map((c) => c.code);
 

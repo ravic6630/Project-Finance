@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
-import { CURRENCIES } from '../lib/markets.js';
+import CurrencyMenu from './CurrencyMenu.jsx';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -41,18 +41,10 @@ const PAGE_TITLES = {
 function CurrencyToggle() {
   const { user, updateProfile } = useAuth();
   return (
-    <select
-      aria-label="Base currency"
+    <CurrencyMenu
       value={user.base_currency}
-      onChange={(e) => e.target.value !== user.base_currency && updateProfile({ base_currency: e.target.value })}
-      className="rounded-xl border border-[#e8e2d4] bg-white px-3 py-2 text-sm font-semibold text-brand-700"
-    >
-      {CURRENCIES.map((c) => (
-        <option key={c.code} value={c.code}>
-          {c.symbol} {c.code}
-        </option>
-      ))}
-    </select>
+      onChange={(code) => updateProfile({ base_currency: code })}
+    />
   );
 }
 

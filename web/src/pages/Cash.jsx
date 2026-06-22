@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
+import { useConfirm } from '../lib/confirm.jsx';
 
 const TYPES = [
   { value: 'BANK', label: 'Bank', icon: Landmark },
@@ -184,12 +185,14 @@ export default function Cash() {
     }
   }, []);
 
+  const confirm = useConfirm();
+
   useEffect(() => {
     load();
   }, [load]);
 
   async function onDelete(a) {
-    if (!window.confirm(`Delete "${a.name}"?`)) return;
+    if (!(await confirm({ title: `Delete “${a.name}”?`, message: 'This permanently removes the account.', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await api(`/cash/${a.id}`, { method: 'DELETE' });
       load();

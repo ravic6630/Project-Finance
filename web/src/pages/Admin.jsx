@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
+import { useConfirm } from '../lib/confirm.jsx';
 
 function Stat({ label, value }) {
   return (
@@ -20,6 +21,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(0);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -71,7 +73,7 @@ export default function Admin() {
   }
 
   async function remove(u) {
-    if (!window.confirm(`Delete ${u.email}? This permanently removes their account and ALL their data.`)) return;
+    if (!(await confirm({ title: `Delete ${u.email}?`, message: 'This permanently removes their account and ALL their data. This cannot be undone.', confirmLabel: 'Delete user', danger: true }))) return;
     setBusy(u.id);
     try {
       await api(`/admin/users/${u.id}`, { method: 'DELETE' });
