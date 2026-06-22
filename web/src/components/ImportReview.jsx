@@ -4,7 +4,15 @@ import { api } from '../lib/api.js';
 import { money } from '../lib/format.js';
 import { ErrorBanner } from './ui.jsx';
 
-const KIND_LABEL = { IN_MF: 'Mutual Fund', IN_STOCK: 'Indian Stock', US_STOCK: 'US Stock' };
+const KIND_LABEL = {
+  IN_MF: 'Mutual Fund',
+  IN_STOCK: 'Indian Stock',
+  US_STOCK: 'US Stock',
+  UK_STOCK: 'UK Stock',
+  IE_STOCK: 'Ireland Stock',
+  AU_STOCK: 'Australia Stock',
+  NZ_STOCK: 'NZ Stock',
+};
 
 // Shared review + confirm step for any import source (CAS or broker).
 // `data` = { items, summary, investor?/name?, file_type?/broker_label? }

@@ -1,6 +1,7 @@
 import { db, now } from '../db.js';
 import { num, str } from '../util.js';
 import { getPrice } from './prices.js';
+import { ALL_KINDS, CURRENCIES, currencyForKind, symbolForMarket } from '../markets.js';
 
 // Existing holdings as quick-lookup sets, for duplicate flagging on import previews.
 export async function dedupSets(userId) {
@@ -134,7 +135,7 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
   const skipped = [];
   const seen = new Map();
   for (const r of rows) {
-    const kind = r.kind === 'IN_MF' ? 'IN_MF' : r.kind === 'US_STOCK' ? 'US_STOCK' : 'IN_STOCK';
+    const kind = ALL_KINDS.includes(r.kind) ? r.kind : 'IN_STOCK';
     const name = str(r.name);
     if (!name) {
       skipped.push({ name: r.name, reason: 'missing name' });
@@ -149,7 +150,11 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
         continue;
       }
     } else {
-      symbol = normalizeStockSymbol(kind, r.symbol, r.exchange);
+      // IN_STOCK keeps its BSE/.BO awareness; every other market gets its Yahoo suffix.
+      symbol =
+        kind === 'IN_STOCK'
+          ? normalizeStockSymbol(kind, r.symbol, r.exchange)
+          : symbolForMarket(kind, r.symbol);
       if (!symbol) {
         skipped.push({ name, reason: 'no ticker symbol' });
         continue;
@@ -161,7 +166,7 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
       quantity: num(r.quantity ?? 0, 'quantity'),
       avgCost: num(r.avg_cost ?? 0, 'avg_cost'),
       costIsEstimate: r.cost_is_estimate === true,
-      currency: r.currency === 'USD' ? 'USD' : 'INR',
+      currency: CURRENCIES.includes(r.currency) ? r.currency : currencyForKind(kind),
     };
     if (seen.has(key)) normalized[seen.get(key)] = item;
     else {

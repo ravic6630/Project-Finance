@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
+import { Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
+import { downloadHoldingsCsv } from '../lib/exportCsv.js';
 import { EmptyState, ErrorBanner, Spinner } from '../components/ui.jsx';
 import HoldingForm from '../components/HoldingForm.jsx';
 import CasImport from '../components/CasImport.jsx';
+import CsvImport from '../components/CsvImport.jsx';
 import BrokerConnect from '../components/BrokerConnect.jsx';
 
 const SECTIONS = [
@@ -89,14 +91,19 @@ export default function Investments() {
   const [editing, setEditing] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [brokerOpen, setBrokerOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(null);
 
-  const load = useCallback(async (refresh = false) => {
+  const load = useCallback(async ({ refresh = false, live = false } = {}) => {
     try {
       setError('');
-      const d = await api(`/holdings${refresh ? '?refresh=1' : ''}`);
+      const q = refresh ? '?refresh=1' : live ? '?live=1' : '';
+      const d = await api(`/holdings${q}`);
       setHoldings(d.holdings);
+      setUpdatedAt(new Date().toISOString());
     } catch (err) {
-      setError(err.message);
+      // A background poll failing shouldn't disrupt the page; only surface real loads.
+      if (!live) setError(err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -107,6 +114,21 @@ export default function Investments() {
     setLoading(true);
     load();
   }, [load, base]);
+
+  // Auto-refresh prices while the tab is open and visible (pauses when hidden,
+  // and refreshes immediately on return). True per-second streaming would need a
+  // paid market feed; a 30s poll gives a live feel without getting rate-limited.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') load({ live: true });
+    };
+    const timer = setInterval(tick, 30000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [load]);
 
   async function onDelete(h) {
     if (!window.confirm(`Delete "${h.name}"? This cannot be undone.`)) return;
@@ -135,7 +157,21 @@ export default function Investments() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-500">Portfolio value</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-slate-500">Portfolio value</p>
+            {holdings.length > 0 && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"
+                title="Prices refresh automatically every 30s"
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                </span>
+                Live
+              </span>
+            )}
+          </div>
           <p className="text-3xl font-extrabold tracking-tight text-slate-900">
             {money(totalValue, base)}
             {holdings.length > 0 && (
@@ -150,12 +186,15 @@ export default function Investments() {
             )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {updatedAt && holdings.length > 0 && (
+            <span className="hidden text-xs text-slate-400 sm:inline">Updated {relativeTime(updatedAt)}</span>
+          )}
           <button
             className="btn-ghost"
             onClick={() => {
               setRefreshing(true);
-              load(true);
+              load({ refresh: true });
             }}
             disabled={refreshing}
           >
@@ -168,6 +207,14 @@ export default function Investments() {
           <button className="btn-ghost" onClick={() => setImportOpen(true)}>
             <FileUp size={16} /> Import CAS
           </button>
+          <button className="btn-ghost" onClick={() => setCsvOpen(true)}>
+            <FileSpreadsheet size={16} /> Import CSV
+          </button>
+          {holdings.length > 0 && (
+            <button className="btn-ghost" onClick={() => downloadHoldingsCsv(holdings, base)}>
+              <Download size={16} /> Export CSV
+            </button>
+          )}
           <button className="btn-primary" onClick={openAdd}>
             <Plus size={16} /> Add holding
           </button>
@@ -245,6 +292,8 @@ export default function Investments() {
         onClose={() => setImportOpen(false)}
         onImported={() => load()}
       />
+
+      <CsvImport open={csvOpen} onClose={() => setCsvOpen(false)} onImported={() => load()} />
 
       <BrokerConnect
         open={brokerOpen}
