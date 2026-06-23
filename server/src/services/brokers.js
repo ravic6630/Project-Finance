@@ -195,6 +195,35 @@ export async function fetchHoldings(broker, accessToken) {
   throw new Error('Unknown broker');
 }
 
+// Fetch mutual-fund holdings where the broker exposes them (Upstox does; the
+// others don't yet). Normalizes to {schemeName, isin, folio, units, avgCost, nav}.
+// Returns [] and never throws, so a missing/empty fund book can't break the
+// equity import that runs alongside it.
+export async function fetchMfHoldings(broker, accessToken) {
+  try {
+    if (broker === 'upstox') {
+      const res = await fetch('https://api.upstox.com/v2/mf/holdings', {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return [];
+      return (json.data || [])
+        .filter((h) => numOr0(h.quantity ?? h.units) > 0)
+        .map((h) => ({
+          schemeName: h.scheme_name || h.fund_name || h.trading_symbol || h.name || '',
+          isin: h.isin || null,
+          folio: h.folio || h.folio_number || null,
+          units: numOr0(h.quantity ?? h.units),
+          avgCost: numOr0(h.average_price ?? h.average_nav ?? h.buy_avg),
+          nav: numOr0(h.last_nav ?? h.nav ?? h.closing_nav),
+        }));
+    }
+  } catch {
+    /* network/parse issue — skip MF, keep the equity import working */
+  }
+  return [];
+}
+
 // Sample holdings so the connect→review→import flow is testable without a real login.
 export function demoHoldings(broker) {
   const base = [
@@ -217,4 +246,22 @@ export function demoHoldings(broker) {
     ];
   }
   return base;
+}
+
+// Sample fund holdings so the Upstox demo exercises the mutual-fund import path
+// too (resolved to an AMFI scheme code by ISIN, then name).
+export function demoMfHoldings(broker) {
+  if (broker === 'upstox') {
+    return [
+      {
+        schemeName: 'Parag Parikh Flexi Cap Fund - Direct Plan - Growth',
+        isin: 'INF879O01027',
+        folio: '910xxxx/0',
+        units: 182.45,
+        avgCost: 54.3,
+        nav: 78.91,
+      },
+    ];
+  }
+  return [];
 }

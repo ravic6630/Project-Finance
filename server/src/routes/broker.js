@@ -8,13 +8,16 @@ import {
   brokerConfigured,
   brokerStatus,
   demoHoldings,
+  demoMfHoldings,
   exchangeToken,
   fetchHoldings,
+  fetchMfHoldings,
   isBroker,
   loginUrl,
   redirectUri,
 } from '../services/brokers.js';
-import { dedupSets, normalizeStockSymbol } from '../services/importer.js';
+import { dedupSets, normalizeStockSymbol, resolveName } from '../services/importer.js';
+import { schemeCodeForIsin, searchMutualFunds } from '../services/prices.js';
 
 export const brokerRouter = Router();
 brokerRouter.use(authRequired);
@@ -33,10 +36,35 @@ function requireBroker(req) {
   return b;
 }
 
-// Map broker holdings → the shared import-preview item shape, flagging duplicates.
-async function buildPreview(broker, name, holdings, userId) {
+// Resolve one broker fund to its AMFI scheme code — exact ISIN match first (the
+// broker gives us an ISIN), then a name search — so live NAV pricing works after
+// import. Funds we can't match are shown but not importable (use CAS instead).
+async function buildMfItem(m, have) {
+  let schemeCode = m.isin ? await schemeCodeForIsin(m.isin) : null;
+  if (!schemeCode && m.schemeName) {
+    const matches = await searchMutualFunds(m.schemeName).catch(() => []);
+    schemeCode = matches[0]?.schemeCode || null;
+  }
+  const name = await resolveName('IN_MF', { schemeCode: schemeCode || '' }, m.schemeName);
+  return {
+    kind: 'IN_MF',
+    scheme_code: schemeCode || '',
+    name,
+    quantity: m.units || 0,
+    avg_cost: m.avgCost || 0,
+    currency: 'INR',
+    isin: m.isin || null,
+    folio: m.folio || null,
+    duplicate: schemeCode ? have.mf.has(String(schemeCode)) : false,
+    importable: !!schemeCode,
+  };
+}
+
+// Map broker holdings (equity + optional funds) → the shared import-preview item
+// shape, flagging duplicates against what the user already holds.
+async function buildPreview(broker, name, holdings, userId, mfs = []) {
   const have = await dedupSets(userId);
-  const items = holdings.map((h) => ({
+  const stockItems = holdings.map((h) => ({
     kind: 'IN_STOCK',
     symbol: h.symbol,
     name: h.name || h.symbol,
@@ -48,13 +76,16 @@ async function buildPreview(broker, name, holdings, userId) {
     duplicate: have.sym.has(normalizeStockSymbol('IN_STOCK', h.symbol, h.exchange) || ''),
     importable: true,
   }));
+  const mfItems = await Promise.all((mfs || []).map((m) => buildMfItem(m, have)));
+  const items = [...stockItems, ...mfItems];
   return {
     broker,
     broker_label: BROKER_LABELS[broker],
     name: name || null,
     items,
     summary: {
-      stocks: items.length,
+      stocks: stockItems.length,
+      ...(mfItems.length ? { mutualFunds: mfItems.length } : {}),
       duplicates: items.filter((i) => i.duplicate).length,
     },
   };
@@ -90,7 +121,9 @@ brokerRouter.post(
     const broker = requireBroker(req);
 
     if (req.body.demo) {
-      return res.json(await buildPreview(broker, 'Sample User', demoHoldings(broker), req.user.id));
+      return res.json(
+        await buildPreview(broker, 'Sample User', demoHoldings(broker), req.user.id, demoMfHoldings(broker))
+      );
     }
 
     // Live broker connect is premium-only (sample/demo above stays free).
@@ -107,7 +140,10 @@ brokerRouter.post(
 
     const { accessToken, name } = await exchangeToken(broker, { request_token, code, auth_token, auth_code });
     await saveToken.run(req.user.id, broker, accessToken, JSON.stringify({ name }), now());
-    const holdings = await fetchHoldings(broker, accessToken);
-    res.json(await buildPreview(broker, name, holdings, req.user.id));
+    const [holdings, mfs] = await Promise.all([
+      fetchHoldings(broker, accessToken),
+      fetchMfHoldings(broker, accessToken),
+    ]);
+    res.json(await buildPreview(broker, name, holdings, req.user.id, mfs));
   })
 );

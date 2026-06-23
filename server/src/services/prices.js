@@ -81,10 +81,28 @@ async function loadMfList() {
       schemeCode: String(r.schemeCode),
       schemeName: r.schemeName,
       norm: normalize(r.schemeName),
+      isins: [r.isinGrowth, r.isinDivReinvestment]
+        .filter(Boolean)
+        .map((x) => String(x).toUpperCase()),
     }));
     mfListAt = Date.now();
   }
   return mfList || [];
+}
+
+// Map an ISIN (e.g. from a broker's MF holdings) to its AMFI scheme code — the
+// exact key our pricing/import needs. Returns null when unknown. Never throws.
+export async function schemeCodeForIsin(isin) {
+  const want = String(isin || '').toUpperCase().trim();
+  if (!want) return null;
+  let list = [];
+  try {
+    list = await loadMfList();
+  } catch {
+    list = [];
+  }
+  const hit = list.find((x) => x.isins?.includes(want));
+  return hit ? hit.schemeCode : null;
 }
 
 export async function searchMutualFunds(query) {
