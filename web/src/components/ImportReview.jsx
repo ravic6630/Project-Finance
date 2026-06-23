@@ -80,7 +80,8 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
         {who && <span className="font-semibold text-slate-700">{who}</span>}
         {subtitle && <span className="chip bg-slate-100 text-slate-500">{subtitle}</span>}
         <span className="text-slate-400">
-          {data.summary.mutualFunds != null && `${data.summary.mutualFunds} funds · `}
+          {data.summary.mutualFunds != null &&
+            `${data.summary.mutualFunds} fund${data.summary.mutualFunds === 1 ? '' : 's'} · `}
           {data.summary.stocks} stock{data.summary.stocks === 1 ? '' : 's'}
           {data.summary.duplicates > 0 && ` · ${data.summary.duplicates} will update`}
         </span>
