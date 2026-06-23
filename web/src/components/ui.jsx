@@ -29,15 +29,11 @@ export function Modal({ open, onClose, title, children, wide = false }) {
   }, [open, onClose]);
 
   if (!open) return null;
+  // Backdrop click intentionally does NOT close — these modals hold form input,
+  // so closing is explicit (the X, a Cancel button, or Escape) to avoid losing work.
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center"
-      onMouseDown={onClose}
-    >
-      <div
-        className={`card my-8 w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-6`}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center">
+      <div className={`card my-8 w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-6`}>
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-bold text-slate-900">{title}</h3>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
