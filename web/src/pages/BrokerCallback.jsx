@@ -22,16 +22,19 @@ export default function BrokerCallback() {
     const code = params.get('code');
     const auth_token = params.get('auth_token');
     const auth_code = params.get('auth_code');
+    // Strip the one-time login params from the URL so a browser back/refresh can't
+    // replay a consumed code (the broker rejects a reused code with 401).
+    window.history.replaceState(null, '', `/broker/${broker}/callback`);
     if (!request_token && !code && !auth_token && !auth_code) {
-      setError('No login token came back from the broker. Please try connecting again.');
-      setLoading(false);
+      // Nothing to exchange (e.g. user hit Back to this now-stale URL) — just leave.
+      navigate('/investments', { replace: true });
       return;
     }
     api(`/broker/${broker}/connect`, { method: 'POST', body: { request_token, code, auth_token, auth_code } })
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [broker, params]);
+  }, [broker, params, navigate]);
 
   return (
     <div className="mx-auto max-w-3xl">
