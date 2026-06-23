@@ -207,16 +207,26 @@ export async function fetchMfHoldings(broker, accessToken) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) return [];
+      // Real Upstox MF holding shape:
+      //   { instrument_key: "INF200K01T51" (the fund's ISIN), fund: "<scheme name>",
+      //     folio, quantity (units), average_price, last_price (latest NAV) }
+      // (older guesses like scheme_name/isin/last_nav kept as fallbacks).
       return (json.data || [])
         .filter((h) => numOr0(h.quantity ?? h.units) > 0)
-        .map((h) => ({
-          schemeName: h.scheme_name || h.fund_name || h.trading_symbol || h.name || '',
-          isin: h.isin || null,
-          folio: h.folio || h.folio_number || null,
-          units: numOr0(h.quantity ?? h.units),
-          avgCost: numOr0(h.average_price ?? h.average_nav ?? h.buy_avg),
-          nav: numOr0(h.last_nav ?? h.nav ?? h.closing_nav),
-        }));
+        .map((h) => {
+          // instrument_key carries the ISIN (sometimes as "SEGMENT|INF…"); pull it out.
+          const key = String(h.instrument_key || '');
+          const tail = (key.includes('|') ? key.split('|').pop() : key).toUpperCase().trim();
+          const isin = /^INF[A-Z0-9]{9}$/.test(tail) ? tail : h.isin || null;
+          return {
+            schemeName: h.fund || h.scheme_name || h.fund_name || h.trading_symbol || h.name || '',
+            isin,
+            folio: h.folio || h.folio_number || null,
+            units: numOr0(h.quantity ?? h.units),
+            avgCost: numOr0(h.average_price ?? h.average_nav ?? h.buy_avg),
+            nav: numOr0(h.last_price ?? h.last_nav ?? h.nav ?? h.closing_nav),
+          };
+        });
     }
   } catch {
     /* network/parse issue — skip MF, keep the equity import working */
