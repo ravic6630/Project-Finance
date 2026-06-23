@@ -143,13 +143,18 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
 
       <ErrorBanner message={error} />
       <div className="flex items-center justify-between gap-2">
-        {onBack ? (
-          <button className="btn-ghost" onClick={onBack}>
-            ← Back
-          </button>
-        ) : (
-          <span />
-        )}
+        <div className="flex gap-2">
+          {onBack && (
+            <button className="btn-ghost" onClick={onBack}>
+              ← Back
+            </button>
+          )}
+          {onClose && (
+            <button className="btn-ghost" onClick={onClose}>
+              Cancel
+            </button>
+          )}
+        </div>
         <button className="btn-primary" onClick={onImport} disabled={busy || selectedCount === 0}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : null}
           Import {selectedCount} holding{selectedCount === 1 ? '' : 's'}
