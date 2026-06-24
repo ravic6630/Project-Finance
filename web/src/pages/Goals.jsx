@@ -372,10 +372,11 @@ export default function Goals() {
 
       <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={load} />
 
-      {/* Calculator opens over the page (Goals + "Add goal" stay put). It starts
-          in "reach a goal" mode and uses your base currency — no extra picker. */}
+      {/* Calculator opens over the page (Goals + "Add goal" return when you close
+          it with × or Escape). It starts in "reach a goal" mode, uses your base
+          currency, and keeps the result pinned at the top while you scroll. */}
       <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="Goal calculator" wide>
-        <CalculatorTool initialMode="goal" currency={base} showCurrencyPicker={false} sticky={false} />
+        <CalculatorTool initialMode="goal" currency={base} showCurrencyPicker={false} stickyTop="top-0" />
       </Modal>
     </div>
   );
