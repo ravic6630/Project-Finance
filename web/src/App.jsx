@@ -6,6 +6,7 @@ import Signup from './pages/Signup.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calculators from './pages/Calculators.jsx';
+import CalculatorPage from './pages/CalculatorPage.jsx';
 import Investments from './pages/Investments.jsx';
 import Goals from './pages/Goals.jsx';
 import Returns from './pages/Returns.jsx';
@@ -45,9 +46,9 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/calculators" element={<Calculators />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/calculators" element={<CalculatorPage />} />
         <Route path="/investments" element={<Investments />} />
         <Route path="/goals" element={<Goals />} />
         <Route path="/returns" element={<Returns />} />

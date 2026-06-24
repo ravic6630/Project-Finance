@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
+  Calculator,
   Car,
   Crown,
   GraduationCap,
@@ -316,15 +318,20 @@ export default function Goals() {
           <h1 className="font-display text-2xl font-bold tracking-tight text-brand-900">Goals &amp; projections</h1>
           <p className="text-sm text-slate-500">Set a target, track progress, and see if you&apos;re on pace.</p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus size={16} /> Add goal
-        </button>
+        <div className="flex items-center gap-2">
+          <Link to="/calculators?mode=goal" className="btn-ghost">
+            <Calculator size={16} /> Calculator
+          </Link>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={16} /> Add goal
+          </button>
+        </div>
       </div>
 
       <ErrorBanner message={error} />
