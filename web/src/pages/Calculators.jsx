@@ -4,7 +4,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import CalculatorTool from '../components/CalculatorTool.jsx';
 
 // Public, no-login calculator page (linked from the login screen). Logged-in
-// users get the same tool in-app at /calculators via CalculatorPage instead.
+// users get the same tool in-app via the "Calculator" button on the Goals page.
 export default function Calculators() {
   const { user } = useAuth();
 

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ArrowLeftRight,
-  Calculator,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -22,7 +21,6 @@ const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/investments', label: 'Investments', icon: TrendingUp },
   { to: '/goals', label: 'Goals', icon: Target },
-  { to: '/calculators', label: 'Calculator', icon: Calculator },
   { to: '/returns', label: 'Returns & tax', icon: Receipt },
   { to: '/cash', label: 'Cash & Bank', icon: Wallet },
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
@@ -33,7 +31,6 @@ const PAGE_TITLES = {
   '/': 'Dashboard',
   '/investments': 'Investments',
   '/goals': 'Goals',
-  '/calculators': 'Calculator',
   '/returns': 'Returns & tax',
   '/cash': 'Cash & Bank',
   '/transactions': 'Transactions',

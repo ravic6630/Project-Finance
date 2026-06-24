@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Calculator,
   Car,
@@ -21,6 +20,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
+import CalculatorTool from '../components/CalculatorTool.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 
 const TYPES = [
@@ -267,6 +267,7 @@ export default function Goals() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
   const confirm = useConfirm();
 
   const load = useCallback(async () => {
@@ -319,9 +320,9 @@ export default function Goals() {
           <p className="text-sm text-slate-500">Set a target, track progress, and see if you&apos;re on pace.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/calculators?mode=goal" className="btn-ghost">
+          <button className="btn-ghost" onClick={() => setCalcOpen(true)}>
             <Calculator size={16} /> Calculator
-          </Link>
+          </button>
           <button
             className="btn-primary"
             onClick={() => {
@@ -370,6 +371,12 @@ export default function Goals() {
       )}
 
       <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={load} />
+
+      {/* Calculator opens over the page (Goals + "Add goal" stay put). It starts
+          in "reach a goal" mode and uses your base currency — no extra picker. */}
+      <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="Goal calculator" wide>
+        <CalculatorTool initialMode="goal" currency={base} showCurrencyPicker={false} sticky={false} />
+      </Modal>
     </div>
   );
 }

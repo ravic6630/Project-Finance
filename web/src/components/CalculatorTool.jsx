@@ -12,7 +12,8 @@ import {
 import { TrendingUp, Coins, Target } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money } from '../lib/format.js';
-import { CURRENCIES, guessCurrency } from '../lib/markets.js';
+import { guessCurrency } from '../lib/markets.js';
+import CurrencyMenu from './CurrencyMenu.jsx';
 
 const GOLD = '#c2a368';
 const NAVY = '#1f3a66';
@@ -97,14 +98,29 @@ function Chip({ label, value, gold }) {
 }
 
 // The interactive calculator (tabs + sliders + result + chart). Reused by the
-// public standalone page and the in-app page, so it carries no page chrome of
-// its own. `stickyTop` lets the in-app version clear the sticky app header.
-export default function CalculatorTool({ stickyTop = 'top-2' }) {
+// public standalone page and the in-app Goals modal, so it carries no page
+// chrome of its own.
+//   initialMode        — preselect 'sip' | 'lumpsum' | 'goal' (else read ?mode=)
+//   currency           — fix the currency (e.g. the app's base currency); when
+//                        set, the built-in picker is unnecessary
+//   showCurrencyPicker — show the polished CurrencyMenu (public page); hide it
+//                        in-app where the header already drives the base currency
+//   sticky / stickyTop — keep the result banner pinned while scrolling
+export default function CalculatorTool({
+  initialMode,
+  currency,
+  showCurrencyPicker = true,
+  sticky = true,
+  stickyTop = 'top-2',
+}) {
   const { user } = useAuth();
   const [params] = useSearchParams();
-  // Allow deep-linking a starting mode, e.g. /calculators?mode=goal from Goals.
-  const [mode, setMode] = useState(() => MODES.find((m) => m.key === params.get('mode'))?.key || 'sip');
-  const [cur, setCur] = useState(user?.base_currency || guessCurrency());
+  // Allow deep-linking a starting mode, e.g. ?mode=goal.
+  const [mode, setMode] = useState(
+    () => MODES.find((m) => m.key === (initialMode ?? params.get('mode')))?.key || 'sip'
+  );
+  const [internalCur, setInternalCur] = useState(user?.base_currency || guessCurrency());
+  const cur = currency || internalCur; // controlled (base currency) or self-managed
 
   // Money inputs start at 0 so visitors enter their own figures — no pre-filled
   // amounts that could be mistaken for a recommendation. Return / time / inflation
@@ -147,22 +163,11 @@ export default function CalculatorTool({ stickyTop = 'top-2' }) {
             </button>
           ))}
         </div>
-        <select
-          aria-label="Currency"
-          value={cur}
-          onChange={(e) => setCur(e.target.value)}
-          className="rounded-xl border border-[#e8e2d4] bg-white px-3 py-2 text-sm font-semibold text-brand-700"
-        >
-          {CURRENCIES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.symbol} {c.code}
-            </option>
-          ))}
-        </select>
+        {showCurrencyPicker && <CurrencyMenu value={cur} onChange={setInternalCur} align="right" />}
       </div>
 
-      {/* STICKY RESULT — always visible while you drag the sliders below */}
-      <div className={`sticky ${stickyTop} z-20`}>
+      {/* Result — kept pinned while you drag the sliders below, unless embedded. */}
+      <div className={sticky ? `sticky ${stickyTop} z-20` : ''}>
         <div className="rounded-2xl bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-white shadow-lg sm:p-6">
           {mode === 'goal' ? (
             <>
