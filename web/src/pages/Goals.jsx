@@ -15,6 +15,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
@@ -44,6 +45,7 @@ const blank = {
 };
 
 function GoalForm({ open, onClose, onSaved, editing }) {
+  const { user } = useAuth();
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -63,9 +65,10 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             expected_return: String(editing.expected_return ?? '12'),
             currency: editing.currency || 'INR',
           }
-        : blank
+        : // New goals are denominated in the user's base currency, not a hardcoded ₹.
+          { ...blank, currency: user.base_currency || 'INR' }
     );
-  }, [open, editing]);
+  }, [open, editing, user.base_currency]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
@@ -131,14 +134,14 @@ function GoalForm({ open, onClose, onSaved, editing }) {
           <input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Retire by 50" required />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Target amount">
+          <Field label={`Target amount (${form.currency})`}>
             <input className="input" type="number" step="any" value={form.target_amount} onChange={(e) => set({ target_amount: e.target.value })} placeholder="10000000" required />
           </Field>
           <Field label="Target date">
             <input className="input" type="date" value={form.target_date} onChange={(e) => set({ target_date: e.target.value })} required />
           </Field>
         </div>
-        <Field label="Saved so far">
+        <Field label={`Saved so far (${form.currency})`}>
           <div className="flex gap-2">
             <input className="input" type="number" step="any" value={form.current_amount} onChange={(e) => set({ current_amount: e.target.value })} placeholder="0" />
             <button type="button" className="btn-ghost shrink-0 whitespace-nowrap" onClick={prefillNetWorth}>
@@ -147,7 +150,7 @@ function GoalForm({ open, onClose, onSaved, editing }) {
           </div>
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Monthly contribution">
+          <Field label={`Monthly contribution (${form.currency})`}>
             <input className="input" type="number" step="any" value={form.monthly_contribution} onChange={(e) => set({ monthly_contribution: e.target.value })} placeholder="25000" />
           </Field>
           <Field label="Expected return (% p.a.)">
@@ -170,7 +173,12 @@ function GoalForm({ open, onClose, onSaved, editing }) {
 function GoalCard({ goal, onEdit, onDelete }) {
   const meta = typeMeta(goal.type);
   const p = goal.projection || {};
-  const cur = goal.currency || 'INR';
+  // Display in the user's base currency. The server converts the goal's amounts
+  // (and the projection) into `base_currency`; fall back to native if absent.
+  const cur = goal.base_currency || goal.currency || 'INR';
+  const target = goal.target_amount_base ?? goal.target_amount;
+  const current = goal.current_amount_base ?? goal.current_amount;
+  const monthly = goal.monthly_contribution_base ?? goal.monthly_contribution;
   const saved = Math.min(100, p.saved_pct ?? 0);
 
   return (
@@ -196,7 +204,7 @@ function GoalCard({ goal, onEdit, onDelete }) {
         {p.years_to_target ? ` · ${p.years_to_target}y` : ''}
       </p>
 
-      <p className="num mt-2 text-2xl font-bold tracking-tight text-brand-900">{money(goal.target_amount, cur)}</p>
+      <p className="num mt-2 text-2xl font-bold tracking-tight text-brand-900">{money(target, cur)}</p>
 
       {/* progress saved so far */}
       <div className="mt-3">
@@ -204,7 +212,7 @@ function GoalCard({ goal, onEdit, onDelete }) {
           <div className="h-full rounded-full bg-gold-400" style={{ width: `${saved}%` }} />
         </div>
         <p className="mt-1.5 text-xs text-slate-500">
-          {money(goal.current_amount, cur)} saved · {saved}%
+          {money(current, cur)} saved · {saved}%
         </p>
       </div>
 
@@ -217,7 +225,7 @@ function GoalCard({ goal, onEdit, onDelete }) {
         )}
         <p className="mt-2 text-sm text-slate-600">
           Projected <span className="font-semibold text-slate-900">{money(p.projected_value, cur)}</span>
-          {goal.monthly_contribution ? ` at ${money(goal.monthly_contribution, cur)}/mo` : ''}
+          {monthly ? ` at ${money(monthly, cur)}/mo` : ''}
         </p>
         {!p.on_track && p.required_monthly != null && (
           <p className="mt-1 text-sm text-amber-700">
