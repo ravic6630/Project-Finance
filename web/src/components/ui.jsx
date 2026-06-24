@@ -31,16 +31,18 @@ export function Modal({ open, onClose, title, children, wide = false }) {
   if (!open) return null;
   // Backdrop click intentionally does NOT close — these modals hold form input,
   // so closing is explicit (the X, a Cancel button, or Escape) to avoid losing work.
+  // The header is pinned and only the body scrolls, so the close button stays
+  // reachable even in a tall modal (e.g. the calculator).
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center">
-      <div className={`card my-8 w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-6`}>
-        <div className="mb-5 flex items-center justify-between">
+      <div className={`card my-8 flex max-h-[calc(100vh-4rem)] w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} flex-col overflow-hidden p-0`}>
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
           <h3 className="text-lg font-bold text-slate-900">{title}</h3>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
             <X size={18} />
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto px-6 py-5">{children}</div>
       </div>
     </div>
   );

@@ -45,7 +45,6 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/calculators" element={<Calculators />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/investments" element={<Investments />} />

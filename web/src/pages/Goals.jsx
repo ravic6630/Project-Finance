@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Calculator,
   Car,
   Crown,
   GraduationCap,
@@ -19,6 +20,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
+import CalculatorTool from '../components/CalculatorTool.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 
 const TYPES = [
@@ -265,6 +267,7 @@ export default function Goals() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
   const confirm = useConfirm();
 
   const load = useCallback(async () => {
@@ -316,15 +319,20 @@ export default function Goals() {
           <h1 className="font-display text-2xl font-bold tracking-tight text-brand-900">Goals &amp; projections</h1>
           <p className="text-sm text-slate-500">Set a target, track progress, and see if you&apos;re on pace.</p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus size={16} /> Add goal
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost" onClick={() => setCalcOpen(true)}>
+            <Calculator size={16} /> Calculator
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={16} /> Add goal
+          </button>
+        </div>
       </div>
 
       <ErrorBanner message={error} />
@@ -363,6 +371,13 @@ export default function Goals() {
       )}
 
       <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={load} />
+
+      {/* Calculator opens over the page (Goals + "Add goal" return when you close
+          it with × or Escape). It starts in "reach a goal" mode, uses your base
+          currency, and keeps the result pinned at the top while you scroll. */}
+      <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="Goal calculator" wide>
+        <CalculatorTool initialMode="goal" currency={base} showCurrencyPicker={false} stickyTop="top-0" />
+      </Modal>
     </div>
   );
 }
