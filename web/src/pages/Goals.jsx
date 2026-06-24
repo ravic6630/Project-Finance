@@ -256,6 +256,8 @@ function PremiumLock({ onUpgrade }) {
 }
 
 export default function Goals() {
+  const { user } = useAuth();
+  const base = user.base_currency; // re-fetch (re-converts) when this changes
   const [premium, setPremium] = useState(null); // null = loading
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -284,7 +286,7 @@ export default function Goals() {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, base]);
 
   async function onDelete(g) {
     if (!(await confirm({ title: `Delete “${g.name}”?`, message: 'This permanently removes the goal.', confirmLabel: 'Delete', danger: true }))) return;
