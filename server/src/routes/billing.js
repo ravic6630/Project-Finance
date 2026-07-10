@@ -13,6 +13,7 @@ import {
 } from '../services/billing.js';
 import { planFor, providerFor } from '../services/pricing.js';
 import { createCheckout, stripeConfigured, verifyStripeWebhook } from '../services/stripe.js';
+import { sendPremiumWelcome } from '../services/premiumEmail.js';
 
 export const billingRouter = Router();
 
@@ -30,6 +31,7 @@ billingRouter.post(
       if (userId) {
         const periodEnd = sub.current_end ? new Date(sub.current_end * 1000).toISOString() : undefined;
         await activatePremium(userId, { provider: 'razorpay', providerSubId: sub.id, periodEnd });
+        await sendPremiumWelcome(userId, { provider: 'razorpay' }); // one-time; renewals no-op
       }
     }
     res.json({ ok: true });
@@ -55,6 +57,7 @@ billingRouter.post(
           providerSubId: obj.subscription,
           days: md.interval === 'annual' ? 366 : 31,
         });
+        await sendPremiumWelcome(userId, { provider: 'stripe' });
       }
     } else if (event.type === 'invoice.paid') {
       // Each charge incl. renewals. The invoice's own metadata is empty, so find
@@ -67,6 +70,9 @@ billingRouter.post(
         const endUnix = obj.lines?.data?.[0]?.period?.end || obj.period_end;
         const periodEnd = endUnix ? new Date(endUnix * 1000).toISOString() : undefined;
         await activatePremium(userId, { provider: 'stripe', providerSubId: obj.subscription, periodEnd, days: 31 });
+        // Backstop for first-ever charge if checkout.session.completed was missed;
+        // the one-time claim means real renewals don't re-send.
+        await sendPremiumWelcome(userId, { provider: 'stripe' });
       }
     } else if (event.type === 'customer.subscription.deleted') {
       let userId = Number(obj.metadata?.user_id) || null;
@@ -136,6 +142,7 @@ billingRouter.post(
   asyncHandler(async (req, res) => {
     if (req.user.role !== 'admin') throw new HttpError(403, 'Not available');
     await activatePremium(req.user.id, { provider: 'trial', days: 30 });
+    await sendPremiumWelcome(req.user.id, { provider: 'trial' });
     res.json({ state: await premiumState(req.user) });
   })
 );

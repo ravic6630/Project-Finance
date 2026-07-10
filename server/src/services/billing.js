@@ -54,8 +54,10 @@ export async function activatePremium(userId, { provider, providerSubId, days = 
 }
 
 const deactivateStmt = db.prepare(`
-  UPDATE subscriptions SET plan='free', status='inactive', updated_at=? WHERE user_id=?
+  UPDATE subscriptions SET plan='free', status='inactive', premium_welcome_sent_at=NULL, updated_at=? WHERE user_id=?
 `);
+// Clearing premium_welcome_sent_at means a lapsed member who re-subscribes later
+// gets a fresh welcome email (they've "become premium" again).
 export const deactivatePremium = (userId) => deactivateStmt.run(now(), userId);
 
 // Record the pending Razorpay subscription id so the webhook can match it to the user.

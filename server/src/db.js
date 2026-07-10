@@ -119,13 +119,14 @@ CREATE TABLE IF NOT EXISTS fx_cache (
   updated_at TEXT
 );
 CREATE TABLE IF NOT EXISTS subscriptions (
-  user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  plan               TEXT NOT NULL DEFAULT 'free',
-  status             TEXT NOT NULL DEFAULT 'inactive',
-  provider           TEXT,
-  provider_sub_id    TEXT,
-  current_period_end TEXT,
-  updated_at         TEXT
+  user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  plan                    TEXT NOT NULL DEFAULT 'free',
+  status                  TEXT NOT NULL DEFAULT 'inactive',
+  provider                TEXT,
+  provider_sub_id         TEXT,
+  current_period_end      TEXT,
+  premium_welcome_sent_at TEXT,
+  updated_at              TEXT
 );
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash TEXT PRIMARY KEY,
@@ -203,8 +204,20 @@ CREATE INDEX IF NOT EXISTS idx_itxn_user ON investment_txns(user_id);
 CREATE INDEX IF NOT EXISTS idx_itxn_holding ON investment_txns(holding_id);
 `;
 
+// Add a column to an existing table if it's missing. Safe to re-run — SQLite
+// throws "duplicate column name" once it's applied, which we swallow.
+async function addColumn(table, column, type) {
+  try {
+    await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(e?.message || '')) throw e;
+  }
+}
+
 export async function initDb() {
   await client.executeMultiple(SCHEMA);
+  // Additive migrations for databases created before a column existed.
+  await addColumn('subscriptions', 'premium_welcome_sent_at', 'TEXT');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;
   console.log(`Database ready → ${where}`);
 }
