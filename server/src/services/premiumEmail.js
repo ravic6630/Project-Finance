@@ -1,4 +1,5 @@
 import { db, now } from '../db.js';
+import { escapeHtml } from '../util.js';
 import { sendMail, emailConfigured } from './email.js';
 
 // One-time "welcome to Premium" email. Every activation path (Stripe/Razorpay
@@ -24,7 +25,7 @@ const PERKS = [
 ];
 
 export function welcomeHtml(name, { grantedByAdmin }) {
-  const who = name ? String(name).split(' ')[0] : 'there';
+  const who = name ? escapeHtml(String(name).split(' ')[0]) : 'there';
   const intro = grantedByAdmin
     ? 'An admin has upgraded your account to <b>Sampada Premium</b> — no charge. You now have full access to:'
     : 'Thank you for upgrading — your account is now <b>Sampada Premium</b>. You’ve unlocked:';
