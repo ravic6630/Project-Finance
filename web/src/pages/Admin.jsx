@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
+import AdminSupport from '../components/AdminSupport.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 
 function Stat({ label, value }) {
@@ -98,6 +99,8 @@ export default function Admin() {
       </div>
 
       <ErrorBanner message={error} />
+
+      <AdminSupport />
 
       <div className="card overflow-hidden">
         <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3 font-bold text-slate-900">

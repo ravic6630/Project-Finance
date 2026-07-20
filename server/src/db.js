@@ -128,6 +128,17 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   premium_welcome_sent_at TEXT,
   updated_at              TEXT
 );
+-- Two-way support chat: one thread per customer. sender is 'user' or 'admin';
+-- read_at is set when the OTHER side reads the message (drives unread badges).
+CREATE TABLE IF NOT EXISTS support_messages (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender     TEXT NOT NULL DEFAULT 'user',
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  read_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_support_user ON support_messages(user_id, id);
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
