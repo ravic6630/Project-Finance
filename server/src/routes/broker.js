@@ -17,7 +17,7 @@ import {
   redirectUri,
 } from '../services/brokers.js';
 import { dedupSets, normalizeStockSymbol, resolveName } from '../services/importer.js';
-import { schemeCodeForIsin, searchMutualFunds } from '../services/prices.js';
+import { lookupFundByIsin, schemeNameForCode, searchMutualFunds, warmMfList } from '../services/prices.js';
 
 export const brokerRouter = Router();
 brokerRouter.use(authRequired);
@@ -40,12 +40,20 @@ function requireBroker(req) {
 // broker gives us an ISIN), then a name search — so live NAV pricing works after
 // import. Funds we can't match are shown but not importable (use CAS instead).
 async function buildMfItem(m, have) {
-  let schemeCode = m.isin ? await schemeCodeForIsin(m.isin) : null;
+  // ISIN lookup is persisted per fund, so a repeat import resolves with no
+  // network at all. Falls back to a name search only when the ISIN is unknown.
+  const byIsin = m.isin ? await lookupFundByIsin(m.isin) : null;
+  let schemeCode = byIsin?.schemeCode || null;
   if (!schemeCode && m.schemeName) {
     const matches = await searchMutualFunds(m.schemeName).catch(() => []);
     schemeCode = matches[0]?.schemeCode || null;
   }
-  const name = await resolveName('IN_MF', { schemeCode: schemeCode || '' }, m.schemeName);
+  // Prefer the canonical name we already hold — resolveName would otherwise fetch
+  // each fund's NAV just to read its name, the slowest part of a first import.
+  const name =
+    byIsin?.schemeName ||
+    (schemeCode && (await schemeNameForCode(schemeCode))) ||
+    (await resolveName('IN_MF', { schemeCode: schemeCode || '' }, m.schemeName));
   return {
     kind: 'IN_MF',
     scheme_code: schemeCode || '',
@@ -110,6 +118,10 @@ brokerRouter.get(
         error: `${BROKER_LABELS[broker]} isn't set up yet. Add ${broker.toUpperCase()}_API_KEY and _API_SECRET to server/.env, and set the broker app's redirect URL to ${redirectUri(broker)}.`,
       });
     }
+    // The user is about to spend a while logging in at the broker. Use that time
+    // to pull the AMFI scheme list in the background so the import that follows
+    // doesn't have to wait for it.
+    warmMfList();
     res.json({ url: loginUrl(broker), redirect_uri: redirectUri(broker) });
   })
 );
