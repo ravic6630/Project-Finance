@@ -23,6 +23,9 @@ export const canSubscribe = (interval = 'monthly') => billingConfigured() && !!r
 export const publicKeyId = () => KEY_ID;
 
 const getSub = db.prepare('SELECT * FROM subscriptions WHERE user_id = ?');
+// NOTE: this upsert must never touch premium_welcome_sent_at. The one-time
+// welcome email (services/premiumEmail.js) relies on that column surviving a
+// renewal — adding it here would re-send the email on every charge.
 const upsertSub = db.prepare(`
   INSERT INTO subscriptions (user_id, plan, status, provider, provider_sub_id, current_period_end, updated_at)
   VALUES (?, 'premium', 'active', ?, ?, ?, ?)

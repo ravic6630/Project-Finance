@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import CurrencyMenu from './CurrencyMenu.jsx';
+import SupportChat from './SupportChat.jsx';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -162,6 +163,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Floating support chat, available on every signed-in page. */}
+      <SupportChat />
     </div>
   );
 }

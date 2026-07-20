@@ -1,4 +1,5 @@
 import { buildSummary } from './summary.js';
+import { escapeHtml } from '../util.js';
 
 const LOCALE = { INR: 'en-IN', USD: 'en-US' };
 function money(amount, currency = 'INR') {
@@ -29,7 +30,7 @@ function card(label, value, sub, subColor = '#64748b') {
 export function renderDigestHtml(s, user) {
   const base = s.base_currency;
   const up = s.investments.gain >= 0;
-  const greeting = user.name ? `Hi ${user.name.split(' ')[0]},` : 'Hi,';
+  const greeting = user.name ? `Hi ${escapeHtml(user.name.split(' ')[0])},` : 'Hi,';
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const allocTotal = s.allocation.reduce((a, b) => a + b.value, 0) || 1;

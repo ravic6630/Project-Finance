@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { ADMIN_EMAILS } from '../config.js';
 import { db, now } from '../db.js';
 import { applyEffectiveRole, authRequired, hashPassword, signToken, verifyPassword } from '../auth.js';
-import { asyncHandler, bad, HttpError, oneOf, str } from '../util.js';
+import { HttpError, asyncHandler, bad, escapeHtml, oneOf, str } from '../util.js';
 import { emailConfigured, sendMail } from '../services/email.js';
 import { CURRENCIES } from '../markets.js';
 
@@ -43,7 +43,7 @@ const delPending = db.prepare('DELETE FROM pending_signups WHERE email = ?');
 const bumpPending = db.prepare('UPDATE pending_signups SET attempts = attempts + 1 WHERE email = ?');
 
 function otpEmailHtml(name, code) {
-  const who = name ? String(name).split(' ')[0] : 'there';
+  const who = name ? escapeHtml(String(name).split(' ')[0]) : 'there';
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
     <h2 style="color:#1f3a66;margin:0 0 6px">🌱 Sampada</h2>
     <p>Hi ${who}, here's your verification code to finish creating your account:</p>
@@ -193,7 +193,7 @@ const bumpResetCode = db.prepare('UPDATE password_reset_codes SET attempts = att
 const RESET_TTL_MS = 15 * 60 * 1000; // reset codes last 15 minutes
 
 function resetEmailHtml(name, code) {
-  const who = name ? String(name).split(' ')[0] : 'there';
+  const who = name ? escapeHtml(String(name).split(' ')[0]) : 'there';
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
     <h2 style="color:#1f3a66;margin:0 0 6px">🌱 Sampada</h2>
     <p>Hi ${who}, use this code to reset your password:</p>

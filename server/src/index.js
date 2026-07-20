@@ -23,6 +23,7 @@ import { goalsRouter } from './routes/goals.js';
 import { alertsRouter } from './routes/alerts.js';
 import { returnsRouter } from './routes/returns.js';
 import { adminRouter } from './routes/admin.js';
+import { supportRouter } from './routes/support.js';
 import { startDigestScheduler } from './services/scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,7 @@ app.use('/api/goals', goalsRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/returns', returnsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/support', supportRouter);
 
 // Unknown API route -> JSON 404 (so the SPA fallback never swallows it).
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

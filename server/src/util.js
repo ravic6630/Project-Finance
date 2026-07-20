@@ -26,6 +26,12 @@ export const str = (v) => {
   return s === '' ? null : s;
 };
 
+// Escape user-controlled text before it goes into an HTML email body. Names are
+// free-form (signup / profile), so without this a name like `<img src=x onerror=…>`
+// would render as live markup in the recipient's mail client.
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+export const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+
 export const oneOf = (value, allowed, field) => {
   if (!allowed.includes(value)) {
     throw bad(`${field} must be one of: ${allowed.join(', ')}`);
