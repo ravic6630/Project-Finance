@@ -113,6 +113,15 @@ CREATE TABLE IF NOT EXISTS price_cache (
   source     TEXT,
   updated_at TEXT
 );
+-- Resolved broker ISIN -> AMFI scheme. Persisting each hit means a later import
+-- (or a restart) never re-downloads the ~5 MB scheme list to resolve a fund
+-- we've already seen.
+CREATE TABLE IF NOT EXISTS mf_scheme_index (
+  isin        TEXT PRIMARY KEY,
+  scheme_code TEXT NOT NULL,
+  scheme_name TEXT,
+  updated_at  TEXT
+);
 CREATE TABLE IF NOT EXISTS fx_cache (
   pair       TEXT PRIMARY KEY,
   rate       REAL,

@@ -70,39 +70,102 @@ async function fetchMfNav(schemeCode) {
 // (reliable across multi-word queries; mfapi's /search endpoint is flaky). ---
 const normalize = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 let mfList = null;
+let mfIsinIndex = null; // ISIN -> schemeCode, built alongside the list
+let mfNameIndex = null; // schemeCode -> canonical AMFI scheme name
 let mfListAt = 0;
+let mfListInFlight = null;
 const MF_LIST_TTL = 24 * 60 * 60 * 1000;
 
 async function loadMfList() {
   if (mfList && Date.now() - mfListAt < MF_LIST_TTL) return mfList;
-  const json = await fetchJson('https://api.mfapi.in/mf', {}, 25000);
-  if (Array.isArray(json) && json.length) {
-    mfList = json.map((r) => ({
-      schemeCode: String(r.schemeCode),
-      schemeName: r.schemeName,
-      norm: normalize(r.schemeName),
-      isins: [r.isinGrowth, r.isinDivReinvestment]
-        .filter(Boolean)
-        .map((x) => String(x).toUpperCase()),
-    }));
-    mfListAt = Date.now();
+  // Single-flight. A broker import resolves every fund in parallel, so without
+  // sharing one in-flight request each fund downloaded the whole ~5 MB AMFI list
+  // on its own (14 funds = 14 downloads ≈ 76 MB before the preview appeared).
+  if (!mfListInFlight) {
+    mfListInFlight = (async () => {
+      const json = await fetchJson('https://api.mfapi.in/mf', {}, 25000);
+      if (Array.isArray(json) && json.length) {
+        const index = new Map();
+        const names = new Map();
+        mfList = json.map((r) => {
+          const schemeCode = String(r.schemeCode);
+          for (const isin of [r.isinGrowth, r.isinDivReinvestment]) {
+            if (isin) index.set(String(isin).toUpperCase(), schemeCode);
+          }
+          names.set(schemeCode, r.schemeName);
+          return { schemeCode, schemeName: r.schemeName, norm: normalize(r.schemeName) };
+        });
+        mfIsinIndex = index;
+        mfNameIndex = names;
+        mfListAt = Date.now();
+      }
+      return mfList || [];
+    })().finally(() => {
+      mfListInFlight = null; // a failed load should be retryable
+    });
   }
-  return mfList || [];
+  return mfListInFlight;
 }
 
-// Map an ISIN (e.g. from a broker's MF holdings) to its AMFI scheme code — the
-// exact key our pricing/import needs. Returns null when unknown. Never throws.
-export async function schemeCodeForIsin(isin) {
+// Preload the scheme list in the background — call it while the user is off
+// logging in at their broker, so the import that follows is instant.
+export const warmMfList = () => loadMfList().catch(() => {});
+
+const getIsinRow = db.prepare('SELECT scheme_code, scheme_name FROM mf_scheme_index WHERE isin = ?');
+const putIsinRow = db.prepare(`
+  INSERT INTO mf_scheme_index (isin, scheme_code, scheme_name, updated_at) VALUES (?, ?, ?, ?)
+  ON CONFLICT(isin) DO UPDATE SET
+    scheme_code = excluded.scheme_code, scheme_name = excluded.scheme_name, updated_at = excluded.updated_at
+`);
+
+// Resolve a broker's ISIN to its AMFI scheme (code + canonical name).
+// Hits the persisted index first, so a fund we've resolved before never costs a
+// scheme-list download again — even after a restart. Never throws.
+export async function lookupFundByIsin(isin) {
   const want = String(isin || '').toUpperCase().trim();
   if (!want) return null;
-  let list = [];
+
   try {
-    list = await loadMfList();
+    const cached = await getIsinRow.get(want);
+    if (cached?.scheme_code) {
+      return { schemeCode: String(cached.scheme_code), schemeName: cached.scheme_name || null };
+    }
   } catch {
-    list = [];
+    /* fall through to the list */
   }
-  const hit = list.find((x) => x.isins?.includes(want));
-  return hit ? hit.schemeCode : null;
+
+  try {
+    await loadMfList();
+  } catch {
+    return null;
+  }
+  const schemeCode = mfIsinIndex?.get(want);
+  if (!schemeCode) return null;
+  const schemeName = mfNameIndex?.get(schemeCode) || null;
+  try {
+    await putIsinRow.run(want, schemeCode, schemeName, now());
+  } catch {
+    /* caching is best-effort */
+  }
+  return { schemeCode, schemeName };
+}
+
+// Map an ISIN to its AMFI scheme code. Returns null when unknown. Never throws.
+export async function schemeCodeForIsin(isin) {
+  return (await lookupFundByIsin(isin))?.schemeCode || null;
+}
+
+// The canonical AMFI name for a scheme code, straight from the cached list.
+// Saves a per-fund NAV round-trip just to label an import preview.
+export async function schemeNameForCode(schemeCode) {
+  const code = String(schemeCode || '').trim();
+  if (!code) return null;
+  try {
+    await loadMfList();
+  } catch {
+    return null;
+  }
+  return mfNameIndex?.get(code) || null;
 }
 
 export async function searchMutualFunds(query) {

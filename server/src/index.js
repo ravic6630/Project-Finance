@@ -8,6 +8,7 @@ import morgan from 'morgan';
 
 import { PORT } from './config.js';
 import { initDb } from './db.js';
+import { warmMfList } from './services/prices.js';
 import { authRouter } from './routes/auth.js';
 import { holdingsRouter } from './routes/holdings.js';
 import { cashRouter } from './routes/cash.js';
@@ -76,4 +77,8 @@ await initDb();
 app.listen(PORT, () => {
   console.log(`Sampada API listening on http://localhost:${PORT}`);
   startDigestScheduler();
+  // Pull the AMFI scheme list in the background so the first mutual-fund import
+  // after a (re)start doesn't wait on a ~5 MB download. Non-blocking; failures
+  // are ignored and it's re-fetched lazily on demand.
+  warmMfList();
 });
