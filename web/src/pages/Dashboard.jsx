@@ -75,9 +75,68 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
 const shortDate = (d) =>
   new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
+const asDate = (d) => new Date(`${d}T00:00:00`);
+
+// Ranges offered above the net-worth chart. Snapshots are daily, so 1D is
+// "today vs yesterday" rather than an intraday curve.
+const RANGES = [
+  { key: '1D', days: 1, label: 'the last day' },
+  { key: '1W', days: 7, label: 'the last week' },
+  { key: '1M', days: 30, label: 'the last month' },
+  { key: '1Y', days: 365, label: 'the last year' },
+  { key: '3Y', days: 365 * 3, label: 'the last 3 years' },
+  { key: '5Y', days: 365 * 5, label: 'the last 5 years' },
+  { key: '7Y', days: 365 * 7, label: 'the last 7 years' },
+  { key: '10Y', days: 365 * 10, label: 'the last 10 years' },
+];
+
+// Points inside the window. A line needs two points, so if the window is emptier
+// than that we fall back to the two most recent snapshots — `exact` reports
+// which happened, so the caption can't claim a span we aren't actually showing.
+function sliceRange(hist, days) {
+  if (hist.length < 2) return { points: hist, exact: false };
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const within = hist.filter((p) => asDate(p.date) >= cutoff);
+  if (within.length >= 2) return { points: within, exact: true };
+  return { points: hist.slice(-2), exact: false };
+}
+
+// "since" dates need the year once we're looking back past this one.
+const sinceLabel = (d) => {
+  const dt = asDate(d);
+  const sameYear = dt.getFullYear() === new Date().getFullYear();
+  return dt.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
+};
+
+// Keep long ranges readable/fast — a decade of dailies is ~3,650 points.
+// Evenly spaced, and always keeps the first and last point.
+function downsample(points, max = 180) {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]);
+}
+
+// Day/month for short spans, month once it's a few months, month + year beyond
+// that (a 1-year span otherwise reads "Jul … Jul", which is ambiguous).
+const tickFormatter = (spanDays) => (d) => {
+  const dt = asDate(d);
+  if (spanDays <= 45) return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  if (spanDays <= 120) return dt.toLocaleDateString('en-IN', { month: 'short' });
+  return dt.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+};
+
 // Premium: net-worth trend chart. Free: a teaser that upsells (we record the
 // history for everyone, so it's already waiting when they upgrade).
 function NetWorthHistory({ data, base, onUpgrade }) {
+  // Declared before the non-premium early return so the hook order is stable
+  // if the user upgrades without a reload.
+  const [range, setRange] = useState('1M');
+
   if (!data.premium) {
     return (
       <div className="card p-5">
@@ -98,18 +157,63 @@ function NetWorthHistory({ data, base, onUpgrade }) {
     );
   }
   const hist = data.net_worth_history || [];
+  const active = RANGES.find((r) => r.key === range) || RANGES[2];
+  const { points: windowed, exact } = sliceRange(hist, active.days);
+  const view = downsample(windowed);
+
+  const first = view[0]?.net_worth ?? 0;
+  const latest = view[view.length - 1]?.net_worth ?? 0;
+  const delta = latest - first;
+  const up = delta >= 0;
+  const spanDays =
+    view.length > 1
+      ? Math.max(1, Math.round((asDate(view[view.length - 1].date) - asDate(view[0].date)) / 86400000))
+      : 0;
+  // Only claim the requested range when we actually have that much history in
+  // it; otherwise say what's really on screen.
+  const spanLabel =
+    exact && windowed[0] !== hist[0] ? active.label : `since ${sinceLabel(windowed[0]?.date)}`;
+
   return (
     <div className="card p-5">
-      <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-slate-900">
-        <LineChartIcon size={18} className="text-brand-600" /> Net worth over time
-      </h3>
-      {hist.length < 2 ? (
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 font-display text-lg font-bold text-slate-900">
+            <LineChartIcon size={18} className="text-brand-600" /> Net worth over time
+          </h3>
+          {view.length > 1 && (
+            <p className="mt-0.5 text-sm">
+              <span className={`font-semibold ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {up ? '▲' : '▼'} {money(Math.abs(delta), base)}
+                {first > 0 && ` (${percent((delta / first) * 100)})`}
+              </span>
+              <span className="text-slate-400"> · {spanLabel}</span>
+            </p>
+          )}
+        </div>
+        <div className="inline-flex flex-wrap gap-0.5 rounded-xl border border-[#e8e2d4] bg-white p-1">
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              onClick={() => setRange(r.key)}
+              aria-pressed={range === r.key}
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                range === r.key ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
+              }`}
+            >
+              {r.key}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view.length < 2 ? (
         <p className="py-16 text-center text-sm text-slate-400">
           Your net-worth history will build here day by day — check back tomorrow to see the trend.
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={hist} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+          <AreaChart data={view} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
             <defs>
               <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#1f3a66" stopOpacity={0.25} />
@@ -117,7 +221,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#ece6d8" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={28} />
+            <XAxis dataKey="date" tickFormatter={tickFormatter(spanDays)} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={28} />
             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => money(v, base, { compact: true })} />
             <Tooltip formatter={(v) => [money(v, base), 'Net worth']} labelFormatter={(d) => dateLabel(d)} />
             <Area type="monotone" dataKey="net_worth" stroke="#1f3a66" strokeWidth={2} fill="url(#nwFill)" />
