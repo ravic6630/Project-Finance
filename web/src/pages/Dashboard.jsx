@@ -72,10 +72,8 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
   return <div className="card p-5">{content}</div>;
 }
 
-const shortDate = (d) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-
-const asDate = (d) => new Date(`${d}T00:00:00`);
+const DAY = 86400000;
+const asMs = (d) => new Date(`${d}T00:00:00`).getTime();
 
 // Ranges offered above the net-worth chart. Snapshots are daily, so 1D is
 // "today vs yesterday" rather than an intraday curve.
@@ -90,27 +88,37 @@ const RANGES = [
   { key: '10Y', days: 365 * 10, label: 'the last 10 years' },
 ];
 
-// Points inside the window. A line needs two points, so if the window is emptier
-// than that we fall back to the two most recent snapshots — `exact` reports
-// which happened, so the caption can't claim a span we aren't actually showing.
-function sliceRange(hist, days) {
-  if (hist.length < 2) return { points: hist, exact: false };
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const within = hist.filter((p) => asDate(p.date) >= cutoff);
-  if (within.length >= 2) return { points: within, exact: true };
-  return { points: hist.slice(-2), exact: false };
+// Build the series for the selected window on a REAL time axis. The x-axis
+// domain is pinned to [start, end] of the range (not the data extent), and the
+// last-known net worth is carried forward to the window's start — so a day, a
+// week and a month look genuinely different even when the app wasn't opened
+// every day. `exact` is false when we have less history than the range asks for.
+function buildWindow(hist, days) {
+  const pts = hist.map((p) => ({ ms: asMs(p.date), net_worth: p.net_worth }));
+  if (pts.length < 2) return { view: pts, startMs: null, endMs: null, exact: false, from: pts[0]?.net_worth ?? 0 };
+
+  const endMs = pts[pts.length - 1].ms;
+  const firstMs = pts[0].ms;
+  const wantStart = endMs - days * DAY;
+  // "Exact" if our history reaches (within a few days of) the requested start.
+  const exact = firstMs <= wantStart + 3 * DAY;
+  const startMs = Math.max(wantStart, firstMs);
+
+  const within = pts.filter((p) => p.ms >= startMs);
+  const prior = pts.filter((p) => p.ms < startMs).pop(); // last value known before the window
+  const series = [];
+  if (!within.length || within[0].ms > startMs) {
+    series.push({ ms: startMs, net_worth: (prior || within[0]).net_worth }); // carry-forward anchor
+  }
+  series.push(...within);
+  return { view: downsample(series), startMs, endMs, exact, from: series[0].net_worth };
 }
 
 // "since" dates need the year once we're looking back past this one.
-const sinceLabel = (d) => {
-  const dt = asDate(d);
+const sinceLabel = (ms) => {
+  const dt = new Date(ms);
   const sameYear = dt.getFullYear() === new Date().getFullYear();
-  return dt.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    ...(sameYear ? {} : { year: 'numeric' }),
-  });
+  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) });
 };
 
 // Keep long ranges readable/fast — a decade of dailies is ~3,650 points.
@@ -121,10 +129,17 @@ function downsample(points, max = 180) {
   return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]);
 }
 
+// Evenly spaced ticks across the pinned domain (fewer for tiny spans).
+function makeTicks(a, b) {
+  if (a == null || b == null || b <= a) return undefined;
+  const n = Math.min(7, Math.max(2, Math.round((b - a) / DAY) + 1));
+  return Array.from({ length: n }, (_, i) => Math.round(a + ((b - a) * i) / (n - 1)));
+}
+
 // Day/month for short spans, month once it's a few months, month + year beyond
 // that (a 1-year span otherwise reads "Jul … Jul", which is ambiguous).
-const tickFormatter = (spanDays) => (d) => {
-  const dt = asDate(d);
+const tickFormatter = (spanDays) => (ms) => {
+  const dt = new Date(ms);
   if (spanDays <= 45) return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
   if (spanDays <= 120) return dt.toLocaleDateString('en-IN', { month: 'short' });
   return dt.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
@@ -158,21 +173,15 @@ function NetWorthHistory({ data, base, onUpgrade }) {
   }
   const hist = data.net_worth_history || [];
   const active = RANGES.find((r) => r.key === range) || RANGES[2];
-  const { points: windowed, exact } = sliceRange(hist, active.days);
-  const view = downsample(windowed);
+  const { view, startMs, endMs, exact, from } = buildWindow(hist, active.days);
 
-  const first = view[0]?.net_worth ?? 0;
   const latest = view[view.length - 1]?.net_worth ?? 0;
-  const delta = latest - first;
+  const delta = latest - from;
   const up = delta >= 0;
-  const spanDays =
-    view.length > 1
-      ? Math.max(1, Math.round((asDate(view[view.length - 1].date) - asDate(view[0].date)) / 86400000))
-      : 0;
-  // Only claim the requested range when we actually have that much history in
-  // it; otherwise say what's really on screen.
-  const spanLabel =
-    exact && windowed[0] !== hist[0] ? active.label : `since ${sinceLabel(windowed[0]?.date)}`;
+  const spanDays = startMs && endMs ? Math.max(1, Math.round((endMs - startMs) / DAY)) : 0;
+  // Claim the requested range only when our history actually covers it;
+  // otherwise say how far back the data really goes.
+  const spanLabel = exact ? active.label : `since ${sinceLabel(startMs)}`;
 
   return (
     <div className="card p-5">
@@ -185,7 +194,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
             <p className="mt-0.5 text-sm">
               <span className={`font-semibold ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
                 {up ? '▲' : '▼'} {money(Math.abs(delta), base)}
-                {first > 0 && ` (${percent((delta / first) * 100)})`}
+                {from > 0 && ` (${percent((delta / from) * 100)})`}
               </span>
               <span className="text-slate-400"> · {spanLabel}</span>
             </p>
@@ -221,9 +230,19 @@ function NetWorthHistory({ data, base, onUpgrade }) {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#ece6d8" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={tickFormatter(spanDays)} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={28} />
+            <XAxis
+              type="number"
+              dataKey="ms"
+              domain={[startMs, endMs]}
+              ticks={makeTicks(startMs, endMs)}
+              tickFormatter={tickFormatter(spanDays)}
+              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={20}
+            />
             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => money(v, base, { compact: true })} />
-            <Tooltip formatter={(v) => [money(v, base), 'Net worth']} labelFormatter={(d) => dateLabel(d)} />
+            <Tooltip formatter={(v) => [money(v, base), 'Net worth']} labelFormatter={(ms) => dateLabel(new Date(ms).toISOString().slice(0, 10))} />
             <Area type="monotone" dataKey="net_worth" stroke="#1f3a66" strokeWidth={2} fill="url(#nwFill)" />
           </AreaChart>
         </ResponsiveContainer>
