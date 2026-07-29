@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
+import { getFxRate } from '../services/prices.js';
 import { CURRENCIES } from '../markets.js';
 
 export const assetsRouter = Router();
@@ -33,10 +34,20 @@ const update = db.prepare(`
 `);
 const remove = db.prepare('DELETE FROM assets WHERE id = ? AND user_id = ?');
 
+// Assets are stored in whatever currency you entered, but shown in your base
+// currency (like the dashboard). Convert each one, one FX lookup per currency.
 assetsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ assets: await list.all(req.user.id) });
+    const base = req.user.base_currency;
+    const rows = await list.all(req.user.id);
+    const rates = {};
+    for (const a of rows) {
+      if (rates[a.currency] == null) rates[a.currency] = await getFxRate(a.currency, base);
+    }
+    const assets = rows.map((a) => ({ ...a, value_base: a.value * (rates[a.currency] ?? 1) }));
+    const total_base = assets.reduce((s, a) => s + a.value_base, 0);
+    res.json({ assets, base_currency: base, total_base });
   })
 );
 
