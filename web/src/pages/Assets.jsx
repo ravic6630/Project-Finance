@@ -142,7 +142,9 @@ function AssetForm({ open, onClose, onSaved, editing, defaultCurrency }) {
 
 export default function Assets() {
   const { user } = useAuth();
+  const base = user.base_currency;
   const [assets, setAssets] = useState([]);
+  const [totalBase, setTotalBase] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -154,6 +156,7 @@ export default function Assets() {
       setError('');
       const d = await api('/assets');
       setAssets(d.assets);
+      setTotalBase(d.total_base ?? 0);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -161,9 +164,10 @@ export default function Assets() {
     }
   }, []);
 
+  // Re-fetch (re-converts) when the base currency changes.
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, base]);
 
   async function onDelete(a) {
     if (!(await confirm({ title: `Delete “${a.name}”?`, message: 'This permanently removes the asset.', confirmLabel: 'Delete', danger: true }))) return;
@@ -175,11 +179,6 @@ export default function Assets() {
     }
   }
 
-  // Subtotal per currency (no FX on this page; the dashboard converts to base).
-  const subtotals = assets.reduce((acc, a) => {
-    acc[a.currency] = (acc[a.currency] || 0) + a.value;
-    return acc;
-  }, {});
   const openAdd = () => {
     setEditing(null);
     setFormOpen(true);
@@ -189,13 +188,14 @@ export default function Assets() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {Object.entries(subtotals).map(([cur, total]) => (
-            <div key={cur} className="rounded-xl bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200">
-              <span className="text-xs font-semibold uppercase text-slate-400">{cur} total</span>
-              <p className="text-lg font-bold text-slate-900">{money(total, cur)}</p>
+          {assets.length > 0 ? (
+            <div className="rounded-xl bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200">
+              <span className="text-xs font-semibold uppercase text-slate-400">Total assets</span>
+              <p className="text-lg font-bold text-slate-900">{money(totalBase, base)}</p>
             </div>
-          ))}
-          {assets.length === 0 && <p className="text-sm text-slate-500">No assets yet.</p>}
+          ) : (
+            <p className="text-sm text-slate-500">No assets yet.</p>
+          )}
         </div>
         <button className="btn-primary" onClick={openAdd}>
           <Plus size={16} /> Add asset
@@ -248,8 +248,11 @@ export default function Assets() {
                 <p className="mt-4 font-semibold text-slate-900">{a.name}</p>
                 <p className="text-xs font-medium uppercase text-slate-400">{meta.label}</p>
                 <p className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
-                  {money(a.value, a.currency)}
+                  {money(a.value_base ?? a.value, base)}
                 </p>
+                {a.currency !== base && (
+                  <p className="text-xs text-slate-400">entered as {money(a.value, a.currency)}</p>
+                )}
                 {a.notes && <p className="mt-2 text-xs text-slate-500">{a.notes}</p>}
               </div>
             );
