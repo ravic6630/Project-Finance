@@ -76,6 +76,19 @@ CREATE TABLE IF NOT EXISTS cash_accounts (
   updated_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_cash_user ON cash_accounts(user_id);
+-- Physical / other assets valued manually (house, land, a business, gold…).
+CREATE TABLE IF NOT EXISTS assets (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  type       TEXT NOT NULL DEFAULT 'PROPERTY',
+  value      REAL NOT NULL DEFAULT 0,
+  currency   TEXT NOT NULL DEFAULT 'INR',
+  notes      TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assets_user ON assets(user_id);
 CREATE TABLE IF NOT EXISTS transactions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

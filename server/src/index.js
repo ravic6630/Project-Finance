@@ -12,6 +12,7 @@ import { warmMfList } from './services/prices.js';
 import { authRouter } from './routes/auth.js';
 import { holdingsRouter } from './routes/holdings.js';
 import { cashRouter } from './routes/cash.js';
+import { assetsRouter } from './routes/assets.js';
 import { transactionsRouter } from './routes/transactions.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { pricesRouter } from './routes/prices.js';
@@ -41,6 +42,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'Sampada API' }
 app.use('/api/auth', authRouter);
 app.use('/api/holdings', holdingsRouter);
 app.use('/api/cash', cashRouter);
+app.use('/api/assets', assetsRouter);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/prices', pricesRouter);

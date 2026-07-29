@@ -18,6 +18,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Building2,
   ChevronRight,
   Crown,
   LineChart as LineChartIcon,
@@ -282,9 +283,13 @@ export default function Dashboard() {
   if (error) return <ErrorBanner message={error} />;
   if (!data) return null;
 
-  const { net_worth, investments, cash, allocation, cashflow, counts } = data;
+  const { net_worth, investments, cash, assets, allocation, cashflow, counts } = data;
   const gainPositive = investments.gain >= 0;
-  const isEmpty = counts.holdings === 0 && counts.accounts === 0 && counts.transactions === 0;
+  const isEmpty =
+    counts.holdings === 0 &&
+    counts.accounts === 0 &&
+    (counts.assets ?? 0) === 0 &&
+    counts.transactions === 0;
 
   return (
     <div className="space-y-6">
@@ -328,7 +333,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={TrendingUp}
           tone="brand"
@@ -349,6 +354,14 @@ export default function Dashboard() {
           to="/cash"
           value={money(cash.total, base)}
           sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
+        />
+        <StatCard
+          icon={Building2}
+          tone="brand"
+          label="Assets"
+          to="/assets"
+          value={money(assets?.total ?? 0, base)}
+          sub={<span className="text-slate-400">{counts.assets ?? 0} asset(s)</span>}
         />
         <StatCard
           icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
