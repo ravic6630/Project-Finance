@@ -50,7 +50,7 @@ adminRouter.get(
 );
 
 const CHILD_TABLES = [
-  'holdings', 'cash_accounts', 'transactions', 'goals', 'alerts',
+  'holdings', 'cash_accounts', 'assets', 'transactions', 'goals', 'alerts',
   'net_worth_snapshots', 'investment_txns', 'subscriptions',
   'broker_connections', 'email_prefs', 'password_resets', 'password_reset_codes',
   'support_messages',

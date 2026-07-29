@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ArrowLeftRight,
+  Building2,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -24,6 +25,7 @@ const NAV = [
   { to: '/goals', label: 'Goals', icon: Target },
   { to: '/returns', label: 'Returns & tax', icon: Receipt },
   { to: '/cash', label: 'Cash & Bank', icon: Wallet },
+  { to: '/assets', label: 'Assets', icon: Building2 },
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -34,6 +36,7 @@ const PAGE_TITLES = {
   '/goals': 'Goals',
   '/returns': 'Returns & tax',
   '/cash': 'Cash & Bank',
+  '/assets': 'Assets',
   '/transactions': 'Transactions',
   '/settings': 'Settings',
   '/admin': 'Admin',
@@ -160,7 +163,15 @@ export default function Layout() {
         </header>
 
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8 lg:py-8">
-          <Outlet />
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-24 text-sm text-slate-400">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

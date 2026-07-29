@@ -12,12 +12,14 @@ export async function buildSummary(user, { refresh = false } = {}) {
 
   const holdings = await db.prepare('SELECT * FROM holdings WHERE user_id = ?').all(userId);
   const accounts = await db.prepare('SELECT * FROM cash_accounts WHERE user_id = ?').all(userId);
+  const assets = await db.prepare('SELECT * FROM assets WHERE user_id = ?').all(userId);
   const txns = await db.prepare('SELECT * FROM transactions WHERE user_id = ?').all(userId);
 
   const { items, rates } = await enrichHoldings(holdings, base, { force: refresh });
 
   const extraCurrencies = new Set([
     ...accounts.map((a) => a.currency),
+    ...assets.map((a) => a.currency),
     ...txns.map((t) => t.currency),
   ]);
   for (const c of extraCurrencies) {
@@ -53,11 +55,22 @@ export async function buildSummary(user, { refresh = false } = {}) {
     cashTotal += v;
   }
 
-  const netWorth = investValue + cashTotal;
+  const assetsByType = {};
+  let assetsTotal = 0;
+  for (const a of assets) {
+    const v = toBase(a.value, a.currency);
+    (assetsByType[a.type] ||= { type: a.type, value: 0, count: 0 });
+    assetsByType[a.type].value += v;
+    assetsByType[a.type].count += 1;
+    assetsTotal += v;
+  }
+
+  const netWorth = investValue + cashTotal + assetsTotal;
 
   const allocation = [
     ...Object.values(byKind).map((k) => ({ key: k.key, label: k.label, value: k.value })),
     ...(cashTotal > 0 ? [{ key: 'CASH', label: 'Cash & Bank', value: cashTotal }] : []),
+    ...(assetsTotal > 0 ? [{ key: 'ASSETS', label: 'Assets', value: assetsTotal }] : []),
   ].filter((a) => a.value > 0);
 
   const months = [];
@@ -87,6 +100,7 @@ export async function buildSummary(user, { refresh = false } = {}) {
       by_kind: Object.values(byKind),
     },
     cash: { total: cashTotal, by_type: Object.values(cashByType) },
+    assets: { total: assetsTotal, by_type: Object.values(assetsByType) },
     allocation,
     cashflow: {
       months,
@@ -94,7 +108,12 @@ export async function buildSummary(user, { refresh = false } = {}) {
       this_month_expense: thisMonth.expense,
       this_month_net: thisMonth.income - thisMonth.expense,
     },
-    counts: { holdings: holdings.length, accounts: accounts.length, transactions: txns.length },
+    counts: {
+      holdings: holdings.length,
+      accounts: accounts.length,
+      assets: assets.length,
+      transactions: txns.length,
+    },
     rates,
   };
 }
