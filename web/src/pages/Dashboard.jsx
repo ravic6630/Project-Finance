@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   Area,
   AreaChart,
@@ -23,7 +24,6 @@ import {
   Crown,
   LineChart as LineChartIcon,
   PieChart as PieIcon,
-  RefreshCw,
   Sparkles,
   TrendingUp,
   Wallet,
@@ -32,9 +32,18 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
+import WealthHero from '../components/WealthHero.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
+
+// Staggered spring entrance for the stat cards (respects reduced motion via
+// framer-motion's built-in MotionConfig / prefers-reduced-motion handling).
+const gridStagger = { hidden: {}, show: { transition: { staggerChildren: 0.07 } } };
+const cardRise = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 240, damping: 26 } },
+};
 const MONTH_LABEL = (key) =>
   new Date(`${key}-01T00:00:00`).toLocaleDateString('en-US', { month: 'short' });
 
@@ -293,89 +302,74 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-slate-500">Total net worth</p>
-          <p className="num text-4xl font-bold tracking-tight text-brand-900">
-            {money(net_worth, base)}
-          </p>
-          <div className="gold-rule mt-2.5" />
-        </div>
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            setRefreshing(true);
-            load(true);
-          }}
-          disabled={refreshing}
-        >
-          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'Refreshing prices…' : 'Refresh prices'}
-        </button>
-      </div>
+      <WealthHero
+        data={data}
+        base={base}
+        user={user}
+        isEmpty={isEmpty}
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          load(true);
+        }}
+      />
 
-      {isEmpty && (
-        <div className="card flex flex-col items-start gap-3 bg-brand-50/60 p-6">
-          <div className="flex items-center gap-2 font-bold text-brand-800">
-            <Sparkles size={18} /> Welcome to Sampada!
-          </div>
-          <p className="text-sm text-brand-900/70">
-            Add your first holding or account to see your wealth come to life.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/investments" className="btn-primary">
-              Add an investment
-            </Link>
-            <Link to="/cash" className="btn-ghost">
-              Add a bank account
-            </Link>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={TrendingUp}
-          tone="brand"
-          label="Investments"
-          to="/investments"
-          value={money(investments.value, base)}
-          sub={
-            <span className={gainPositive ? 'text-emerald-600' : 'text-rose-600'}>
-              {gainPositive ? '▲' : '▼'} {money(Math.abs(investments.gain), base)} (
-              {percent(investments.gain_pct)})
-            </span>
-          }
-        />
-        <StatCard
-          icon={Wallet}
-          tone="emerald"
-          label="Cash & Bank"
-          to="/cash"
-          value={money(cash.total, base)}
-          sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
-        />
-        <StatCard
-          icon={Building2}
-          tone="brand"
-          label="Assets"
-          to="/assets"
-          value={money(assets?.total ?? 0, base)}
-          sub={<span className="text-slate-400">{counts.assets ?? 0} asset(s)</span>}
-        />
-        <StatCard
-          icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
-          tone="amber"
-          label="This month's cashflow"
-          to="/transactions"
-          value={money(cashflow.this_month_net, base)}
-          sub={
-            <span className="text-slate-400">
-              +{money(cashflow.this_month_income, base)} / −{money(cashflow.this_month_expense, base)}
-            </span>
-          }
-        />
-      </div>
+      <motion.div
+        variants={gridStagger}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <motion.div variants={cardRise}>
+          <StatCard
+            icon={TrendingUp}
+            tone="brand"
+            label="Investments"
+            to="/investments"
+            value={money(investments.value, base)}
+            sub={
+              <span className={gainPositive ? 'text-emerald-600' : 'text-rose-600'}>
+                {gainPositive ? '▲' : '▼'} {money(Math.abs(investments.gain), base)} (
+                {percent(investments.gain_pct)})
+              </span>
+            }
+          />
+        </motion.div>
+        <motion.div variants={cardRise}>
+          <StatCard
+            icon={Wallet}
+            tone="emerald"
+            label="Cash & Bank"
+            to="/cash"
+            value={money(cash.total, base)}
+            sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
+          />
+        </motion.div>
+        <motion.div variants={cardRise}>
+          <StatCard
+            icon={Building2}
+            tone="brand"
+            label="Assets"
+            to="/assets"
+            value={money(assets?.total ?? 0, base)}
+            sub={<span className="text-slate-400">{counts.assets ?? 0} asset(s)</span>}
+          />
+        </motion.div>
+        <motion.div variants={cardRise}>
+          <StatCard
+            icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
+            tone="amber"
+            label="This month's cashflow"
+            to="/transactions"
+            value={money(cashflow.this_month_net, base)}
+            sub={
+              <span className="text-slate-400">
+                +{money(cashflow.this_month_income, base)} / −{money(cashflow.this_month_expense, base)}
+              </span>
+            }
+          />
+        </motion.div>
+      </motion.div>
 
       {!isEmpty && <NetWorthHistory data={data} base={base} onUpgrade={() => setUpgradeOpen(true)} />}
 
