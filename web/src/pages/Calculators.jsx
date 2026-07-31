@@ -12,7 +12,7 @@ export default function Calculators() {
     <div className="min-h-screen bg-[#f4f2ec]">
       <header className="border-b border-[#e8e2d4] bg-[#faf9f5]">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 lg:px-8">
-          <Link to={user ? '/' : '/login'} className="flex items-center gap-2.5">
+          <Link to="/" className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-700 text-gold-300 ring-1 ring-gold-400/30">
               <Sprout size={20} />
             </span>
