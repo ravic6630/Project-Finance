@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../lib/AuthContext.jsx';
 import CurrencyMenu from './CurrencyMenu.jsx';
 import SupportChat from './SupportChat.jsx';
+import ThemeToggle from './ThemeToggle.jsx';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -127,6 +128,7 @@ export default function Layout() {
             <h1 className="font-display text-xl font-bold text-brand-900">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <CurrencyToggle />
             <div className="relative">
               <button

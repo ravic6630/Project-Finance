@@ -101,3 +101,87 @@ body {
     animation: none;
   }
 }
+
+/* ============================================================================
+   Dark mode. The app uses centralised component classes (.card/.input/.btn) and
+   a consistent set of slate/brand utilities, so the whole UI themes from here —
+   no per-component edits. Scoped under .dark, so light mode is untouched.
+   ============================================================================ */
+.dark {
+  color-scheme: dark;
+}
+.dark body {
+  background: #0a1120;
+  color: #c3cede;
+}
+
+/* @apply bakes values into these, so re-declare them for dark. */
+.dark .card {
+  background-color: #101d33;
+  border-color: #223250;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.dark .btn-ghost {
+  background-color: #1c2c49;
+  color: #c3cede;
+}
+.dark .btn-ghost:hover {
+  background-color: #26385a;
+}
+.dark .btn-danger {
+  background-color: #3a1620;
+  color: #fda4af;
+}
+.dark .btn-danger:hover {
+  background-color: #4a1a28;
+}
+.dark .input {
+  background-color: #14233d;
+  border-color: #2e4064;
+  color: #e7edf5;
+}
+.dark .input::placeholder {
+  color: #64758e;
+}
+
+/* Surfaces */
+.dark .bg-white { background-color: #101d33; }
+.dark .bg-slate-50 { background-color: #14233d; }
+.dark .bg-slate-100 { background-color: #1c2c49; }
+.dark .bg-slate-200 { background-color: #26385a; }
+.dark .bg-brand-50 { background-color: #142744; }
+.dark .bg-brand-100 { background-color: #1a3053; }
+.dark .bg-\[\#f4f2ec\] { background-color: #0a1120; }
+.dark .bg-\[\#faf9f5\] { background-color: #0d1626; }
+.dark .bg-\[\#faf9f5\]\/80 { background-color: rgba(13, 22, 38, 0.8); }
+.dark .bg-\[\#faf8f1\] { background-color: #14233d; }
+
+/* Text */
+.dark .text-slate-900 { color: #e7edf5; }
+.dark .text-slate-800 { color: #d6deea; }
+.dark .text-slate-700 { color: #c3cede; }
+.dark .text-slate-600 { color: #9db0c9; }
+.dark .text-slate-500 { color: #8496ae; }
+.dark .text-slate-400 { color: #6b7d96; }
+.dark .text-slate-300 { color: #55677f; }
+.dark .text-brand-900 { color: #e7edf5; }
+.dark .text-brand-800 { color: #cdd9ec; }
+.dark .text-brand-700 { color: #a9bcdd; }
+.dark .text-brand-600 { color: #8aa4c8; }
+
+/* Borders */
+.dark .border-slate-100 { border-color: #1b2942; }
+.dark .border-slate-200 { border-color: #24334f; }
+.dark .border-slate-300 { border-color: #2e4064; }
+.dark .border-\[\#e8e2d4\] { border-color: #223250; }
+.dark .border-\[\#efeadd\] { border-color: #223250; }
+
+/* Interactive hovers used on rows/buttons */
+.dark .hover\:bg-slate-50:hover { background-color: #14233d; }
+.dark .hover\:bg-slate-100:hover { background-color: #1c2c49; }
+.dark .hover\:bg-slate-200:hover { background-color: #26385a; }
+.dark .hover\:bg-slate-50\/60:hover { background-color: rgba(20, 35, 61, 0.55); }
+
+/* Keep the net-worth trend line readable on a dark card. */
+.dark .recharts-cartesian-grid line { stroke: #22324f; }
+.dark .recharts-area-curve { stroke: #8fb0dd !important; }
