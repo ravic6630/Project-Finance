@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import Illo from './Illustrations.jsx';
 import { useEffect } from 'react';
 
 export function Spinner({ label = 'Loading…' }) {
@@ -34,8 +35,8 @@ export function Modal({ open, onClose, title, children, wide = false }) {
   // The header is pinned and only the body scrolls, so the close button stays
   // reachable even in a tall modal (e.g. the calculator).
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center">
-      <div className={`card my-8 flex max-h-[calc(100vh-4rem)] w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} flex-col overflow-hidden p-0`}>
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center">
+      <div className={`modal-pop card my-8 flex max-h-[calc(100vh-4rem)] w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} flex-col overflow-hidden p-0`}>
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
           <h3 className="text-lg font-bold text-slate-900">{title}</h3>
           <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
@@ -48,10 +49,14 @@ export function Modal({ open, onClose, title, children, wide = false }) {
   );
 }
 
-export function EmptyState({ icon: Icon, title, hint, action }) {
+export function EmptyState({ icon: Icon, illo, title, hint, action }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 py-16 text-center">
-      {Icon && <Icon className="mb-3 text-slate-300" size={40} />}
+    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 py-14 text-center">
+      {illo ? (
+        <div className="mb-1"><Illo name={illo} /></div>
+      ) : (
+        Icon && <Icon className="mb-3 text-slate-300" size={40} />
+      )}
       <p className="font-semibold text-slate-700">{title}</p>
       {hint && <p className="mt-1 max-w-sm text-sm text-slate-400">{hint}</p>}
       {action && <div className="mt-5">{action}</div>}

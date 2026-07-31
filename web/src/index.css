@@ -185,3 +185,70 @@ body {
 /* Keep the net-worth trend line readable on a dark card. */
 .dark .recharts-cartesian-grid line { stroke: #22324f; }
 .dark .recharts-area-curve { stroke: #8fb0dd !important; }
+
+/* Empty-state illustrations: a slow bob for coins/flags and a gentle sway for
+   sprouts (anchored at the stem). Both stop under reduced motion. */
+@keyframes illo-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@keyframes illo-sway {
+  0%,
+  100% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2.5deg);
+  }
+}
+.illo-float {
+  animation: illo-float 4s ease-in-out infinite;
+}
+.illo-sway {
+  animation: illo-sway 5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .illo-float,
+  .illo-sway {
+    animation: none;
+  }
+}
+
+/* Modal entrance: quick fade for the backdrop, a soft pop for the card. */
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal-backdrop {
+  animation: modal-fade 0.15s ease-out;
+}
+.modal-pop {
+  animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-pop {
+    animation: none;
+  }
+}

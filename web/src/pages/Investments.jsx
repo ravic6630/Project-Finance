@@ -249,6 +249,7 @@ export default function Investments() {
         <Spinner label="Loading holdings…" />
       ) : holdings.length === 0 ? (
         <EmptyState
+          illo="invest"
           icon={TrendingUp}
           title="No investments yet"
           hint="Add your Indian stocks, US stocks and mutual funds. We'll fetch live prices automatically."

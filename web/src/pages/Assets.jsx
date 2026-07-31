@@ -208,6 +208,7 @@ export default function Assets() {
         <Spinner label="Loading assets…" />
       ) : assets.length === 0 ? (
         <EmptyState
+          illo="assets"
           icon={Building2}
           title="No assets yet"
           hint="Add property, land, a business, vehicles or gold — anything with real value — so your net worth reflects everything you own."

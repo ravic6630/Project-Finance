@@ -236,6 +236,7 @@ export default function Cash() {
         <Spinner label="Loading accounts…" />
       ) : accounts.length === 0 ? (
         <EmptyState
+          illo="cash"
           icon={Wallet}
           title="No cash or bank accounts yet"
           hint="Add your savings accounts, fixed deposits and cash so your net worth is complete."
