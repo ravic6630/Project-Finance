@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx'; // eager: first paint for logged-out visitors
+import Landing from './pages/Landing.jsx'; // eager: the public front door (motion lib is already in the entry chunk)
 
 // Everything else is code-split, so the initial bundle stays small and heavy
 // pages (charts, etc.) only download when they're actually opened.
@@ -36,15 +37,17 @@ export default function App() {
     return (
       <Suspense fallback={<Splash />}>
         <Routes>
+          {/* The public marketing page is the logged-out front door. */}
+          <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot" element={<ForgotPassword />} />
           {/* Reset is now code-based and lives on /forgot; redirect old links. */}
           <Route path="/reset" element={<Navigate to="/forgot" replace />} />
           <Route path="/calculators" element={<Calculators />} />
-          {/* Logged-out visitors land on the login page; the public calculators
-              stay reachable via the "Try our free calculators" link there. */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          {/* Deep links from a signed-out session (e.g. /investments) land on
+              the landing page; after sign-in they go where they wanted. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     );

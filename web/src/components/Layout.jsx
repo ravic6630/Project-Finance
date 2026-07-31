@@ -1,5 +1,6 @@
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   ArrowLeftRight,
   Building2,
@@ -53,7 +54,7 @@ function CurrencyToggle() {
   );
 }
 
-function SidebarContent({ onNavigate }) {
+function SidebarContent({ onNavigate, pillId }) {
   const { user } = useAuth();
   const nav = user?.role === 'admin' ? [...NAV, { to: '/admin', label: 'Admin', icon: Shield }] : NAV;
   return (
@@ -75,15 +76,28 @@ function SidebarContent({ onNavigate }) {
             end={end}
             onClick={onNavigate}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
-                isActive
-                  ? 'bg-brand-50 text-brand-800 ring-1 ring-gold-200'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+              `relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
+                isActive ? 'text-brand-800' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
               }`
             }
           >
-            <Icon size={18} />
-            {label}
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  // The active highlight is a shared element, so it glides
+                  // between items when you change pages.
+                  <motion.span
+                    layoutId={pillId}
+                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                    className="absolute inset-0 rounded-xl bg-brand-50 ring-1 ring-gold-200"
+                  />
+                )}
+                <span className="relative flex items-center gap-3">
+                  <Icon size={18} />
+                  {label}
+                </span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -94,6 +108,10 @@ function SidebarContent({ onNavigate }) {
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const firstRender = useRef(true);
+  useEffect(() => {
+    firstRender.current = false;
+  }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const title = PAGE_TITLES[location.pathname] || 'Sampada';
@@ -103,7 +121,7 @@ export default function Layout() {
     <div className="min-h-screen lg:flex">
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-[#e8e2d4] bg-white p-4 lg:block">
-        <SidebarContent />
+        <SidebarContent pillId="nav-pill-desktop" />
       </aside>
 
       {/* Mobile drawer */}
@@ -111,7 +129,7 @@ export default function Layout() {
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-slate-900/40" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 h-full w-64 bg-white p-4 shadow-xl">
-            <SidebarContent onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent pillId="nav-pill-mobile" onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
@@ -165,15 +183,25 @@ export default function Layout() {
         </header>
 
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8 lg:py-8">
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center py-24 text-sm text-slate-400">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500" />
-              </div>
-            }
+          {/* Entrance-only page transition, keyed by path so each navigation
+              fades/rises in. Skipped on the very first render (initial={false})
+              so a load in a background tab is never left invisible. */}
+          <motion.div
+            key={location.pathname}
+            initial={firstRender.current ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
           >
-            <Outlet />
-          </Suspense>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-24 text-sm text-slate-400">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </motion.div>
         </main>
       </div>
 

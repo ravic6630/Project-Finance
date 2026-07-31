@@ -269,6 +269,7 @@ export default function Transactions() {
         <Spinner label="Loading transactions…" />
       ) : txns.length === 0 ? (
         <EmptyState
+          illo="transactions"
           icon={ArrowUpCircle}
           title="No transactions yet"
           hint="Log your income and expenses to track your monthly cashflow."

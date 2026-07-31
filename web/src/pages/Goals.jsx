@@ -339,6 +339,7 @@ export default function Goals() {
 
       {goals.length === 0 ? (
         <EmptyState
+          illo="goals"
           icon={Target}
           title="No goals yet"
           hint="Add your first goal — retirement, a house, your child's education — and we'll project whether you're on track."
