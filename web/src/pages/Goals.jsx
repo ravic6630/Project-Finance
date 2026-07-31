@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   Calculator,
   Car,
@@ -22,6 +23,7 @@ import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import CalculatorTool from '../components/CalculatorTool.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
+import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 
 const TYPES = [
   { value: 'RETIREMENT', label: 'Retirement', icon: Palmtree },
@@ -184,8 +186,15 @@ function GoalCard({ goal, onEdit, onDelete }) {
   const saved = Math.min(100, p.saved_pct ?? 0);
 
   return (
-    <div className="card group p-5">
-      <div className="flex items-start justify-between">
+    <motion.div variants={cardRise} whileHover={{ y: -5 }} className="card group relative overflow-hidden p-5">
+      {/* oversized goal-icon watermark, stirring gently on hover */}
+      <meta.icon
+        aria-hidden
+        size={116}
+        strokeWidth={1}
+        className="pointer-events-none absolute -bottom-7 -right-6 -rotate-12 text-brand-700 opacity-[0.07] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:text-[#8fa9cd] dark:opacity-[0.12]"
+      />
+      <div className="relative flex items-start justify-between">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
           <meta.icon size={20} />
         </div>
@@ -199,7 +208,7 @@ function GoalCard({ goal, onEdit, onDelete }) {
         </div>
       </div>
 
-      <p className="mt-4 font-semibold text-slate-900">{goal.name}</p>
+      <p className="relative mt-4 font-semibold text-slate-900">{goal.name}</p>
       <p className="text-xs font-medium uppercase text-slate-400">
         {meta.label}
         {goal.target_date ? ` · by ${dateLabel(goal.target_date)}` : ''}
@@ -235,7 +244,7 @@ function GoalCard({ goal, onEdit, onDelete }) {
           </p>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -356,7 +365,12 @@ export default function Goals() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          variants={gridStagger}
+          initial={pageVisible() ? 'hidden' : false}
+          animate="show"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
           {goals.map((g) => (
             <GoalCard
               key={g.id}
@@ -368,7 +382,7 @@ export default function Goals() {
               onDelete={onDelete}
             />
           ))}
-        </div>
+        </motion.div>
       )}
 
       <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={load} />

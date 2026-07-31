@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Banknote, Landmark, Lock, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
+import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 
 const TYPES = [
   { value: 'BANK', label: 'Bank', icon: Landmark },
@@ -253,12 +255,28 @@ export default function Cash() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          variants={gridStagger}
+          initial={pageVisible() ? 'hidden' : false}
+          animate="show"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
           {accounts.map((a) => {
             const meta = typeMeta(a.type);
             return (
-              <div key={a.id} className="card group p-5">
-                <div className="flex items-start justify-between">
+              <motion.div
+                key={a.id}
+                variants={cardRise}
+                whileHover={{ y: -5 }}
+                className="card group relative overflow-hidden p-5"
+              >
+                <meta.icon
+                  aria-hidden
+                  size={116}
+                  strokeWidth={1}
+                  className="pointer-events-none absolute -bottom-7 -right-6 -rotate-12 text-brand-700 opacity-[0.07] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:text-[#8fa9cd] dark:opacity-[0.12]"
+                />
+                <div className="relative flex items-start justify-between">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
                     <meta.icon size={20} />
                   </div>
@@ -280,9 +298,9 @@ export default function Cash() {
                     </button>
                   </div>
                 </div>
-                <p className="mt-4 font-semibold text-slate-900">{a.name}</p>
-                <p className="text-xs font-medium uppercase text-slate-400">{meta.label}</p>
-                <p className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+                <p className="relative mt-4 font-semibold text-slate-900">{a.name}</p>
+                <p className="relative text-xs font-medium uppercase text-slate-400">{meta.label}</p>
+                <p className="num relative mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
                   {money(a.balance, a.currency)}
                 </p>
                 {a.type === 'FD' && (a.interest_rate || a.maturity_date) && (
@@ -292,10 +310,10 @@ export default function Cash() {
                     {a.maturity_date ? `matures ${dateLabel(a.maturity_date)}` : ''}
                   </p>
                 )}
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       )}
 
       <CashForm
