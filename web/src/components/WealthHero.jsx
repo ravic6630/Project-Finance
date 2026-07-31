@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Sprout } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import confetti from 'canvas-confetti';
+import { RefreshCw, Sprout, Trophy } from 'lucide-react';
 import { money, percent } from '../lib/format.js';
+import { isNewMilestone, reachedMilestone } from '../lib/milestones.js';
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -34,6 +37,18 @@ function useCountUp(target, duration = 900) {
 
 const greetingFor = (h) => (h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : 'Good evening');
 
+// A restrained, on-brand confetti burst (navy · gold · green) — not a party.
+function celebrate() {
+  if (reducedMotion()) return;
+  const colors = ['#c2a368', '#1f3a66', '#2f7a53', '#d8bb79'];
+  const fire = (ratio, opts) =>
+    confetti({ origin: { y: 0.35 }, colors, disableForReducedMotion: true, particleCount: Math.floor(140 * ratio), ...opts });
+  fire(0.25, { spread: 26, startVelocity: 55 });
+  fire(0.35, { spread: 60 });
+  fire(0.35, { spread: 100, decay: 0.91, scalar: 0.9 });
+  fire(0.1, { spread: 120, startVelocity: 45 });
+}
+
 // Net-worth change across ~the last 30 days, from the premium history series.
 function monthChange(hist) {
   if (!hist || hist.length < 2) return null;
@@ -54,6 +69,18 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
   const chg = monthChange(data.net_worth_history);
   const up = chg ? chg.delta >= 0 : true;
 
+  const milestone = reachedMilestone(data.net_worth || 0, base);
+  const [justCrossed, setJustCrossed] = useState(false);
+  useEffect(() => {
+    if (milestone && isNewMilestone(milestone)) {
+      setJustCrossed(true);
+      celebrate();
+      const t = setTimeout(() => setJustCrossed(false), 6000);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [milestone]);
+
   return (
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 p-6 text-white shadow-xl sm:p-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -64,10 +91,31 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
         />
       </div>
 
+      <AnimatePresence>
+        {justCrossed && milestone && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+            className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-gold-400 px-3.5 py-1.5 text-sm font-bold text-brand-900 shadow-lg"
+          >
+            🎉 You crossed {money(milestone, base, { compact: true })}!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-gold-300">
-            <Sprout size={15} /> {greetingFor(new Date().getHours())}, {first}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-gold-300">
+            <span className="flex items-center gap-1.5">
+              <Sprout size={15} /> {greetingFor(new Date().getHours())}, {first}
+            </span>
+            {milestone && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2 py-0.5 text-[11px] font-bold text-gold-200 ring-1 ring-gold-400/30">
+                <Trophy size={11} /> {money(milestone, base, { compact: true })} club
+              </span>
+            )}
           </p>
           <p className="mt-2 text-[11px] font-semibold uppercase tracking-widest text-brand-200">Total net worth</p>
           <p className="num mt-0.5 text-4xl font-extrabold tracking-tight sm:text-5xl">{money(shown, base)}</p>
