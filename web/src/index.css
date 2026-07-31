@@ -81,3 +81,23 @@ body {
     @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
   }
 }
+
+/* Slow drifting aurora behind the dashboard hero (respects reduced motion). */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8%, -6%, 0) scale(1.2);
+  }
+}
+.aurora-blob {
+  animation: aurora-drift 16s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob {
+    animation: none;
+  }
+}

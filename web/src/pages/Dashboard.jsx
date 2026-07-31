@@ -23,7 +23,6 @@ import {
   Crown,
   LineChart as LineChartIcon,
   PieChart as PieIcon,
-  RefreshCw,
   Sparkles,
   TrendingUp,
   Wallet,
@@ -32,6 +31,7 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
+import WealthHero from '../components/WealthHero.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
@@ -293,45 +293,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-slate-500">Total net worth</p>
-          <p className="num text-4xl font-bold tracking-tight text-brand-900">
-            {money(net_worth, base)}
-          </p>
-          <div className="gold-rule mt-2.5" />
-        </div>
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            setRefreshing(true);
-            load(true);
-          }}
-          disabled={refreshing}
-        >
-          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'Refreshing prices…' : 'Refresh prices'}
-        </button>
-      </div>
-
-      {isEmpty && (
-        <div className="card flex flex-col items-start gap-3 bg-brand-50/60 p-6">
-          <div className="flex items-center gap-2 font-bold text-brand-800">
-            <Sparkles size={18} /> Welcome to Sampada!
-          </div>
-          <p className="text-sm text-brand-900/70">
-            Add your first holding or account to see your wealth come to life.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/investments" className="btn-primary">
-              Add an investment
-            </Link>
-            <Link to="/cash" className="btn-ghost">
-              Add a bank account
-            </Link>
-          </div>
-        </div>
-      )}
+      <WealthHero
+        data={data}
+        base={base}
+        user={user}
+        isEmpty={isEmpty}
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          load(true);
+        }}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
