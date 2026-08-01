@@ -29,6 +29,7 @@ import { supportRouter } from './routes/support.js';
 import { exportRouter } from './routes/export.js';
 import { recurringRouter } from './routes/recurring.js';
 import { budgetsRouter } from './routes/budgets.js';
+import { profilesRouter } from './routes/profiles.js';
 import { startDigestScheduler } from './services/scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,7 @@ app.use('/api/support', supportRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/recurring', recurringRouter);
 app.use('/api/budgets', budgetsRouter);
+app.use('/api/profiles', profilesRouter);
 
 // Unknown API route -> JSON 404 (so the SPA fallback never swallows it).
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
+import { useProfile } from '../lib/ProfileContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
 import WealthHero from '../components/WealthHero.jsx';
@@ -389,6 +390,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { active: activeProfile, profileQuery, activeLabel } = useProfile();
   const base = user.base_currency;
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -399,7 +401,10 @@ export default function Dashboard() {
   const load = useCallback(async (refresh = false) => {
     try {
       setError('');
-      const d = await api(`/dashboard${refresh ? '?refresh=1' : ''}`);
+      const params = [refresh ? 'refresh=1' : '', profileQuery('').replace('?', '')]
+        .filter(Boolean)
+        .join('&');
+      const d = await api(`/dashboard${params ? `?${params}` : ''}`);
       setData(d);
     } catch (err) {
       setError(err.message);
@@ -407,12 +412,13 @@ export default function Dashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [activeProfile]);
 
   useEffect(() => {
     setLoading(true);
     load();
-  }, [load, base]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load, base, activeProfile]);
 
   if (loading) return <Spinner label="Loading your dashboard…" />;
   if (error) return <ErrorBanner message={error} />;

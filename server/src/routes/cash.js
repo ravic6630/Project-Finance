@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
+import { scopeFromReq, normalizeProfileId } from './profiles.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { CURRENCIES } from '../markets.js';
 
@@ -28,17 +29,17 @@ function readBody(body) {
   };
 }
 
-const list = db.prepare('SELECT * FROM cash_accounts WHERE user_id = ? ORDER BY type, name');
+const listScoped = (sql) => db.prepare(`SELECT * FROM cash_accounts WHERE user_id = ?${sql} ORDER BY type, name`);
 const getOne = db.prepare('SELECT * FROM cash_accounts WHERE id = ? AND user_id = ?');
 const insert = db.prepare(`
   INSERT INTO cash_accounts
-    (user_id, name, type, balance, currency, interest_rate, maturity_date, notes, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (user_id, name, type, balance, currency, interest_rate, maturity_date, notes, profile_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const update = db.prepare(`
   UPDATE cash_accounts SET
     name = ?, type = ?, balance = ?, currency = ?, interest_rate = ?,
-    maturity_date = ?, notes = ?, updated_at = ?
+    maturity_date = ?, notes = ?, profile_id = ?, updated_at = ?
   WHERE id = ? AND user_id = ?
 `);
 const remove = db.prepare('DELETE FROM cash_accounts WHERE id = ? AND user_id = ?');
@@ -46,7 +47,7 @@ const remove = db.prepare('DELETE FROM cash_accounts WHERE id = ? AND user_id = 
 cashRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ accounts: await list.all(req.user.id) });
+    res.json({ accounts: await (() => { const sc = scopeFromReq(req); return listScoped(sc.sql).all(req.user.id, ...sc.args); })() });
   })
 );
 
@@ -57,7 +58,8 @@ cashRouter.post(
     const ts = now();
     const info = await insert.run(
       req.user.id, b.name, b.type, b.balance, b.currency,
-      b.interestRate, b.maturityDate, b.notes, ts, ts
+      b.interestRate, b.maturityDate, b.notes,
+      await normalizeProfileId(req.user.id, req.body.profile_id), ts, ts
     );
     res.status(201).json({ account: await getOne.get(Number(info.lastInsertRowid), req.user.id) });
   })
@@ -71,7 +73,11 @@ cashRouter.patch(
     const b = readBody({ ...existing, ...req.body });
     await update.run(
       b.name, b.type, b.balance, b.currency, b.interestRate,
-      b.maturityDate, b.notes, now(), req.params.id, req.user.id
+      b.maturityDate, b.notes,
+      req.body.profile_id === undefined
+        ? existing.profile_id
+        : await normalizeProfileId(req.user.id, req.body.profile_id),
+      now(), req.params.id, req.user.id
     );
     res.json({ account: await getOne.get(req.params.id, req.user.id) });
   })

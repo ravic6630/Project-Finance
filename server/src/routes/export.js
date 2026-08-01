@@ -11,6 +11,7 @@ exportRouter.use(authRequired);
 // row (it's implicit), and broker access tokens are deliberately NOT included —
 // only the fact that a broker was connected, and when.
 const OWNED_TABLES = [
+  'profiles',
   'holdings',
   'cash_accounts',
   'assets',

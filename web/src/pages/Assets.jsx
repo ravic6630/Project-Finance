@@ -8,6 +8,7 @@ import { CURRENCIES } from '../lib/markets.js';
 import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
+import { useProfile } from '../lib/ProfileContext.jsx';
 
 // Each asset type carries its own visual identity: an icon-chip tint, a soft
 // gradient wash over the card, and a watermark colour. All tones have dark
@@ -92,7 +93,7 @@ function useCountUp(target, duration = 800) {
 
 const blank = { name: '', type: 'PROPERTY', value: '', currency: 'INR', notes: '' };
 
-function AssetForm({ open, onClose, onSaved, editing, defaultCurrency }) {
+function AssetForm({ open, onClose, onSaved, editing, defaultCurrency, profileId = null }) {
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -121,6 +122,7 @@ function AssetForm({ open, onClose, onSaved, editing, defaultCurrency }) {
     setBusy(true);
     try {
       const payload = {
+        ...(profileId && !editing ? { profile_id: profileId } : {}),
         name: form.name,
         type: form.type,
         value: Number(form.value || 0),
@@ -215,6 +217,7 @@ function AssetForm({ open, onClose, onSaved, editing, defaultCurrency }) {
 
 export default function Assets() {
   const { user } = useAuth();
+  const { active: activeProfile, activeProfileId, profileQuery } = useProfile();
   const base = user.base_currency;
   const [assets, setAssets] = useState([]);
   const [totalBase, setTotalBase] = useState(0);
@@ -227,7 +230,7 @@ export default function Assets() {
   const load = useCallback(async () => {
     try {
       setError('');
-      const d = await api('/assets');
+      const d = await api(`/assets${profileQuery()}`);
       setAssets(d.assets);
       setTotalBase(d.total_base ?? 0);
     } catch (err) {
@@ -235,12 +238,12 @@ export default function Assets() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeProfile]);
 
   // Re-fetch (re-converts) when the base currency changes.
   useEffect(() => {
     load();
-  }, [load, base]);
+  }, [load, base, activeProfile]);
 
   async function onDelete(a) {
     if (!(await confirm({ title: `Delete “${a.name}”?`, message: 'This permanently removes the asset.', confirmLabel: 'Delete', danger: true }))) return;
@@ -387,6 +390,7 @@ export default function Assets() {
       )}
 
       <AssetForm
+        profileId={activeProfileId}
         open={formOpen}
         editing={editing}
         defaultCurrency={user.base_currency}

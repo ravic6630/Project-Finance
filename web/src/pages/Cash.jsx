@@ -6,6 +6,7 @@ import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
+import { useProfile } from '../lib/ProfileContext.jsx';
 import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 
 const TYPES = [
@@ -26,7 +27,7 @@ const blank = {
   notes: '',
 };
 
-function CashForm({ open, onClose, onSaved, editing }) {
+function CashForm({ open, onClose, onSaved, editing, profileId = null }) {
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -57,6 +58,7 @@ function CashForm({ open, onClose, onSaved, editing }) {
     setBusy(true);
     try {
       const payload = {
+        ...(profileId && !editing ? { profile_id: profileId } : {}),
         name: form.name,
         type: form.type,
         balance: Number(form.balance || 0),
@@ -169,6 +171,7 @@ function CashForm({ open, onClose, onSaved, editing }) {
 }
 
 export default function Cash() {
+  const { active: activeProfile, activeProfileId, profileQuery } = useProfile();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -178,20 +181,20 @@ export default function Cash() {
   const load = useCallback(async () => {
     try {
       setError('');
-      const d = await api('/cash');
+      const d = await api(`/cash${profileQuery()}`);
       setAccounts(d.accounts);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeProfile]);
 
   const confirm = useConfirm();
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, activeProfile]);
 
   async function onDelete(a) {
     if (!(await confirm({ title: `Delete “${a.name}”?`, message: 'This permanently removes the account.', confirmLabel: 'Delete', danger: true }))) return;
@@ -317,6 +320,7 @@ export default function Cash() {
       )}
 
       <CashForm
+        profileId={activeProfileId}
         open={formOpen}
         editing={editing}
         onClose={() => setFormOpen(false)}

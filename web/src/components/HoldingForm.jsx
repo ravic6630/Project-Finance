@@ -199,6 +199,7 @@ export default function HoldingForm({ open, onClose, onSaved, editing }) {
     setBusy(true);
     try {
       const payload = {
+        ...(profileId && !editing ? { profile_id: profileId } : {}),
         kind: form.kind,
         name: form.name,
         currency: form.currency,

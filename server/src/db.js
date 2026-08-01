@@ -46,6 +46,16 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT NOT NULL DEFAULT 'user',
   created_at    TEXT NOT NULL
 );
+-- Family members tracked under one login. profile_id NULL on a wealth row
+-- means it belongs to the account owner ("Me").
+CREATE TABLE IF NOT EXISTS profiles (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  relation   TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
 CREATE TABLE IF NOT EXISTS holdings (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -57,6 +67,7 @@ CREATE TABLE IF NOT EXISTS holdings (
   avg_cost     REAL NOT NULL DEFAULT 0,
   currency     TEXT NOT NULL DEFAULT 'INR',
   manual_price REAL,
+  profile_id   INTEGER,
   notes        TEXT,
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
@@ -71,6 +82,7 @@ CREATE TABLE IF NOT EXISTS cash_accounts (
   currency      TEXT NOT NULL DEFAULT 'INR',
   interest_rate REAL,
   maturity_date TEXT,
+  profile_id    INTEGER,
   notes         TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
@@ -85,6 +97,7 @@ CREATE TABLE IF NOT EXISTS assets (
   value      REAL NOT NULL DEFAULT 0,
   currency   TEXT NOT NULL DEFAULT 'INR',
   notes      TEXT,
+  profile_id INTEGER,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -306,6 +319,9 @@ export async function initDb() {
   await addColumn('subscriptions', 'premium_welcome_sent_at', 'TEXT');
   await addColumn('transactions', 'recurring_rule_id', 'INTEGER');
   await addColumn('users', 'totp_secret', 'TEXT');
+  await addColumn('holdings', 'profile_id', 'INTEGER');
+  await addColumn('cash_accounts', 'profile_id', 'INTEGER');
+  await addColumn('assets', 'profile_id', 'INTEGER');
   await addColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
