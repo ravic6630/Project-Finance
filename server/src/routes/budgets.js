@@ -77,6 +77,30 @@ budgetsRouter.get(
   })
 );
 
+// Set several budgets at once (the template flow). Rows without a positive
+// amount are simply skipped, so the client can send the whole template.
+budgetsRouter.put(
+  '/bulk',
+  asyncHandler(async (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items.slice(0, 50) : [];
+    if (!items.length) throw bad('items is required');
+    const ts = now();
+    let set = 0;
+    for (const it of items) {
+      const category = str(it.category);
+      const amount = Number(it.amount);
+      if (!category || !Number.isFinite(amount) || amount <= 0) continue;
+      const currency = it.currency
+        ? oneOf(String(it.currency).toUpperCase(), CURRENCIES, 'currency')
+        : req.user.base_currency;
+      await upsert.run(req.user.id, category, amount, currency, ts, ts);
+      set += 1;
+    }
+    if (!set) throw bad('Enter an amount for at least one category');
+    res.json({ ok: true, set });
+  })
+);
+
 // Upsert one budget per category.
 budgetsRouter.put(
   '/',

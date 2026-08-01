@@ -1,10 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, PiggyBank, Plus, Trash2 } from 'lucide-react';
+import { ClipboardList, Loader2, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { money } from '../lib/format.js';
 import { ErrorBanner, Modal, Spinner } from './ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
+
+// Starter template mirroring a classic monthly-budget planner: essentials,
+// lifestyle, and fixed commitments. Users fill amounts for the rows they want.
+const TEMPLATE = [
+  {
+    group: 'Essentials',
+    categories: ['Rent & Maintenance', 'Property Tax', 'Utilities', 'Groceries', 'Transport', 'Medical', 'School Fees', 'Insurance'],
+  },
+  {
+    group: 'Lifestyle',
+    categories: ['Maid & Help', 'Shopping', 'Travel', 'Dining & Entertainment'],
+  },
+  {
+    group: 'Commitments',
+    categories: ['EMIs', 'Investments (SIP)'],
+  },
+];
 
 const monthLabel = (ym) =>
   new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
@@ -58,6 +75,8 @@ export default function Budgets({ open, onClose, categories }) {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [view, setView] = useState('list'); // 'list' | 'template'
+  const [tpl, setTpl] = useState({}); // category -> amount string
   const confirm = useConfirm();
 
   const load = useCallback(async () => {
@@ -74,8 +93,30 @@ export default function Budgets({ open, onClose, categories }) {
     setData(null);
     setCategory('');
     setAmount('');
+    setView('list');
+    setTpl({});
     load();
   }, [open, load]);
+
+  const tplCount = Object.values(tpl).filter((v) => Number(v) > 0).length;
+
+  async function applyTemplate() {
+    setBusy(true);
+    setError('');
+    try {
+      const items = Object.entries(tpl)
+        .filter(([, v]) => Number(v) > 0)
+        .map(([cat, v]) => ({ category: cat, amount: Number(v) }));
+      await api('/budgets/bulk', { method: 'PUT', body: { items } });
+      setView('list');
+      setTpl({});
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save(e) {
     e?.preventDefault();
@@ -117,6 +158,45 @@ export default function Budgets({ open, onClose, categories }) {
 
         <ErrorBanner message={error} />
 
+        {view === 'template' ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              A classic monthly plan — essentials, lifestyle and commitments. Fill amounts for the
+              rows you want (leave the rest blank) and set them all at once.
+            </p>
+            {TEMPLATE.map(({ group, categories: cats }) => (
+              <div key={group}>
+                <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">{group}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {cats.map((cat) => (
+                    <label key={cat} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5">
+                      <span className="truncate text-sm font-medium text-slate-700">{cat}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={tpl[cat] || ''}
+                        onChange={(e) => setTpl((t) => ({ ...t, [cat]: e.target.value }))}
+                        placeholder="0"
+                        className="w-28 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-right text-sm outline-none transition focus:border-brand-500"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button type="button" className="btn-ghost" onClick={() => setView('list')}>
+                Back
+              </button>
+              <button className="btn-primary" disabled={busy || tplCount === 0} onClick={applyTemplate}>
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <ClipboardList size={16} />}
+                Set {tplCount || ''} budget{tplCount === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* add / update */}
         <form onSubmit={save} className="flex flex-wrap items-end gap-2">
           <div className="min-w-[160px] flex-1">
@@ -136,6 +216,9 @@ export default function Budgets({ open, onClose, categories }) {
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
             Set
           </button>
+          <button type="button" className="btn-ghost" onClick={() => setView('template')}>
+            <ClipboardList size={16} /> Template
+          </button>
         </form>
 
         {data === null ? (
@@ -145,8 +228,11 @@ export default function Budgets({ open, onClose, categories }) {
             <PiggyBank className="mx-auto mb-2 text-slate-300" size={32} />
             <p className="font-semibold text-slate-700">No budgets yet</p>
             <p className="mx-auto mt-1 max-w-xs text-sm text-slate-400">
-              Pick a category above — spending this month shows up against it instantly.
+              Start from a ready-made monthly plan, or pick a category above.
             </p>
+            <button className="btn-primary mt-4" onClick={() => setView('template')}>
+              <ClipboardList size={16} /> Start from a template
+            </button>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -177,6 +263,8 @@ export default function Budgets({ open, onClose, categories }) {
               ))}
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </Modal>
