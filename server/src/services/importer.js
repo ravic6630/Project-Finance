@@ -1,4 +1,5 @@
 import { db, now } from '../db.js';
+import { HttpError } from '../util.js';
 import { num, str } from '../util.js';
 import { getPrice } from './prices.js';
 import { ALL_KINDS, CURRENCIES, currencyForKind, symbolForMarket } from '../markets.js';
@@ -118,7 +119,7 @@ const UPDATE_SQL = `
 // Upserts by instrument identity: an existing holding is UPDATED in place (so
 // uploading next month's statement just refreshes quantities), and any stray
 // pre-existing duplicates of the same instrument are merged into one row.
-export async function insertImportedHoldings(userId, rows, sourceLabel = 'Imported') {
+export async function insertImportedHoldings(userId, rows, sourceLabel = 'Imported', { maxTotal = null } = {}) {
   const existing = await db
     .prepare('SELECT id, kind, symbol, scheme_code, avg_cost FROM holdings WHERE user_id = ?')
     .all(userId);
@@ -202,6 +203,14 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
       });
       inserted += 1;
     }
+  }
+  // Free-plan cap: only NEW rows count — re-imports that merely update existing
+  // holdings always go through.
+  if (maxTotal != null && existing.length + inserted > maxTotal) {
+    throw new HttpError(
+      402,
+      `This import would take you to ${existing.length + inserted} holdings, but the free plan tracks up to ${maxTotal}. Upgrade to Sampada Premium for unlimited holdings.`
+    );
   }
   if (stmts.length) await db.batch(stmts);
   return { imported: inserted + updated, inserted, updated, skipped };

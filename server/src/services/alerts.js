@@ -1,6 +1,7 @@
 import { db, now } from '../db.js';
 import { getPrice } from './prices.js';
 import { emailConfigured, sendMail } from './email.js';
+import { escapeHtml } from '../util.js';
 
 // Don't re-send the same alert more than once per 12h while it stays crossed.
 const COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -30,7 +31,7 @@ function alertHtml(a, price) {
     <div style="font-family:Arial,sans-serif;max-width:480px">
       <h2 style="margin:0 0 8px">🔔 Price alert</h2>
       <p style="font-size:15px;color:#334155">
-        <strong>${a.label}</strong> has ${dir} your target.
+        <strong>${escapeHtml(a.label)}</strong> has ${dir} your target.
       </p>
       <p style="font-size:15px;color:#334155">
         Now: <strong>${money(price, a.currency)}</strong> · your target: ${a.direction} ${money(a.threshold, a.currency)}

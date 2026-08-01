@@ -6,16 +6,25 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True when the first request is taking suspiciously long — almost always
+  // Render's free tier waking the server from sleep (~30-60s cold start).
+  const [waking, setWaking] = useState(false);
 
   useEffect(() => {
     if (!getToken()) {
       setLoading(false);
       return;
     }
+    const slow = setTimeout(() => setWaking(true), 2500);
     api('/auth/me')
       .then((d) => setUser(d.user))
       .catch(() => clearToken())
-      .finally(() => setLoading(false));
+      .finally(() => {
+        clearTimeout(slow);
+        setWaking(false);
+        setLoading(false);
+      });
+    return () => clearTimeout(slow);
   }, []);
 
   async function login(email, password) {
@@ -53,7 +62,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, startSignup, verifySignup, resendSignup, logout, updateProfile }}
+      value={{ user, loading, waking, login, startSignup, verifySignup, resendSignup, logout, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

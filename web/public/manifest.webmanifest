@@ -1,0 +1,16 @@
+{
+  "name": "Sampada — Your wealth, all in one place",
+  "short_name": "Sampada",
+  "description": "Track stocks across 7 markets, mutual funds, cash, property and gold — live, in your currency, with goals and projections.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f2ec",
+  "theme_color": "#16294a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
