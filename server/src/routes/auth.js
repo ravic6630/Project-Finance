@@ -2,7 +2,11 @@ import { createHash, randomInt } from 'node:crypto';
 import { Router } from 'express';
 import { ADMIN_EMAILS } from '../config.js';
 import { db, now } from '../db.js';
-import { applyEffectiveRole, authRequired, hashPassword, signToken, verifyPassword } from '../auth.js';
+import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
+import { applyEffectiveRole, authRequired, createSession, hashPassword, signToken, verifyPassword } from '../auth.js';
+import { JWT_SECRET } from '../config.js';
+import { generateSecret, otpauthUri, verifyTotp } from '../services/totp.js';
 import { HttpError, asyncHandler, bad, escapeHtml, oneOf, str } from '../util.js';
 import { emailConfigured, sendMail } from '../services/email.js';
 import { CURRENCIES } from '../markets.js';
@@ -20,6 +24,7 @@ const publicUser = (u) => ({
   name: u.name,
   base_currency: u.base_currency,
   role: u.role,
+  totp_enabled: !!u.totp_enabled,
 });
 
 const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -122,7 +127,9 @@ authRouter.post(
     const info = await insertUser.run(email, pending.name, pending.password_hash, pending.base_currency, role, now());
     await delPending.run(email);
     const user = { id: Number(info.lastInsertRowid), email, name: pending.name, base_currency: pending.base_currency, role };
-    res.status(201).json({ token: signToken(user), user: publicUser(user) });
+    const token = signToken(user);
+    await createSession(user.id, token, req);
+    res.status(201).json({ token, user: publicUser(user) });
   })
 );
 
@@ -156,7 +163,38 @@ authRouter.post(
       throw new HttpError(401, 'Incorrect email or password');
     }
     applyEffectiveRole(user);
-    res.json({ token: signToken(user), user: publicUser(user) });
+    if (user.totp_enabled) {
+      // Password OK, but a 6-digit authenticator code is still needed. The
+      // ticket only proves "password already checked" and dies in 5 minutes.
+      const ticket = jwt.sign({ id: user.id, pre2fa: true }, JWT_SECRET, { expiresIn: '5m' });
+      return res.json({ requires_2fa: true, ticket });
+    }
+    const token = signToken(user);
+    await createSession(user.id, token, req);
+    res.json({ token, user: publicUser(user) });
+  })
+);
+
+// Step 2 of a 2FA login: ticket (from /login) + authenticator code → real token.
+authRouter.post(
+  '/login/2fa',
+  asyncHandler(async (req, res) => {
+    let payload;
+    try {
+      payload = jwt.verify(String(req.body.ticket || ''), JWT_SECRET);
+    } catch {
+      throw new HttpError(401, 'That sign-in attempt expired — enter your password again.');
+    }
+    if (!payload.pre2fa) throw new HttpError(401, 'Invalid sign-in ticket');
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
+    if (!user) throw new HttpError(401, 'Account no longer exists');
+    if (!verifyTotp(user.totp_secret, req.body.code)) {
+      throw new HttpError(401, 'That code is incorrect. Check your authenticator app.');
+    }
+    applyEffectiveRole(user);
+    const token = signToken(user);
+    await createSession(user.id, token, req);
+    res.json({ token, user: publicUser(user) });
   })
 );
 
@@ -255,3 +293,97 @@ authRouter.post(
     res.json({ ok: true });
   })
 );
+
+// ---- Two-factor auth management (all require a signed-in user) -------------
+
+// Start setup: mint a secret (not yet active) and return the QR to scan.
+authRouter.post(
+  '/2fa/setup',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const full = await db.prepare('SELECT totp_enabled FROM users WHERE id = ?').get(req.user.id);
+    if (full?.totp_enabled) throw bad('Two-factor is already enabled.');
+    const secret = generateSecret();
+    await db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?').run(secret, req.user.id);
+    const uri = otpauthUri(secret, req.user.email);
+    const qr = await QRCode.toDataURL(uri, { margin: 1, width: 220 });
+    res.json({ secret, otpauth: uri, qr });
+  })
+);
+
+// Confirm setup with a live code from the authenticator app.
+authRouter.post(
+  '/2fa/enable',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const full = await db.prepare('SELECT totp_secret, totp_enabled FROM users WHERE id = ?').get(req.user.id);
+    if (full?.totp_enabled) throw bad('Two-factor is already enabled.');
+    if (!full?.totp_secret) throw bad('Start setup first.');
+    if (!verifyTotp(full.totp_secret, req.body.code)) {
+      throw bad('That code is incorrect — scan the QR again and retry.');
+    }
+    await db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(req.user.id);
+    res.json({ ok: true, totp_enabled: true });
+  })
+);
+
+// Turning it off also requires a valid code (a stolen open laptop can't).
+authRouter.post(
+  '/2fa/disable',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const full = await db.prepare('SELECT totp_secret, totp_enabled FROM users WHERE id = ?').get(req.user.id);
+    if (!full?.totp_enabled) throw bad('Two-factor is not enabled.');
+    if (!verifyTotp(full.totp_secret, req.body.code)) throw bad('That code is incorrect.');
+    await db.prepare('UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?').run(req.user.id);
+    res.json({ ok: true, totp_enabled: false });
+  })
+);
+
+// ---- Device sessions --------------------------------------------------------
+
+authRouter.get(
+  '/sessions',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const rows = await db
+      .prepare('SELECT id, ua, ip, created_at, last_seen, token_hash FROM sessions WHERE user_id = ? AND revoked_at IS NULL ORDER BY last_seen DESC, id DESC')
+      .all(req.user.id);
+    res.json({
+      sessions: rows.map((r) => ({
+        id: r.id,
+        ua: r.ua,
+        ip: r.ip,
+        created_at: r.created_at,
+        last_seen: r.last_seen,
+        current: r.token_hash === req.sessionTokenHash,
+      })),
+    });
+  })
+);
+
+// Revoke one device. Revoking the current one signs this client out too.
+authRouter.delete(
+  '/sessions/:id',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const info = await db
+      .prepare('UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL')
+      .run(now(), req.params.id, req.user.id);
+    if (!info.changes) throw new HttpError(404, 'Session not found');
+    res.json({ ok: true });
+  })
+);
+
+// "Sign out everywhere else" — every device except this one.
+authRouter.post(
+  '/sessions/revoke-others',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const info = await db
+      .prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?')
+      .run(now(), req.user.id, req.sessionTokenHash || '');
+    res.json({ ok: true, revoked: info.changes });
+  })
+);
+
