@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import Illo from './Illustrations.jsx';
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export function Spinner({ label = 'Loading…' }) {
   return (
@@ -34,7 +35,10 @@ export function Modal({ open, onClose, title, children, wide = false }) {
   // so closing is explicit (the X, a Cancel button, or Escape) to avoid losing work.
   // The header is pinned and only the body scrolls, so the close button stays
   // reachable even in a tall modal (e.g. the calculator).
-  return (
+  // Portaled to <body>: an ancestor with backdrop-filter/transform (like the
+  // blurred app header) would otherwise become the containing block for
+  // position:fixed and pin the dialog inside itself.
+  return createPortal(
     <div className="modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center">
       <div className={`modal-pop card my-8 flex max-h-[calc(100vh-4rem)] w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} flex-col overflow-hidden p-0`}>
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
@@ -45,7 +49,8 @@ export function Modal({ open, onClose, title, children, wide = false }) {
         </div>
         <div className="overflow-y-auto px-6 py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

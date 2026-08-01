@@ -103,6 +103,22 @@ export default function Layout() {
   }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close the avatar menu on outside click / Escape. (A fixed inset-0 overlay
+  // can't do this job here: the blurred header is a containing block for
+  // position:fixed, so an overlay would only cover the header strip.)
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDoc = (e) => menuRef.current && !menuRef.current.contains(e.target) && setMenuOpen(false);
+    const onKey = (e) => e.key === 'Escape' && setMenuOpen(false);
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
   const title = PAGE_TITLES[location.pathname] || 'Sampada';
   const initial = (user.name || user.email)[0].toUpperCase();
 
@@ -150,7 +166,7 @@ export default function Layout() {
             </button>
             <ThemeToggle />
             <CurrencyToggle />
-            <div className="relative">
+            <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-haspopup="menu"
@@ -160,10 +176,7 @@ export default function Layout() {
                 {initial}
               </button>
               {menuOpen && (
-                <>
-                  {/* Click-away backdrop — keeps the menu open until you act or click out. */}
-                  <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-                  <div className="absolute right-0 top-12 z-40 w-56 rounded-xl border border-[#e8e2d4] bg-white p-2 shadow-lg">
+                <div className="absolute right-0 top-12 z-40 w-56 rounded-xl border border-[#e8e2d4] bg-white p-2 shadow-lg">
                     <p className="truncate px-3 py-1.5 text-sm font-semibold text-slate-700">
                       {user.name || 'Account'}
                     </p>
@@ -176,9 +189,8 @@ export default function Layout() {
                       className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
                     >
                       <LogOut size={16} /> Sign out
-                    </button>
-                  </div>
-                </>
+                  </button>
+                </div>
               )}
             </div>
           </div>
