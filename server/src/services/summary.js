@@ -113,6 +113,15 @@ export async function buildSummary(user, { refresh = false } = {}) {
       accounts: accounts.length,
       assets: assets.length,
       transactions: txns.length,
+      goals: Number((await db.prepare('SELECT COUNT(*) AS n FROM goals WHERE user_id = ?').get(userId))?.n || 0),
+    },
+    // Signals for the dashboard's getting-started checklist.
+    setup: {
+      imported:
+        Number((await db.prepare('SELECT COUNT(*) AS n FROM broker_connections WHERE user_id = ?').get(userId))?.n || 0) > 0 ||
+        holdings.some((h) => /^imported/i.test(h.notes || '')),
+      daily_email:
+        !!(await db.prepare('SELECT daily FROM email_prefs WHERE user_id = ?').get(userId))?.daily,
     },
     rates,
   };

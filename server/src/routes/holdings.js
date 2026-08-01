@@ -3,6 +3,7 @@ import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { enrichHoldings } from '../services/portfolio.js';
+import { assertHoldingsCapacity } from '../services/billing.js';
 import { LIVE_PRICE_TTL_MS, searchMutualFunds, searchStocks } from '../services/prices.js';
 import { ALL_KINDS, CURRENCIES, STOCK_MARKETS, currencyForKind, symbolForMarket } from '../markets.js';
 
@@ -95,6 +96,7 @@ holdingsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const b = readBody(req.body);
+    await assertHoldingsCapacity(req.user, 1); // free plan caps tracked holdings
     const ts = now();
     const info = await insert.run(
       req.user.id, b.kind, b.symbol, b.schemeCode, b.name, b.quantity,

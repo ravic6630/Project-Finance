@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { db, now } from '../db.js';
+import { HttpError } from '../util.js';
 
 const KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
@@ -48,6 +49,22 @@ export async function premiumState(user) {
     until: active ? sub.current_period_end : null,
     provider: sub?.provider || null,
   };
+}
+
+// The free plan tracks a limited number of holdings ("unlimited holdings" is a
+// Premium perk). Throws a friendly 402 when adding would exceed the cap.
+export const FREE_HOLDINGS_LIMIT = Number(process.env.FREE_HOLDINGS_LIMIT) || 15;
+const countHoldings = db.prepare('SELECT COUNT(*) AS n FROM holdings WHERE user_id = ?');
+
+export async function assertHoldingsCapacity(user, adding = 1) {
+  if ((await premiumState(user)).premium) return;
+  const n = Number((await countHoldings.get(user.id))?.n || 0);
+  if (n + adding > FREE_HOLDINGS_LIMIT) {
+    throw new HttpError(
+      402,
+      `The free plan tracks up to ${FREE_HOLDINGS_LIMIT} holdings (you have ${n}). Upgrade to Sampada Premium for unlimited holdings.`
+    );
+  }
 }
 
 export async function activatePremium(userId, { provider, providerSubId, days = 30, periodEnd } = {}) {

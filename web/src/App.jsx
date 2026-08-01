@@ -21,17 +21,23 @@ const Settings = lazy(() => import('./pages/Settings.jsx'));
 const BrokerCallback = lazy(() => import('./pages/BrokerCallback.jsx'));
 const Admin = lazy(() => import('./pages/Admin.jsx'));
 
-function Splash() {
+function Splash({ waking = false }) {
   return (
-    <div className="flex h-screen items-center justify-center text-slate-400">
+    <div className="flex h-screen flex-col items-center justify-center gap-3 px-6 text-center text-slate-400">
       <div className="animate-pulse text-sm font-medium">Loading Sampada…</div>
+      {waking && (
+        <p className="max-w-xs text-xs text-slate-400">
+          Waking the server 🌱 — free hosting naps when idle, so the first visit
+          can take up to a minute. Hang tight!
+        </p>
+      )}
     </div>
   );
 }
 
 export default function App() {
-  const { user, loading } = useAuth();
-  if (loading) return <Splash />;
+  const { user, loading, waking } = useAuth();
+  if (loading) return <Splash waking={waking} />;
 
   if (!user) {
     return (

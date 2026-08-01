@@ -13,16 +13,22 @@ export default function Login() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [slowHint, setSlowHint] = useState(false);
+
   async function onSubmit(e) {
     e.preventDefault();
     setError('');
     setBusy(true);
+    // A slow sign-in almost always means Render's free tier is waking up.
+    const slow = setTimeout(() => setSlowHint(true), 2500);
     try {
       await login(email, password);
       navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
+      clearTimeout(slow);
+      setSlowHint(false);
       setBusy(false);
     }
   }
@@ -75,6 +81,11 @@ export default function Login() {
             <button className="btn-primary w-full" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
+            {slowHint && (
+              <p className="text-center text-xs text-slate-400">
+                Waking the server 🌱 — this first request can take up to a minute.
+              </p>
+            )}
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-500">

@@ -9,6 +9,7 @@ import {
   normalizeStockSymbol,
   resolveName,
 } from '../services/importer.js';
+import { FREE_HOLDINGS_LIMIT, premiumState } from '../services/billing.js';
 import { buildCsvPreview } from '../services/csvImport.js';
 
 export const importRouter = Router();
@@ -159,7 +160,12 @@ importRouter.post(
 const confirm = asyncHandler(async (req, res) => {
   const rows = Array.isArray(req.body.items) ? req.body.items : [];
   if (rows.length === 0) throw bad('No holdings selected to import');
-  res.json(await insertImportedHoldings(req.user.id, rows, req.body.source || 'Imported'));
+  const premium = (await premiumState(req.user)).premium;
+  res.json(
+    await insertImportedHoldings(req.user.id, rows, req.body.source || 'Imported', {
+      maxTotal: premium ? null : FREE_HOLDINGS_LIMIT,
+    })
+  );
 });
 
 importRouter.post('/confirm', confirm);

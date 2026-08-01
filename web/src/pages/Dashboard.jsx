@@ -33,6 +33,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
 import WealthHero from '../components/WealthHero.jsx';
+import GettingStarted from '../components/GettingStarted.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
@@ -313,6 +314,8 @@ export default function Dashboard() {
           load(true);
         }}
       />
+
+      <GettingStarted data={data} />
 
       <motion.div
         variants={gridStagger}
