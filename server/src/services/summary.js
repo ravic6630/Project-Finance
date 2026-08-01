@@ -6,13 +6,16 @@ const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
 
 // Full net-worth summary in the user's base currency. Shared by the dashboard
 // route and the daily email digest.
-export async function buildSummary(user, { refresh = false } = {}) {
+export async function buildSummary(user, { refresh = false, scope = null } = {}) {
+  // scope: null/'all' = whole family, 'me' = owner only, <id> = one member.
+  const scSql = scope === 'me' ? ' AND profile_id IS NULL' : Number.isInteger(scope) ? ' AND profile_id = ?' : '';
+  const scArgs = Number.isInteger(scope) ? [scope] : [];
   const base = user.base_currency;
   const userId = user.id;
 
-  const holdings = await db.prepare('SELECT * FROM holdings WHERE user_id = ?').all(userId);
-  const accounts = await db.prepare('SELECT * FROM cash_accounts WHERE user_id = ?').all(userId);
-  const assets = await db.prepare('SELECT * FROM assets WHERE user_id = ?').all(userId);
+  const holdings = await db.prepare(`SELECT * FROM holdings WHERE user_id = ?${scSql}`).all(userId, ...scArgs);
+  const accounts = await db.prepare(`SELECT * FROM cash_accounts WHERE user_id = ?${scSql}`).all(userId, ...scArgs);
+  const assets = await db.prepare(`SELECT * FROM assets WHERE user_id = ?${scSql}`).all(userId, ...scArgs);
   const txns = await db.prepare('SELECT * FROM transactions WHERE user_id = ?').all(userId);
 
   const { items, rates } = await enrichHoldings(holdings, base, { force: refresh });

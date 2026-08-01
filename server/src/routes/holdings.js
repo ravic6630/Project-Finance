@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
+import { scopeFromReq, normalizeProfileId } from './profiles.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { enrichHoldings } from '../services/portfolio.js';
 import { assertHoldingsCapacity } from '../services/billing.js';
@@ -47,17 +48,17 @@ function readBody(body) {
   };
 }
 
-const listForUser = db.prepare('SELECT * FROM holdings WHERE user_id = ? ORDER BY kind, name');
+const listScoped = (scopeSql) => db.prepare(`SELECT * FROM holdings WHERE user_id = ?${scopeSql} ORDER BY kind, name`);
 const getOne = db.prepare('SELECT * FROM holdings WHERE id = ? AND user_id = ?');
 const insert = db.prepare(`
   INSERT INTO holdings
-    (user_id, kind, symbol, scheme_code, name, quantity, avg_cost, currency, manual_price, notes, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (user_id, kind, symbol, scheme_code, name, quantity, avg_cost, currency, manual_price, notes, profile_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const update = db.prepare(`
   UPDATE holdings SET
     kind = ?, symbol = ?, scheme_code = ?, name = ?, quantity = ?, avg_cost = ?,
-    currency = ?, manual_price = ?, notes = ?, updated_at = ?
+    currency = ?, manual_price = ?, notes = ?, profile_id = ?, updated_at = ?
   WHERE id = ? AND user_id = ?
 `);
 const remove = db.prepare('DELETE FROM holdings WHERE id = ? AND user_id = ?');
@@ -66,7 +67,7 @@ const remove = db.prepare('DELETE FROM holdings WHERE id = ? AND user_id = ?');
 holdingsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await listForUser.all(req.user.id);
+    const rows = await (() => { const sc = scopeFromReq(req); return listScoped(sc.sql).all(req.user.id, ...sc.args); })();
     const { items, rates } = await enrichHoldings(rows, req.user.base_currency, {
       force: req.query.refresh === '1',
       ttl: req.query.live === '1' ? LIVE_PRICE_TTL_MS : undefined,
@@ -100,7 +101,8 @@ holdingsRouter.post(
     const ts = now();
     const info = await insert.run(
       req.user.id, b.kind, b.symbol, b.schemeCode, b.name, b.quantity,
-      b.avgCost, b.currency, b.manualPrice, b.notes, ts, ts
+      b.avgCost, b.currency, b.manualPrice, b.notes,
+      await normalizeProfileId(req.user.id, req.body.profile_id), ts, ts
     );
     const row = await getOne.get(Number(info.lastInsertRowid), req.user.id);
     const { items } = await enrichHoldings([row], req.user.base_currency);
@@ -116,7 +118,11 @@ holdingsRouter.patch(
     const b = readBody({ ...existing, ...req.body });
     await update.run(
       b.kind, b.symbol, b.schemeCode, b.name, b.quantity, b.avgCost,
-      b.currency, b.manualPrice, b.notes, now(), req.params.id, req.user.id
+      b.currency, b.manualPrice, b.notes,
+      req.body.profile_id === undefined
+        ? existing.profile_id
+        : await normalizeProfileId(req.user.id, req.body.profile_id),
+      now(), req.params.id, req.user.id
     );
     const row = await getOne.get(req.params.id, req.user.id);
     const { items } = await enrichHoldings([row], req.user.base_currency);

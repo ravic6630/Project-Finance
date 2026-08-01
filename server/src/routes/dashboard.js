@@ -13,11 +13,13 @@ dashboardRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     await materializeRecurring(req.user.id).catch(() => {});
-    const summary = await buildSummary(req.user, { refresh: req.query.refresh === '1' });
+    const raw = String(req.query.profile || 'all');
+    const scope = raw === 'me' ? 'me' : Number.isInteger(Number(raw)) && Number(raw) > 0 ? Number(raw) : null;
+    const summary = await buildSummary(req.user, { refresh: req.query.refresh === '1', scope });
 
     // Record today's net worth for everyone, so history accrues even on the
     // free plan (it's already there if they upgrade) ...
-    await recordSnapshot(req.user.id, summary.net_worth, req.user.base_currency);
+    if (!scope) await recordSnapshot(req.user.id, summary.net_worth, req.user.base_currency);
 
     // ... but the trend chart itself is a premium feature.
     const premium = (await premiumState(req.user)).premium;

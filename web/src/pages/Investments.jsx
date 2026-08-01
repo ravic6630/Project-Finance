@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
+import { useProfile } from '../lib/ProfileContext.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
 import { downloadHoldingsCsv } from '../lib/exportCsv.js';
 import { useConfirm } from '../lib/confirm.jsx';
@@ -88,6 +89,7 @@ function HoldingRow({ h, base, onEdit, onDelete }) {
 
 export default function Investments() {
   const { user } = useAuth();
+  const { active: activeProfile, activeProfileId, profileQuery } = useProfile();
   const base = user.base_currency;
   const confirm = useConfirm();
   const [holdings, setHoldings] = useState([]);
@@ -104,8 +106,10 @@ export default function Investments() {
   const load = useCallback(async ({ refresh = false, live = false } = {}) => {
     try {
       setError('');
-      const q = refresh ? '?refresh=1' : live ? '?live=1' : '';
-      const d = await api(`/holdings${q}`);
+      const parts = [refresh ? 'refresh=1' : live ? 'live=1' : '', profileQuery('').replace('?', '')]
+        .filter(Boolean)
+        .join('&');
+      const d = await api(`/holdings${parts ? `?${parts}` : ''}`);
       setHoldings(d.holdings);
       setUpdatedAt(new Date().toISOString());
     } catch (err) {
@@ -115,12 +119,12 @@ export default function Investments() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [activeProfile]);
 
   useEffect(() => {
     setLoading(true);
     load();
-  }, [load, base]);
+  }, [load, base, activeProfile]);
 
   // Auto-refresh prices while the tab is open and visible (pauses when hidden,
   // and refreshes immediately on return). True per-second streaming would need a
@@ -302,6 +306,7 @@ export default function Investments() {
       )}
 
       <HoldingForm
+        profileId={activeProfileId}
         open={formOpen}
         editing={editing}
         onClose={() => setFormOpen(false)}

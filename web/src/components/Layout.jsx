@@ -7,6 +7,8 @@ import CurrencyMenu from './CurrencyMenu.jsx';
 import SupportChat from './SupportChat.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
 import CommandPalette from './CommandPalette.jsx';
+import ProfileSwitcher from './ProfileSwitcher.jsx';
+import { ProfileProvider } from '../lib/ProfileContext.jsx';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -105,6 +107,7 @@ export default function Layout() {
   const initial = (user.name || user.email)[0].toUpperCase();
 
   return (
+    <ProfileProvider>
     <div className="min-h-screen lg:flex">
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-[#e8e2d4] bg-white p-4 lg:block">
@@ -133,6 +136,7 @@ export default function Layout() {
             <h1 className="font-display text-xl font-bold text-brand-900">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
+            <ProfileSwitcher />
             <button
               onClick={() =>
                 window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
@@ -207,5 +211,6 @@ export default function Layout() {
       <SupportChat />
       <CommandPalette />
     </div>
+    </ProfileProvider>
   );
 }

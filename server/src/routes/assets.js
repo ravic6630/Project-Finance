@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
+import { scopeFromReq, normalizeProfileId } from './profiles.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { getFxRate } from '../services/prices.js';
 import { CURRENCIES } from '../markets.js';
@@ -22,14 +23,14 @@ function readBody(body) {
   };
 }
 
-const list = db.prepare('SELECT * FROM assets WHERE user_id = ? ORDER BY value DESC, name');
+const listScoped = (sql) => db.prepare(`SELECT * FROM assets WHERE user_id = ?${sql} ORDER BY value DESC, name`);
 const getOne = db.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?');
 const insert = db.prepare(`
-  INSERT INTO assets (user_id, name, type, value, currency, notes, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO assets (user_id, name, type, value, currency, notes, profile_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const update = db.prepare(`
-  UPDATE assets SET name = ?, type = ?, value = ?, currency = ?, notes = ?, updated_at = ?
+  UPDATE assets SET name = ?, type = ?, value = ?, currency = ?, notes = ?, profile_id = ?, updated_at = ?
   WHERE id = ? AND user_id = ?
 `);
 const remove = db.prepare('DELETE FROM assets WHERE id = ? AND user_id = ?');
@@ -40,7 +41,8 @@ assetsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const base = req.user.base_currency;
-    const rows = await list.all(req.user.id);
+    const sc = scopeFromReq(req);
+    const rows = await listScoped(sc.sql).all(req.user.id, ...sc.args);
     const rates = {};
     for (const a of rows) {
       if (rates[a.currency] == null) rates[a.currency] = await getFxRate(a.currency, base);
@@ -56,7 +58,7 @@ assetsRouter.post(
   asyncHandler(async (req, res) => {
     const b = readBody(req.body);
     const ts = now();
-    const info = await insert.run(req.user.id, b.name, b.type, b.value, b.currency, b.notes, ts, ts);
+    const info = await insert.run(req.user.id, b.name, b.type, b.value, b.currency, b.notes, await normalizeProfileId(req.user.id, req.body.profile_id), ts, ts);
     res.status(201).json({ asset: await getOne.get(Number(info.lastInsertRowid), req.user.id) });
   })
 );
@@ -67,7 +69,7 @@ assetsRouter.patch(
     const existing = await getOne.get(req.params.id, req.user.id);
     if (!existing) throw new HttpError(404, 'Asset not found');
     const b = readBody({ ...existing, ...req.body });
-    await update.run(b.name, b.type, b.value, b.currency, b.notes, now(), req.params.id, req.user.id);
+    await update.run(b.name, b.type, b.value, b.currency, b.notes, req.body.profile_id === undefined ? existing.profile_id : await normalizeProfileId(req.user.id, req.body.profile_id), now(), req.params.id, req.user.id);
     res.json({ asset: await getOne.get(req.params.id, req.user.id) });
   })
 );
