@@ -151,6 +151,18 @@ CREATE TABLE IF NOT EXISTS goals (
   updated_at           TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
+-- A goal can be funded by real portfolio items; when links exist, "saved so
+-- far" is computed live from their current value instead of a manual number.
+CREATE TABLE IF NOT EXISTS goal_links (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  goal_id    INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,
+  ref_id     INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(goal_id, kind, ref_id)
+);
+CREATE INDEX IF NOT EXISTS idx_goal_links_user ON goal_links(user_id);
 CREATE TABLE IF NOT EXISTS price_cache (
   price_key  TEXT PRIMARY KEY,
   price      REAL,

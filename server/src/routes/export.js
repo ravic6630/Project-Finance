@@ -16,6 +16,7 @@ const OWNED_TABLES = [
   'assets',
   'transactions',
   'goals',
+  'goal_links',
   'alerts',
   'investment_txns',
   'recurring_rules',

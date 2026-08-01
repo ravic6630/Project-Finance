@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calculator,
+  Link2,
   Car,
   Crown,
   GraduationCap,
@@ -53,10 +54,45 @@ function GoalForm({ open, onClose, onSaved, editing }) {
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Portfolio linking: when items are linked, "saved so far" tracks them live.
+  const [links, setLinks] = useState([]); // [{kind, ref_id}]
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [linkables, setLinkables] = useState(null); // {holdings, accounts, assets}
+
+  async function openPicker() {
+    setPickerOpen((o) => !o);
+    if (linkables) return;
+    try {
+      const [h, c, a] = await Promise.all([api('/holdings'), api('/cash'), api('/assets')]);
+      setLinkables({
+        holdings: h.holdings || [],
+        accounts: c.accounts || [],
+        assets: a.assets || [],
+      });
+    } catch {
+      setLinkables({ holdings: [], accounts: [], assets: [] });
+    }
+  }
+
+  const linkKey = (k, id) => `${k}:${id}`;
+  const isLinked = (k, id) => links.some((l) => l.kind === k && l.ref_id === id);
+  const toggleLink = (k, id) =>
+    setLinks((ls) =>
+      ls.some((l) => l.kind === k && l.ref_id === id)
+        ? ls.filter((l) => !(l.kind === k && l.ref_id === id))
+        : [...ls, { kind: k, ref_id: id }]
+    );
 
   useEffect(() => {
     if (!open) return;
     setError('');
+    setPickerOpen(false);
+    setLinks([]);
+    if (editing) {
+      api(`/goals/${editing.id}/links`)
+        .then((d) => setLinks((d.links || []).map((l) => ({ kind: l.kind, ref_id: l.ref_id }))))
+        .catch(() => {});
+    }
     setForm(
       editing
         ? {
@@ -100,8 +136,13 @@ function GoalForm({ open, onClose, onSaved, editing }) {
         expected_return: Number(form.expected_return || 0),
         currency: form.currency,
       };
+      let goalId = editing?.id;
       if (editing) await api(`/goals/${editing.id}`, { method: 'PATCH', body: payload });
-      else await api('/goals', { method: 'POST', body: payload });
+      else {
+        const d = await api('/goals', { method: 'POST', body: payload });
+        goalId = d.goal.id;
+      }
+      await api(`/goals/${goalId}/links`, { method: 'PUT', body: { links } });
       onSaved();
       onClose();
     } catch (err) {
@@ -145,14 +186,69 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             <input className="input" type="date" value={form.target_date} onChange={(e) => set({ target_date: e.target.value })} required />
           </Field>
         </div>
-        <Field label={`Saved so far (${form.currency})`}>
-          <div className="flex gap-2">
-            <input className="input" type="number" step="any" value={form.current_amount} onChange={(e) => set({ current_amount: e.target.value })} placeholder="0" />
-            <button type="button" className="btn-ghost shrink-0 whitespace-nowrap" onClick={prefillNetWorth}>
-              Use net worth
+        {links.length > 0 ? (
+          <Field label="Saved so far" hint="Tracked live from your linked items — no manual updates needed.">
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 dark:border-emerald-900 dark:bg-emerald-900/30">
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                <Link2 size={14} /> Auto — {links.length} linked item{links.length === 1 ? '' : 's'}
+              </span>
+              <button type="button" className="text-sm font-semibold text-brand-600 hover:underline" onClick={openPicker}>
+                {pickerOpen ? 'Hide' : 'Change'}
+              </button>
+            </div>
+          </Field>
+        ) : (
+          <Field label={`Saved so far (${form.currency})`}>
+            <div className="flex gap-2">
+              <input className="input" type="number" step="any" value={form.current_amount} onChange={(e) => set({ current_amount: e.target.value })} placeholder="0" />
+              <button type="button" className="btn-ghost shrink-0 whitespace-nowrap" onClick={prefillNetWorth}>
+                Use net worth
+              </button>
+            </div>
+            <button type="button" onClick={openPicker} className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:underline">
+              <Link2 size={12} /> {pickerOpen ? 'Hide the picker' : 'Or link investments & accounts to track this automatically'}
             </button>
+          </Field>
+        )}
+
+        {pickerOpen && (
+          <div className="max-h-56 space-y-3 overflow-y-auto rounded-xl border border-slate-200 p-3">
+            {!linkables ? (
+              <p className="py-4 text-center text-sm text-slate-400">Loading your portfolio…</p>
+            ) : (
+              [
+                ['Investments', 'holding', linkables.holdings.map((h) => ({ id: h.id, name: h.name, value: h.market_value_base, cur: null }))],
+                ['Cash & Bank', 'account', linkables.accounts.map((a) => ({ id: a.id, name: a.name, value: a.balance, cur: a.currency }))],
+                ['Assets', 'asset', linkables.assets.map((a) => ({ id: a.id, name: a.name, value: a.value_base ?? a.value, cur: null }))],
+              ].map(([label, kind, rows]) =>
+                rows.length === 0 ? null : (
+                  <div key={kind}>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                    {rows.map((row) => (
+                      <label key={linkKey(kind, row.id)} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-brand-600"
+                          checked={isLinked(kind, row.id)}
+                          onChange={() => toggleLink(kind, row.id)}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{row.name}</span>
+                        <span className="num shrink-0 text-xs text-slate-400">
+                          {row.value != null ? money(row.value, row.cur || user.base_currency) : ''}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )
+              )
+            )}
+            {linkables && !linkables.holdings.length && !linkables.accounts.length && !linkables.assets.length && (
+              <p className="py-3 text-center text-sm text-slate-400">
+                Nothing to link yet — add holdings, accounts or assets first.
+              </p>
+            )}
           </div>
-        </Field>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label={`Monthly contribution (${form.currency})`}>
             <input className="input" type="number" step="any" value={form.monthly_contribution} onChange={(e) => set({ monthly_contribution: e.target.value })} placeholder="25000" />
@@ -222,8 +318,13 @@ function GoalCard({ goal, onEdit, onDelete }) {
         <div className="h-2 overflow-hidden rounded-full bg-slate-100">
           <div className="h-full rounded-full bg-gold-400" style={{ width: `${saved}%` }} />
         </div>
-        <p className="mt-1.5 text-xs text-slate-500">
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
           {money(current, cur)} saved · {saved}%
+          {goal.links_count > 0 && (
+            <span className="chip bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+              <Link2 size={10} className="mr-1" /> auto · {goal.links_count} linked
+            </span>
+          )}
         </p>
       </div>
 
