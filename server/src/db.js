@@ -161,11 +161,6 @@ CREATE TABLE IF NOT EXISTS support_messages (
   read_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_support_user ON support_messages(user_id, id);
-CREATE TABLE IF NOT EXISTS password_resets (
-  token_hash TEXT PRIMARY KEY,
-  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  expires_at TEXT NOT NULL
-);
 -- Email-verification holding area: a signup isn't a real user until the emailed
 -- OTP is confirmed, so unverified attempts never touch the users table.
 CREATE TABLE IF NOT EXISTS pending_signups (
@@ -251,6 +246,8 @@ export async function initDb() {
   await client.executeMultiple(SCHEMA);
   // Additive migrations for databases created before a column existed.
   await addColumn('subscriptions', 'premium_welcome_sent_at', 'TEXT');
+  // The token-link password reset was replaced by emailed codes long ago.
+  await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;
   console.log(`Database ready → ${where}`);
 }

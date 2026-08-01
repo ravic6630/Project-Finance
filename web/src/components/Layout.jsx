@@ -1,25 +1,12 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import {
-  ArrowLeftRight,
-  Building2,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  Receipt,
-  Settings,
-  Shield,
-  Sprout,
-  Target,
-  TrendingUp,
-  Wallet,
-  X,
-} from 'lucide-react';
+import { ArrowLeftRight, Building2, LayoutDashboard, LogOut, Menu, Receipt, Settings, Shield, Sprout, Target, TrendingUp, Wallet, X, Search as SearchIcon } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import CurrencyMenu from './CurrencyMenu.jsx';
 import SupportChat from './SupportChat.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
+import CommandPalette from './CommandPalette.jsx';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -146,6 +133,17 @@ export default function Layout() {
             <h1 className="font-display text-xl font-bold text-brand-900">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() =>
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+              }
+              aria-label="Search (Cmd+K)"
+              title="Search — ⌘K / Ctrl+K"
+              className="hidden h-9 items-center gap-2 rounded-xl border border-[#e8e2d4] bg-white px-3 text-sm text-slate-400 transition hover:border-gold-300 hover:text-brand-700 sm:flex"
+            >
+              <SearchIcon size={15} />
+              <kbd className="rounded-md border border-slate-200 px-1.5 text-[10px] font-semibold">⌘K</kbd>
+            </button>
             <ThemeToggle />
             <CurrencyToggle />
             <div className="relative">
@@ -207,6 +205,7 @@ export default function Layout() {
 
       {/* Floating support chat, available on every signed-in page. */}
       <SupportChat />
+      <CommandPalette />
     </div>
   );
 }

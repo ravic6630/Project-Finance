@@ -99,6 +99,39 @@ async function buildPreview(broker, name, holdings, userId, mfs = []) {
   };
 }
 
+// Re-sync holdings with the stored token — no OAuth round-trip. Broker tokens
+// expire (Upstox roughly daily); a dead one comes back as a friendly 401.
+const getConn = db.prepare('SELECT * FROM broker_connections WHERE user_id = ? AND broker = ?');
+
+brokerRouter.post(
+  '/:broker/sync',
+  asyncHandler(async (req, res) => {
+    const broker = requireBroker(req);
+    if (!(await premiumState(req.user)).premium) {
+      throw new HttpError(402, 'Connecting a broker is a premium feature. Upgrade to Sampada Premium.');
+    }
+    const conn = await getConn.get(req.user.id, broker);
+    if (!conn?.access_token) {
+      throw new HttpError(404, `No saved ${BROKER_LABELS[broker]} connection yet — connect once first.`);
+    }
+    let holdings;
+    try {
+      holdings = await fetchHoldings(broker, conn.access_token);
+    } catch {
+      // 409, not 401 — the web client treats 401 as "signed out of Sampada".
+      throw new HttpError(409, `${BROKER_LABELS[broker]} session expired — reconnect to refresh it.`);
+    }
+    const mfs = await fetchMfHoldings(broker, conn.access_token);
+    let name = null;
+    try {
+      name = JSON.parse(conn.meta || '{}').name || null;
+    } catch {
+      /* meta is best-effort */
+    }
+    res.json(await buildPreview(broker, name, holdings, req.user.id, mfs));
+  })
+);
+
 brokerRouter.get(
   '/status',
   asyncHandler(async (req, res) => {
