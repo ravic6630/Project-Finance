@@ -318,3 +318,45 @@ export async function refreshUserPrices(holdings, { force = true } = {}) {
   );
   return { refreshed: ok, failed, total: keys.size };
 }
+
+// ---- Benchmark index series (net-worth comparison overlay) -----------------
+// Whitelisted Yahoo index symbols only — the key is what the API accepts.
+export const BENCHMARKS = {
+  nifty50: { symbol: '^NSEI', label: 'NIFTY 50', currency: 'INR' },
+  sp500: { symbol: '^GSPC', label: 'S&P 500', currency: 'USD' },
+  ftse100: { symbol: '^FTSE', label: 'FTSE 100', currency: 'GBP' },
+  stoxx50: { symbol: '^STOXX50E', label: 'EURO STOXX 50', currency: 'EUR' },
+  asx200: { symbol: '^AXJO', label: 'ASX 200', currency: 'AUD' },
+  nzx50: { symbol: '^NZ50', label: 'NZX 50', currency: 'NZD' },
+  tsx: { symbol: '^GSPTSE', label: 'S&P/TSX', currency: 'CAD' },
+};
+
+const benchCache = new Map(); // day-quantised window -> { at, data }
+const BENCH_TTL_MS = 30 * 60 * 1000;
+
+// Daily closes for a benchmark across [fromMs, toMs], padded a week back so the
+// caller always has a close at-or-before its window start to rebase against.
+export async function getBenchmarkSeries(key, fromMs, toMs) {
+  const bench = BENCHMARKS[key];
+  if (!bench) throw new Error('Unknown benchmark');
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const ck = `${key}:${day(fromMs)}:${day(toMs)}`;
+  const hit = benchCache.get(ck);
+  if (hit && Date.now() - hit.at < BENCH_TTL_MS) return hit.data;
+
+  const p1 = Math.floor((fromMs - 7 * 86400000) / 1000);
+  const p2 = Math.floor(toMs / 1000) + 86400;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    bench.symbol
+  )}?period1=${p1}&period2=${p2}&interval=1d`;
+  const json = await fetchJson(url, { 'User-Agent': 'Mozilla/5.0' });
+  const r = json?.chart?.result?.[0];
+  const ts = r?.timestamp || [];
+  const closes = r?.indicators?.quote?.[0]?.close || [];
+  const points = ts
+    .map((t, i) => ({ ms: t * 1000, close: closes[i] }))
+    .filter((pt) => Number.isFinite(pt.close));
+  const data = { key, label: bench.label, symbol: bench.symbol, points };
+  benchCache.set(ck, { at: Date.now(), data });
+  return data;
+}
