@@ -37,11 +37,12 @@ const MAX_OTP_ATTEMPTS = 5;
 const genOtp = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 
 const upsertPending = db.prepare(`
-  INSERT INTO pending_signups (email, name, password_hash, base_currency, otp_hash, expires_at, attempts, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+  INSERT INTO pending_signups (email, name, password_hash, base_currency, otp_hash, expires_at, ref_code, attempts, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
   ON CONFLICT(email) DO UPDATE SET
     name=excluded.name, password_hash=excluded.password_hash, base_currency=excluded.base_currency,
-    otp_hash=excluded.otp_hash, expires_at=excluded.expires_at, attempts=0, created_at=excluded.created_at
+    otp_hash=excluded.otp_hash, expires_at=excluded.expires_at, ref_code=excluded.ref_code,
+    attempts=0, created_at=excluded.created_at
 `);
 const getPending = db.prepare('SELECT * FROM pending_signups WHERE email = ?');
 const delPending = db.prepare('DELETE FROM pending_signups WHERE email = ?');
@@ -61,11 +62,11 @@ const pickCurrency = (v) => (v ? oneOf(String(v).toUpperCase(), CURRENCIES, 'bas
 
 // Generate a code, persist the pending signup, and email the code. Returns
 // whether the email actually went out (false if email isn't configured/failed).
-async function issueOtp({ email, name, passwordHash, baseCurrency }) {
+async function issueOtp({ email, name, passwordHash, baseCurrency, refCode = null }) {
   const code = genOtp();
   await upsertPending.run(
     email, name, passwordHash, baseCurrency, sha256(code),
-    new Date(Date.now() + OTP_TTL_MS).toISOString(), now()
+    new Date(Date.now() + OTP_TTL_MS).toISOString(), refCode, now()
   );
   let emailSent = false;
   if (emailConfigured()) {
@@ -94,7 +95,8 @@ authRouter.post(
     if (password.length < 6) throw bad('Password must be at least 6 characters');
     if (await findByEmail.get(email)) throw bad('An account with that email already exists');
     const baseCurrency = pickCurrency(req.body.base_currency);
-    const email_sent = await issueOtp({ email, name, passwordHash: hashPassword(password), baseCurrency });
+    const refCode = str(req.body.ref)?.toUpperCase().slice(0, 16) || null;
+    const email_sent = await issueOtp({ email, name, passwordHash: hashPassword(password), baseCurrency, refCode });
     res.status(202).json({ pending: true, email, email_sent });
   })
 );
@@ -125,6 +127,15 @@ authRouter.post(
     }
     const role = ADMIN_EMAILS.includes(email) ? 'admin' : 'user';
     const info = await insertUser.run(email, pending.name, pending.password_hash, pending.base_currency, role, now());
+    // Invited by a friend? Remember who, so their reward fires on first premium.
+    if (pending.ref_code) {
+      const referrer = await db
+        .prepare('SELECT id FROM users WHERE referral_code = ?')
+        .get(String(pending.ref_code).toUpperCase());
+      if (referrer && referrer.id !== Number(info.lastInsertRowid)) {
+        await db.prepare('UPDATE users SET referred_by = ? WHERE id = ?').run(referrer.id, Number(info.lastInsertRowid));
+      }
+    }
     await delPending.run(email);
     const user = { id: Number(info.lastInsertRowid), email, name: pending.name, base_currency: pending.base_currency, role };
     const token = signToken(user);
@@ -148,6 +159,7 @@ authRouter.post(
       name: pending.name,
       passwordHash: pending.password_hash,
       baseCurrency: pending.base_currency,
+      refCode: pending.ref_code || null,
     });
     res.json({ pending: true, email, email_sent });
   })

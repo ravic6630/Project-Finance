@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sprout, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { ErrorBanner } from '../components/ui.jsx';
@@ -9,6 +9,8 @@ import { CURRENCIES, guessCurrency } from '../lib/markets.js';
 export default function Signup() {
   const { startSignup, verifySignup, resendSignup } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const refCode = searchParams.get('ref');
 
   const [step, setStep] = useState('form'); // 'form' | 'verify'
   const [name, setName] = useState('');
@@ -88,6 +90,11 @@ export default function Signup() {
             <>
               <h1 className="text-2xl font-bold text-slate-900">Create your account</h1>
               <p className="mt-1 text-sm text-slate-500">Start tracking your wealth in minutes.</p>
+              {refCode && (
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gold-50 px-3 py-2 text-sm font-medium text-gold-700 ring-1 ring-gold-200">
+                  🎁 Invited by a friend — go Premium later and they get a free month.
+                </p>
+              )}
 
               <form onSubmit={onStart} className="mt-8 space-y-4">
                 <ErrorBanner message={error} />

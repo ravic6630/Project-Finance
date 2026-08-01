@@ -45,8 +45,8 @@ export function AuthProvider({ children }) {
   }
 
   // Step 1 — email a verification code (no account yet). Returns { email_sent }.
-  async function startSignup({ name, email, password, base_currency }) {
-    return api('/auth/signup', { method: 'POST', body: { name, email, password, base_currency } });
+  async function startSignup({ name, email, password, base_currency, ref }) {
+    return api('/auth/signup', { method: 'POST', body: { name, email, password, base_currency, ref } });
   }
 
   // Step 2 — confirm the code, which creates the account and logs them in.
