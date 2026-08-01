@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
+import { db } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, HttpError } from '../util.js';
 import {
@@ -132,6 +134,37 @@ billingRouter.post(
     const baseUrl = process.env.APP_URL || process.env.BROKER_REDIRECT_BASE || `${proto}://${req.get('host')}`;
     const { url } = await createCheckout({ user: req.user, plan, baseUrl });
     return res.json({ provider: 'stripe', url, plan });
+  })
+);
+
+// Your invite link + how it's doing. The code is minted on first ask.
+billingRouter.get(
+  '/referral',
+  asyncHandler(async (req, res) => {
+    let { referral_code: code } = (await db.prepare('SELECT referral_code FROM users WHERE id = ?').get(req.user.id)) || {};
+    for (let i = 0; i < 5 && !code; i += 1) {
+      // No 0/O/1/I/L — codes get read aloud and retyped.
+      const candidate = Array.from(randomBytes(8), (b) => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[b % 31]).join('');
+      try {
+        // IS NULL guard: if a parallel request minted first, keep theirs.
+        await db.prepare('UPDATE users SET referral_code = ? WHERE id = ? AND referral_code IS NULL').run(candidate, req.user.id);
+      } catch {
+        /* UNIQUE collision — loop mints a fresh candidate */
+      }
+      code = (await db.prepare('SELECT referral_code FROM users WHERE id = ?').get(req.user.id))?.referral_code;
+    }
+    const proto = req.headers['x-forwarded-proto'] || req.protocol;
+    const baseUrl = process.env.APP_URL || process.env.BROKER_REDIRECT_BASE || `${proto}://${req.get('host')}`;
+    const referred = await db.prepare('SELECT COUNT(*) AS n FROM users WHERE referred_by = ?').get(req.user.id);
+    const rewarded = await db
+      .prepare('SELECT COUNT(*) AS n FROM users WHERE referred_by = ? AND referral_rewarded_at IS NOT NULL')
+      .get(req.user.id);
+    res.json({
+      code,
+      link: `${baseUrl}/signup?ref=${code}`,
+      referred: Number(referred?.n || 0),
+      rewarded: Number(rewarded?.n || 0),
+    });
   })
 );
 

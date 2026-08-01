@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Crown, Globe2, LogOut, Users, Download } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
-import { api } from '../lib/api.js';
+import { api, getToken } from '../lib/api.js';
 import { dateLabel } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { ErrorBanner, Field } from '../components/ui.jsx';
@@ -9,6 +9,7 @@ import UpgradeModal from '../components/UpgradeModal.jsx';
 import SecurityCard from '../components/SecurityCard.jsx';
 import EmailDigestCard from '../components/EmailDigestCard.jsx';
 import PriceAlertsCard from '../components/PriceAlertsCard.jsx';
+import ReferralCard from '../components/ReferralCard.jsx';
 
 export default function Settings() {
   const { user, updateProfile, logout } = useAuth();
@@ -127,6 +128,8 @@ export default function Settings() {
           <Crown size={16} /> {billing?.state?.premium ? 'Manage' : 'Upgrade'}
         </button>
       </div>
+
+      <ReferralCard />
 
       <EmailDigestCard onUpgrade={() => setUpgradeOpen(true)} />
 

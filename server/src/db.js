@@ -319,6 +319,11 @@ export async function initDb() {
   await addColumn('subscriptions', 'premium_welcome_sent_at', 'TEXT');
   await addColumn('transactions', 'recurring_rule_id', 'INTEGER');
   await addColumn('users', 'totp_secret', 'TEXT');
+  await addColumn('users', 'referral_code', 'TEXT');
+  await addColumn('users', 'referred_by', 'INTEGER');
+  await addColumn('users', 'referral_rewarded_at', 'TEXT');
+  await addColumn('pending_signups', 'ref_code', 'TEXT');
+  await client.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_refcode ON users(referral_code)');
   await addColumn('holdings', 'profile_id', 'INTEGER');
   await addColumn('cash_accounts', 'profile_id', 'INTEGER');
   await addColumn('assets', 'profile_id', 'INTEGER');

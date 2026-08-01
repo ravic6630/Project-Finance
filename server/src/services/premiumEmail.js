@@ -1,4 +1,5 @@
 import { db, now } from '../db.js';
+import { extendPremium } from './billing.js';
 import { escapeHtml } from '../util.js';
 import { sendMail, emailConfigured } from './email.js';
 
@@ -57,16 +58,52 @@ export function welcomeHtml(name, { grantedByAdmin }) {
   </div>`;
 }
 
+// One free month for the referrer, the first time their invitee goes premium.
+// Guarded by its own atomic flag on the REFERRED user, so webhook retries and
+// email failures can never double-reward.
+const claimReferral = db.prepare(
+  'UPDATE users SET referral_rewarded_at = ? WHERE id = ? AND referred_by IS NOT NULL AND referral_rewarded_at IS NULL'
+);
+const getReferrer = db.prepare(
+  'SELECT r.id, r.email, r.name FROM users u JOIN users r ON r.id = u.referred_by WHERE u.id = ?'
+);
+
+async function maybeRewardReferrer(userId) {
+  try {
+    const res = await claimReferral.run(now(), userId);
+    if (!res.changes) return; // no referrer, or already rewarded
+    const referrer = await getReferrer.get(userId);
+    if (!referrer) return;
+    await extendPremium(referrer.id, 31);
+    if (emailConfigured()) {
+      const invitee = await getRecipient.get(userId);
+      await sendMail({
+        to: referrer.email,
+        subject: 'Your invite just earned you a free month of Premium 🎁',
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+          <h2 style="color:#1f3a66;margin:0 0 8px">🌱 Sampada</h2>
+          <p>Hi ${escapeHtml((referrer.name || 'there').split(' ')[0])},</p>
+          <p style="color:#334155">Someone you invited${invitee?.email ? ` (<b>${escapeHtml(invitee.email)}</b>)` : ''} just became a Premium member — so we've added <b>31 days of Premium</b> to your account. Thank you for spreading the word! 🎁</p>
+        </div>`,
+      }).catch((e) => console.error('[referral] email failed:', e.message));
+    }
+  } catch (e) {
+    console.error('[referral] reward failed:', e.message);
+  }
+}
+
 // Send the welcome email exactly once for this user. Never throws — a failed
 // send is logged and the claim is released so a later retry can re-attempt.
 // Returns true only when an email was actually sent.
 export async function sendPremiumWelcome(userId, { provider } = {}) {
-  if (!emailConfigured()) return false;
   let claimed = false;
   try {
     const res = await claimWelcome.run(now(), userId);
     if (!res.changes) return false; // already welcomed (renewal, retry, or no row)
     claimed = true;
+    // First-ever activation — settle the referral reward regardless of email.
+    await maybeRewardReferrer(userId);
+    if (!emailConfigured()) return false;
     const user = await getRecipient.get(userId);
     if (!user?.email) return false;
     await sendMail({

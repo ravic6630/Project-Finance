@@ -73,6 +73,20 @@ export async function activatePremium(userId, { provider, providerSubId, days = 
   return end;
 }
 
+// Referral rewards: push an active subscription's end out by N days, or grant
+// a fresh premium window if there isn't one. Keeps the existing provider so a
+// paying subscriber's Stripe/Razorpay linkage is untouched.
+export async function extendPremium(userId, days = 31) {
+  const sub = await getSub.get(userId);
+  const activeUntil =
+    sub?.status === 'active' && sub.current_period_end && Date.parse(sub.current_period_end) > Date.now()
+      ? Date.parse(sub.current_period_end)
+      : Date.now();
+  const end = new Date(activeUntil + days * 86400000).toISOString();
+  await upsertSub.run(userId, sub?.provider || 'referral', sub?.provider_sub_id || null, end, now());
+  return end;
+}
+
 const deactivateStmt = db.prepare(`
   UPDATE subscriptions SET plan='free', status='inactive', premium_welcome_sent_at=NULL, updated_at=? WHERE user_id=?
 `);
