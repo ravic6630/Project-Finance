@@ -18,6 +18,8 @@ const OWNED_TABLES = [
   'goals',
   'alerts',
   'investment_txns',
+  'recurring_rules',
+  'budgets',
   'net_worth_snapshots',
   'support_messages',
 ];

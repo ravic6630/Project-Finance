@@ -3,6 +3,7 @@ import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { CURRENCIES } from '../markets.js';
+import { materializeRecurring } from '../services/recurring.js';
 
 export const transactionsRouter = Router();
 transactionsRouter.use(authRequired);
@@ -50,6 +51,8 @@ const remove = db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?
 transactionsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
+    // Log any recurring transactions that have come due since the last look.
+    await materializeRecurring(req.user.id).catch(() => {});
     const clauses = ['user_id = ?'];
     const params = [req.user.id];
     if (req.query.type && TYPES.includes(req.query.type)) {

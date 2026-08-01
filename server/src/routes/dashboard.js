@@ -4,6 +4,7 @@ import { asyncHandler } from '../util.js';
 import { buildSummary } from '../services/summary.js';
 import { premiumState } from '../services/billing.js';
 import { recordSnapshot, getHistory } from '../services/networth.js';
+import { materializeRecurring } from '../services/recurring.js';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(authRequired);
@@ -11,6 +12,7 @@ dashboardRouter.use(authRequired);
 dashboardRouter.get(
   '/',
   asyncHandler(async (req, res) => {
+    await materializeRecurring(req.user.id).catch(() => {});
     const summary = await buildSummary(req.user, { refresh: req.query.refresh === '1' });
 
     // Record today's net worth for everyone, so history accrues even on the
