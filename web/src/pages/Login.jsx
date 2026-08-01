@@ -6,12 +6,14 @@ import { ErrorBanner } from '../components/ui.jsx';
 import AuthAside from '../components/AuthAside.jsx';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, complete2fa } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ticket, setTicket] = useState(null); // set when the account needs a 2FA code
+  const [code, setCode] = useState('');
 
   const [slowHint, setSlowHint] = useState(false);
 
@@ -22,13 +24,36 @@ export default function Login() {
     // A slow sign-in almost always means Render's free tier is waking up.
     const slow = setTimeout(() => setSlowHint(true), 2500);
     try {
-      await login(email, password);
+      const d = await login(email, password);
+      if (d?.requires_2fa) {
+        setTicket(d.ticket);
+        setBusy(false);
+        return;
+      }
       navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
       clearTimeout(slow);
       setSlowHint(false);
+      setBusy(false);
+    }
+  }
+
+  async function onSubmit2fa(e) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await complete2fa(ticket, code);
+      navigate('/');
+    } catch (err) {
+      setError(err.message);
+      if (/expired/i.test(err.message)) {
+        setTicket(null);
+        setCode('');
+      }
+    } finally {
       setBusy(false);
     }
   }
@@ -47,6 +72,42 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to see your portfolio.</p>
 
+          {ticket ? (
+            <form onSubmit={onSubmit2fa} className="mt-8 space-y-4">
+              <ErrorBanner message={error} />
+              <div>
+                <span className="label">Authenticator code</span>
+                <input
+                  className="input text-center text-xl tracking-[0.4em]"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
+                  autoFocus
+                  required
+                />
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Open your authenticator app and enter the 6-digit code for Sampada.
+                </p>
+              </div>
+              <button className="btn-primary w-full" disabled={busy || code.length !== 6}>
+                {busy ? 'Verifying…' : 'Verify & sign in'}
+              </button>
+              <button
+                type="button"
+                className="w-full text-center text-sm font-medium text-slate-400 hover:text-brand-600"
+                onClick={() => {
+                  setTicket(null);
+                  setCode('');
+                  setError('');
+                }}
+              >
+                ← Back to password
+              </button>
+            </form>
+          ) : (
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
             <ErrorBanner message={error} />
             <div>
@@ -87,6 +148,7 @@ export default function Login() {
               </p>
             )}
           </form>
+          )}
 
           <p className="mt-6 text-center text-sm text-slate-500">
             New here?{' '}

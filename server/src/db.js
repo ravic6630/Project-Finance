@@ -226,6 +226,19 @@ CREATE TABLE IF NOT EXISTS password_reset_codes (
   attempts   INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
+-- One row per signed-in device. The JWT stays stateless; its sha256 hash here
+-- lets a user see active devices and revoke any of them instantly.
+CREATE TABLE IF NOT EXISTS sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT UNIQUE NOT NULL,
+  ua         TEXT,
+  ip         TEXT,
+  created_at TEXT NOT NULL,
+  last_seen  TEXT,
+  revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE TABLE IF NOT EXISTS email_prefs (
   user_id   INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   daily     INTEGER NOT NULL DEFAULT 0,
@@ -292,6 +305,8 @@ export async function initDb() {
   // Additive migrations for databases created before a column existed.
   await addColumn('subscriptions', 'premium_welcome_sent_at', 'TEXT');
   await addColumn('transactions', 'recurring_rule_id', 'INTEGER');
+  await addColumn('users', 'totp_secret', 'TEXT');
+  await addColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;

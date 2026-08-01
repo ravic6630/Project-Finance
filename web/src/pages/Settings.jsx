@@ -6,6 +6,7 @@ import { dateLabel } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { ErrorBanner, Field } from '../components/ui.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
+import SecurityCard from '../components/SecurityCard.jsx';
 import EmailDigestCard from '../components/EmailDigestCard.jsx';
 import PriceAlertsCard from '../components/PriceAlertsCard.jsx';
 
@@ -144,6 +145,8 @@ export default function Settings() {
           </p>
         </div>
       </div>
+
+      <SecurityCard user={user} onUserChanged={() => updateProfile({})} />
 
       <div className="card flex flex-wrap items-start justify-between gap-4 p-6">
         <div className="flex items-start gap-4">

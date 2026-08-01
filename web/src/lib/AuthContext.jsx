@@ -27,10 +27,21 @@ export function AuthProvider({ children }) {
     return () => clearTimeout(slow);
   }, []);
 
+  // Resolves to { requires_2fa, ticket } when the account has 2FA — the caller
+  // then collects the 6-digit code and finishes with complete2fa().
   async function login(email, password) {
     const d = await api('/auth/login', { method: 'POST', body: { email, password } });
+    if (d.requires_2fa) return d;
     setToken(d.token);
     setUser(d.user);
+    return d;
+  }
+
+  async function complete2fa(ticket, code) {
+    const d = await api('/auth/login/2fa', { method: 'POST', body: { ticket, code } });
+    setToken(d.token);
+    setUser(d.user);
+    return d;
   }
 
   // Step 1 — email a verification code (no account yet). Returns { email_sent }.
@@ -62,7 +73,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, waking, login, startSignup, verifySignup, resendSignup, logout, updateProfile }}
+      value={{ user, loading, waking, login, complete2fa, startSignup, verifySignup, resendSignup, logout, updateProfile }}
     >
       {children}
     </AuthContext.Provider>
