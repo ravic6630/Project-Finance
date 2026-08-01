@@ -99,10 +99,43 @@ CREATE TABLE IF NOT EXISTS transactions (
   account    TEXT,
   date       TEXT NOT NULL,
   note       TEXT,
+  recurring_rule_id INTEGER,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_txn_user ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(user_id, date);
+-- Recurring transaction rules (salary, rent, SIPs…). Materialised lazily into
+-- real transactions rows (tagged with recurring_rule_id) whenever the user's
+-- transactions are read — no scheduler needed.
+CREATE TABLE IF NOT EXISTS recurring_rules (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type         TEXT NOT NULL DEFAULT 'EXPENSE',
+  amount       REAL NOT NULL DEFAULT 0,
+  currency     TEXT NOT NULL DEFAULT 'INR',
+  category     TEXT,
+  account      TEXT,
+  note         TEXT,
+  day_of_month INTEGER NOT NULL DEFAULT 1,
+  start_date   TEXT NOT NULL,
+  end_date     TEXT,
+  active       INTEGER NOT NULL DEFAULT 1,
+  last_run     TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recurring_user ON recurring_rules(user_id);
+-- Monthly spending budgets, one per expense category.
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category   TEXT NOT NULL,
+  amount     REAL NOT NULL DEFAULT 0,
+  currency   TEXT NOT NULL DEFAULT 'INR',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(user_id, category)
+);
 CREATE TABLE IF NOT EXISTS goals (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -246,6 +279,7 @@ export async function initDb() {
   await client.executeMultiple(SCHEMA);
   // Additive migrations for databases created before a column existed.
   await addColumn('subscriptions', 'premium_welcome_sent_at', 'TEXT');
+  await addColumn('transactions', 'recurring_rule_id', 'INTEGER');
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;
