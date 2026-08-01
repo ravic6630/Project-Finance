@@ -1,97 +1,84 @@
 # 🌱 Sampada
 
-**Your wealth, all in one place.** Track your Indian stocks, US stocks, mutual funds, cash, fixed
-deposits and day-to-day income & expenses — with live prices and live exchange rates — and always
-know your true net worth in ₹ or $.
+**Your wealth, all in one place.** Track stocks across **7 markets**, Indian **mutual funds**,
+**cash & FDs**, **property, land, gold and other assets**, plus day-to-day income & expenses —
+with live prices and live FX — and always know your true net worth in your own currency.
 
-Built for you, your family and your friends: everyone gets their own private account.
+Live at **https://sampada-j9hi.onrender.com** · installable on your phone (Add to Home Screen).
 
 ---
 
 ## ✨ What it does
 
-- **Investments** — Indian stocks (NSE/BSE), US stocks, and Indian mutual funds.
-  - Live stock prices from Yahoo Finance, live mutual-fund NAVs from AMFI.
-  - Per-holding gain/loss and percentage, grouped by asset class.
-  - Optional **manual price override** if you ever want to fix a price yourself.
-- **Cash & Bank** — savings accounts, cash, and fixed deposits (with interest rate & maturity).
-- **Transactions** — log income and expenses by category and see your monthly cashflow.
-- **Dashboard** — total net worth, asset allocation, 6-month income-vs-expense chart, and
-  investments-by-class breakdown.
-- **Multi-currency** — hold assets in ₹ and $; switch the whole app between INR and USD using live
-  FX rates.
-- **Multi-user** — each person signs up with their own email; their data is completely private.
-- **Admin panel** — admins (set via `ADMIN_EMAILS`) can view all users, grant/revoke premium, and
-  delete accounts.
-- **CAS import** — upload your Consolidated Account Statement (CAS) PDF and Sampada reads all your
-  mutual funds (and demat stocks) at once, with duplicate detection and a review step before saving.
+**Track everything**
+- **Investments** — stocks from India (NSE/BSE), USA, UK, Ireland, Australia, New Zealand and
+  Canada, plus Indian mutual funds. Live prices (Yahoo Finance) and NAVs (AMFI), auto-refreshing
+  while the tab is open; per-holding gain/loss; manual price override when you want it.
+- **Assets** — house, land, business, vehicles, gold — valued by you, shown beside your portfolio
+  with per-type themed cards and share-of-total bars.
+- **Cash & Bank** — savings, cash and fixed deposits (interest + maturity).
+- **Transactions** — income/expense with categories (your own custom categories are remembered),
+  monthly cashflow.
+- **Multi-currency** — 7 currencies (INR/USD/GBP/EUR/AUD/NZD/CAD); switch the whole app's base
+  currency any time, converted with live FX.
 
-> No API keys and no signups with any data provider are required — all price/FX sources are free.
+**Bring your money in**
+- **Broker connect** — Upstox (stocks *and* mutual funds), Zerodha, Angel One, Fyers. Read-only
+  OAuth; after the first login you can **Sync now** without logging in again (until the broker
+  token expires). Free **sample data** preview for every broker.
+- **CAS PDF import** — CAMS/KFintech or NSDL/CDSL Consolidated Account Statement → parsed, reviewed,
+  imported (see setup below).
+- **CSV import/export** — bring holdings from any broker on earth; export them back out.
+
+**Watch it grow**
+- **Dashboard** — a personalised hero (animated net worth, monthly change), a **net-worth history
+  chart** with 1D→10Y ranges, asset allocation, income-vs-expense — plus **milestone confetti**
+  when you cross big round numbers, and a **"Get growing" onboarding checklist**.
+- **Goals & projections** *(premium)* — retirement, house, education… on-pace tracking and the exact
+  monthly amount needed, in your base currency.
+- **Calculator** — SIP, Lumpsum and **SWP** (withdrawal plan) — free, public, no login
+  (`/calculators`), and inside the app from Goals.
+- **Returns & tax** *(premium)* — true returns (XIRR) and capital-gains reports.
+- **Price alerts** *(premium)* — emailed when a stock/fund crosses your target.
+- **Daily digest** *(premium)* — a good-morning email with your net worth and allocation.
+
+**The experience**
+- Public **landing page**, app-wide **dark mode**, smooth motion (page transitions, staggered
+  cards), custom empty-state illustrations, **⌘K / Ctrl-K command palette**, installable **PWA**
+  with the sprout icon, in-app **support chat** with the admin (email notifications both ways).
+- **Multi-user** — everyone gets a private account (email + OTP verification).
+- **Admin panel** — user overview, grant/revoke premium, password resets, support inbox.
+- **Your data** — one-click full-account **JSON export** from Settings (broker tokens never
+  included).
+
+> All price/FX sources are free — no data-provider signups required.
 
 ---
 
-## 🚀 Getting started
+## 🚀 Getting started (local)
 
-**Requirements:** [Node.js](https://nodejs.org) **22.5 or newer** (uses the built-in SQLite). Check
-with `node -v`. This repo pins Node 24 via `.nvmrc`.
+**Requirements:** [Node.js](https://nodejs.org) 22.5+ (`.nvmrc` pins 24).
 
 ```bash
-# 1. Install everything (server + web)
-npm install
-
-# 2. Start the app (API + website together)
-npm run dev
-
-# 3. Open the website
-#    → http://localhost:3000
+npm install     # server + web
+npm run dev     # API :4000 + website :3000 together
+# open http://localhost:3000
 ```
 
-That's it. The first time you open it, click **Create an account**, and you're in.
-
-The API runs on port 4000 and the website on 3000 (the website talks to the API automatically).
-
----
-
-## 👨‍👩‍👧‍👦 Sharing with family & friends
-
-While `npm run dev` is running, anyone on the **same Wi-Fi/network** can use it too:
-
-1. Find your computer's local IP (e.g. `192.168.0.169`) — `npm run dev` prints a **Network** URL.
-2. Share `http://<your-ip>:3000` with them.
-3. Each person clicks **Create an account** — their holdings, accounts and transactions stay
-   private to their own login.
-
-To let people use it from **anywhere** (not just your network), see *Deploying later* below.
+Create an account and you're in. On first signup, any email listed in `ADMIN_EMAILS` becomes an
+admin (admins are always premium).
 
 ---
 
-## 📥 Importing holdings from your CAS (optional)
-
-Instead of typing each holding, you can upload your **CAS** (Consolidated Account Statement) — one
-PDF that lists everything you hold. Sampada parses it, shows a review screen, and imports what you
-pick.
-
-**One-time setup** (enables the parser):
+## 📥 CAS import (optional one-time setup)
 
 ```bash
 bash server/tools/cas/setup.sh
 ```
 
-This creates a small Python environment and installs the open-source
-[`casparser`](https://github.com/codereverser/casparser) library. Notes:
-
-- **Mutual funds** import fully (matched to live NAVs via their AMFI code).
-- **Demat stocks** also import when running **Python 3.10+** (older Python parses mutual funds only).
-- Use the **original** statement PDF emailed by CDSL/NSDL or CAMS/KFintech — re-saved/printed PDFs
-  don't parse.
-
-How to get your CAS:
-- **Mutual funds:** [CAMS](https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement)
-  or [KFintech](https://mfs.kfintech.com/investor/General/ConsolidatedAccountStatement) → email mailback.
-- **Stocks + funds together:** [NSDL CAS](https://nsdl.co.in/nsdlcas/) (monthly email if you have a demat account).
-
-In the app: **Investments → Import CAS → upload + password → review → Import**. No CAS handy? Click
-**"Try with sample data"** to see how it works.
+Installs a small Python venv with [`casparser`](https://github.com/codereverser/casparser).
+Mutual funds import fully (AMFI-matched); demat stocks too on Python 3.10+. Use the **original**
+PDF from CAMS/KFintech/NSDL — re-saved PDFs don't parse. In the app: **Investments → Import CAS**.
 
 ---
 
@@ -99,140 +86,83 @@ In the app: **Investments → Import CAS → upload + password → review → Im
 
 | Asset | Source | Notes |
 |---|---|---|
-| US stocks | Yahoo Finance | Enter the ticker, e.g. `AAPL`, `MSFT` |
-| Indian stocks | Yahoo Finance | Enter the ticker, e.g. `RELIANCE`, `TCS` (we add `.NS` for NSE automatically; use `.BO` for BSE) |
-| Indian mutual funds | AMFI / mfapi.in | Search by name to pick the fund, or paste the AMFI scheme code |
-| Exchange rate (₹ ↔ $) | open.er-api.com | Live, free |
+| Stocks (7 markets) | Yahoo Finance | Ticker per market, e.g. `AAPL`, `RELIANCE` (`.NS` auto), `BARC` (UK), `RY` (Canada) |
+| Indian mutual funds | AMFI / mfapi.in | Search by name or AMFI scheme code; broker ISINs resolve automatically |
+| FX (all 7 currencies) | open.er-api.com | Live, free |
 
-Prices are cached for ~15 minutes. Hit **Refresh prices** any time to force an update. If a price
-can't be fetched, the last known value is kept and marked *stale* — and you can always set a manual
-price on the holding.
+Prices cache ~15 min (20 s while the Investments tab polls live). Stale prices are marked; manual
+override always available.
 
 ---
 
-## 🔒 Your data & privacy
+## ⚙️ Configuration (`server/.env` or host env vars)
 
-- Everything is stored **locally** on your computer in a single SQLite file:
-  `server/data/sampada.db`.
-- Passwords are hashed (bcrypt); login tokens are signed with a secret that's auto-generated and
-  saved to `server/data/.jwt_secret` on first run.
-- **Backup** = copy `server/data/sampada.db` somewhere safe. **Start fresh** = stop the app and
-  delete that file.
+| Variable | Purpose |
+|---|---|
+| `ADMIN_EMAILS` | Comma-separated admin emails (always premium) |
+| `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | Cloud SQLite (Turso); omit → local file `server/data/sampada.db` |
+| `BREVO_API_KEY` | Transactional email (OTP, digest, alerts, chat notifications) — HTTP API, works on hosts that block SMTP. `SMTP_*` supported as fallback |
+| `DIGEST_HOUR` | Daily digest hour, IST (default 8) |
+| `CRON_SECRET` | Protects `/api/cron/digests` for an external scheduler (cron-job.org) — needed on free hosting that sleeps |
+| `RAZORPAY_KEY_ID/KEY_SECRET/PLAN_ID(_ANNUAL)/WEBHOOK_SECRET` | Premium billing, India (UPI Autopay) |
+| `STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET` | Premium billing, rest of world |
+| `UPSTOX_API_KEY/SECRET` (also `ZERODHA_*`, `ANGELONE_*`, `FYERS_*`) | Broker connect keys; set each app's redirect URL to `<APP_URL>/broker/<broker>/callback` |
+| `BROKER_REDIRECT_BASE` / `APP_URL` | Public base URL of the deployment |
+| `FREE_HOLDINGS_LIMIT` | Free-plan holdings cap (default 15; premium is unlimited) |
+| `JWT_SECRET`, `API_PORT` | Auth secret (auto-generated if unset), dev API port |
 
 ---
 
-## 🛠️ Useful commands
+## ☁️ Deploying
 
 ```bash
-npm run dev       # run API + website with hot reload (development)
-npm run build     # build the website for production (outputs web/dist)
-npm start         # run the production server (serves the built website + API on one port)
-npm run dev:api   # run only the API
-npm run dev:web   # run only the website
+npm run build   # web → web/dist
+npm start       # one Node server: API + built site, honours PORT
 ```
 
-### Optional configuration
-
-Copy `server/.env.example` to `server/.env` to change defaults (all optional):
-
-- `API_PORT` — API port in development (default `4000`)
-- `JWT_SECRET` — set your own login-token secret
-- `ADMIN_EMAILS` — comma-separated emails that become admins on signup
+Runs anywhere (Render, Railway, Fly, VPS). Use Turso for the database on hosts without persistent
+disk. `Dockerfile`, `docker-compose.yml` and a full walkthrough live in **[DEPLOY.md](DEPLOY.md)**.
+On free tiers that sleep, point a free pinger at `/api/cron/digests?secret=…` so the daily emails
+fire; the app shows a friendly "waking the server 🌱" note during cold starts.
 
 ---
-
-## ☁️ Deploying later (so anyone can access it)
-
-You chose *local-first*. When you're ready to put Sampada online:
-
-1. `npm run build` to build the website.
-2. Run `npm start` — the API server will serve the built website **and** the API on a single port
-   (it honors the host's `PORT` environment variable).
-3. Deploy that single Node server to any host (Render, Railway, Fly.io, a small VPS, etc.) and keep
-   `server/data/` on a persistent disk so your data survives restarts.
-
-A ready-to-use **`Dockerfile`**, **`docker-compose.yml`**, and a full walkthrough (VPS + PaaS +
-domain/SSL) are in **[DEPLOY.md](DEPLOY.md)**.
-
----
-
-## 🔗 Connecting a broker (optional, premium)
-
-Auto-pull your **stock** holdings by logging in at your broker. Currently supported: **Zerodha**
-(Kite Connect) and **Upstox** — both expose free holdings APIs. We only ever *read* holdings; we
-never place orders.
-
-One-time setup per broker:
-
-1. Create a free developer app: [Zerodha](https://developers.kite.trade) / [Upstox](https://upstox.com/developer/apps).
-2. Set its **redirect URL** to `http://localhost:3000/broker/<broker>/callback`
-   (e.g. `.../broker/zerodha/callback`).
-3. Put the keys in `server/.env`: `ZERODHA_API_KEY` / `ZERODHA_API_SECRET` (and/or `UPSTOX_*`).
-
-Then **Investments → Connect broker → Connect**. No keys yet? Click **Sample** to preview the flow.
-(Live broker connect is a Premium feature; the Sample preview is free.)
-
-## 💳 Premium & payments (optional)
-
-Sampada has a built-in **Premium** plan (₹99/month) gating the premium features (broker auto-sync).
-Payments use **Razorpay** (UPI Autopay / cards).
-
-- **Try it now with no money:** Settings → Upgrade → **Start 30-day test trial**.
-- **Enable real billing:** create a Razorpay account + a ₹99 monthly **Plan**, then set
-  `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_ID`, and `RAZORPAY_WEBHOOK_SECRET` in
-  `server/.env`. Point the Razorpay webhook to `/api/billing/webhook`. Start with **test keys**.
-- The account owner (any email in `ADMIN_EMAILS`) is always Premium.
-
-⚠️ Before charging money or handling others' financial data, confirm DPDP Act 2023 / SEBI
-obligations with a professional, and publish a privacy policy + terms. For USD pricing, prefer
-**annual** billing (Stripe's per-transaction fee makes monthly $1 uneconomic).
-
-## 📧 Daily summary email (optional, premium)
-
-Subscribers can opt into a **daily "good-morning" email** with their net worth, investments,
-this-month cashflow and asset allocation.
-
-- Turn it on: **Settings → Daily summary email** (toggle). Use **Preview email** to see it, and
-  **Send test** to email yourself one.
-- **To actually send,** add SMTP creds to `server/.env` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`,
-  `EMAIL_FROM`). Works with Gmail (app password), Brevo, Amazon SES, etc.
-- A scheduler sends it daily at `DIGEST_HOUR` (IST, default 8am) to opted-in premium users — so the
-  server needs to be running at that time (i.e., once it's hosted).
-
-## 🧭 Roadmap status
-
-1. **CAS import** ✅ built — lowest friction, no registrations (this is what Kuvera does).
-2. **Broker connect** ✅ built — Zerodha + Upstox (add their free dev-app keys to go live).
-3. **Payments / Premium** ✅ built — Razorpay subscription + test trial + premium gate.
-4. **Daily summary email** ✅ built — opt-in digest for premium subscribers.
-5. **Account Aggregator (AA)** ⏳ deferred — RBI's consent network can deliver holdings, but
-   consuming it requires being (or partnering with) a regulated **FIU**; revisit with a business entity.
 
 ## 🧱 Project structure
 
 ```
 Project Finance/
-├── package.json            # workspaces + the `npm run dev` script
-├── server/                 # Express API (Node built-in SQLite, JWT auth)
+├── server/                 # Express API (ESM) · libsql/Turso · JWT
 │   └── src/
-│       ├── index.js        # app entry + routes wiring
-│       ├── db.js           # schema (users, holdings, cash, transactions, caches)
-│       ├── auth.js         # signup/login, JWT, password hashing
-│       ├── routes/         # auth, holdings, cash, transactions, dashboard, prices, import, broker, billing, email
-│       ├── services/       # prices, FX, portfolio, summary, CAS bridge, importer, brokers, billing, email, digest, scheduler
-│       └── tools/cas/      # Python CAS parser (casparser) + setup.sh + parse_cas.py
-└── web/                    # React website (Vite + Tailwind + Recharts)
+│       ├── index.js        # app entry + route wiring
+│       ├── db.js           # schema + additive migrations
+│       ├── routes/         # auth, holdings, cash, assets, transactions, goals, alerts,
+│       │                   # returns, dashboard, prices, import, broker, billing, email,
+│       │                   # support, export, admin, cron
+│       ├── services/       # prices/FX, portfolio, summary, importer, brokers, billing,
+│       │                   # stripe, email, premiumEmail, digest, alerts, scheduler, goals
+│       └── tools/cas/      # Python casparser bridge
+└── web/                    # React 18 · Vite · Tailwind · Recharts · framer-motion
     └── src/
-        ├── pages/          # Dashboard, Investments, Cash, Transactions, Settings, Login, Signup
-        ├── components/     # layout, modals, forms, UI primitives
-        └── lib/            # API client, auth context, formatting
+        ├── pages/          # Landing, Login/Signup, Dashboard, Investments, Goals, Returns,
+        │                   # Cash, Assets, Transactions, Settings, Admin, Calculators
+        ├── components/     # WealthHero, charts, import flows, SupportChat, CommandPalette,
+        │                   # ThemeToggle, Illustrations, ui primitives
+        └── lib/            # api client, auth context, theme, motion, milestones, format
+    └── public/             # PWA manifest + icons
 ```
-
-### Tech stack
-
-React · Vite · Tailwind CSS · Recharts · Express · Node built-in SQLite · JWT.
 
 ---
 
-Made with care. Questions or want a new feature (price alerts, CSV import, charts over time,
-dividends)? Just ask.
+## 🔒 Data & privacy
+
+- Passwords hashed (bcrypt); JWT sessions; email OTP on signup and password reset.
+- Broker access is **read-only**; tokens are stored server-side and **never** exported or emailed.
+- Every user can download their complete data as JSON from **Settings → Your data**.
+- Local mode stores everything in `server/data/sampada.db` — copy it to back up.
+
+⚠️ Before charging real money or handling others' financial data, review DPDP Act 2023 / SEBI
+obligations with a professional and publish a privacy policy + terms.
+
+---
+
+Made with care — and a 🌱. Ideas or issues? There's a support chat inside the app.

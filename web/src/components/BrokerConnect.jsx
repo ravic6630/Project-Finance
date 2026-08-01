@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, Crown, Loader2, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { ChevronLeft, Crown, Loader2, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { ErrorBanner, Modal } from './ui.jsx';
 import ImportReview from './ImportReview.jsx';
@@ -28,6 +28,7 @@ function Monogram({ broker, lg }) {
 
 export default function BrokerConnect({ open, onClose, onImported }) {
   const [configured, setConfigured] = useState({});
+  const [connected, setConnected] = useState({});
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);
   const [data, setData] = useState(null);
@@ -44,8 +45,14 @@ export default function BrokerConnect({ open, onClose, onImported }) {
     setError('');
     setNeedsUpgrade(false);
     api('/broker/status')
-      .then((d) => setConfigured(d.configured || {}))
-      .catch(() => setConfigured({}));
+      .then((d) => {
+        setConfigured(d.configured || {});
+        setConnected(d.connected || {});
+      })
+      .catch(() => {
+        setConfigured({});
+        setConnected({});
+      });
   }, [open]);
 
   function close() {
@@ -71,6 +78,21 @@ export default function BrokerConnect({ open, onClose, onImported }) {
     } catch (err) {
       if (/premium/i.test(err.message)) setNeedsUpgrade(true);
       setError(err.message);
+      setBusy('');
+    }
+  }
+
+  // Re-pull holdings with the saved token — no OAuth round-trip. If the broker
+  // session has expired the server answers 401 with a friendly message.
+  async function sync(broker) {
+    setError('');
+    setBusy(broker + ':sync');
+    try {
+      setData(await api(`/broker/${broker}/sync`, { method: 'POST' }));
+    } catch (err) {
+      if (err.status === 402) setNeedsUpgrade(true);
+      setError(err.message);
+    } finally {
       setBusy('');
     }
   }
@@ -151,15 +173,34 @@ export default function BrokerConnect({ open, onClose, onImported }) {
               </p>
             )}
 
+            {connected[selected.id] && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                <RefreshCw size={13} /> Connected — you can re-sync without logging in again.
+              </p>
+            )}
+
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button className="btn-ghost" onClick={() => demo(selected.id)} disabled={!!busy}>
                 {busy === selected.id + ':demo' ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                 Try sample data
               </button>
-              <button className="btn-primary" onClick={() => connect(selected.id)} disabled={!!busy}>
-                {busy === selected.id ? <Loader2 size={16} className="animate-spin" /> : null}
-                Connect {selected.label}
-              </button>
+              {connected[selected.id] ? (
+                <>
+                  <button className="btn-ghost" onClick={() => connect(selected.id)} disabled={!!busy}>
+                    {busy === selected.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                    Reconnect
+                  </button>
+                  <button className="btn-primary" onClick={() => sync(selected.id)} disabled={!!busy}>
+                    {busy === selected.id + ':sync' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                    Sync now
+                  </button>
+                </>
+              ) : (
+                <button className="btn-primary" onClick={() => connect(selected.id)} disabled={!!busy}>
+                  {busy === selected.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                  Connect {selected.label}
+                </button>
+              )}
             </div>
           </div>
         ) : (

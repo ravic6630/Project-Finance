@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Crown, Globe2, LogOut, Users } from 'lucide-react';
+import { Check, Crown, Globe2, LogOut, Users, Download } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { api } from '../lib/api.js';
 import { dateLabel } from '../lib/format.js';
@@ -37,6 +37,26 @@ export default function Settings() {
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function downloadExport() {
+    try {
+      const res = await fetch('/api/export', {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error('Export failed — try again.');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sampada-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -123,6 +143,25 @@ export default function Settings() {
             their own login.
           </p>
         </div>
+      </div>
+
+      <div className="card flex flex-wrap items-start justify-between gap-4 p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+            <Download size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900">Your data</h3>
+            <p className="mt-1 max-w-md text-sm text-slate-500">
+              Download everything you&apos;ve put into Sampada — holdings, accounts, assets,
+              transactions, goals and history — as one JSON file. Broker login tokens are never
+              included.
+            </p>
+          </div>
+        </div>
+        <button className="btn-ghost shrink-0" onClick={downloadExport}>
+          <Download size={16} /> Download JSON
+        </button>
       </div>
 
       <div className="card flex items-start gap-4 p-6">

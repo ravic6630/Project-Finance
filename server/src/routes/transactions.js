@@ -70,7 +70,24 @@ transactionsRouter.get(
         `SELECT * FROM transactions WHERE ${clauses.join(' AND ')} ORDER BY date DESC, id DESC LIMIT ?`
       )
       .all(...params, limit);
-    res.json({ transactions: rows, categories: DEFAULT_CATEGORIES });
+    // Suggestions = the defaults plus every category this user has actually
+    // used, so custom categories become first-class after their first use.
+    const used = await db
+      .prepare(
+        "SELECT DISTINCT type, category FROM transactions WHERE user_id = ? AND category IS NOT NULL AND TRIM(category) <> ''"
+      )
+      .all(req.user.id);
+    const categories = {
+      EXPENSE: [...(DEFAULT_CATEGORIES.EXPENSE || [])],
+      INCOME: [...(DEFAULT_CATEGORIES.INCOME || [])],
+    };
+    for (const r of used) {
+      const list = categories[r.type];
+      if (list && !list.some((c) => c.toLowerCase() === String(r.category).toLowerCase())) {
+        list.push(r.category);
+      }
+    }
+    res.json({ transactions: rows, categories });
   })
 );
 
