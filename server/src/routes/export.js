@@ -19,6 +19,8 @@ const OWNED_TABLES = [
   'goal_links',
   'alerts',
   'investment_txns',
+  'recurring_rules',
+  'budgets',
   'net_worth_snapshots',
   'support_messages',
 ];

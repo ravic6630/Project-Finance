@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Pencil, PiggyBank, Plus, Repeat, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money, todayISO } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
+import RecurringRules from '../components/RecurringRules.jsx';
+import Budgets from '../components/Budgets.jsx';
 
 const FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -176,6 +178,8 @@ export default function Transactions() {
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const [budgetsOpen, setBudgetsOpen] = useState(false);
   const confirm = useConfirm();
 
   const load = useCallback(async (f) => {
@@ -231,15 +235,23 @@ export default function Transactions() {
             </button>
           ))}
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus size={16} /> Add transaction
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-ghost" onClick={() => setBudgetsOpen(true)}>
+            <PiggyBank size={16} /> Budgets
+          </button>
+          <button className="btn-ghost" onClick={() => setRecurringOpen(true)}>
+            <Repeat size={16} /> Recurring
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={16} /> Add transaction
+          </button>
+        </div>
       </div>
 
       {Object.keys(totals).length > 0 && (
@@ -302,7 +314,8 @@ export default function Transactions() {
                   <p className="truncate font-semibold text-slate-900">
                     {t.category || (income ? 'Income' : 'Expense')}
                   </p>
-                  <p className="truncate text-xs text-slate-400">
+                  <p className="flex items-center gap-1 truncate text-xs text-slate-400">
+                    {t.recurring_rule_id && <Repeat size={11} className="shrink-0 text-brand-400" title="Logged automatically" />}
                     {dateLabel(t.date)}
                     {t.note ? ` · ${t.note}` : ''}
                   </p>
@@ -337,6 +350,14 @@ export default function Transactions() {
           })}
         </div>
       )}
+
+      <RecurringRules
+        open={recurringOpen}
+        onClose={() => setRecurringOpen(false)}
+        categories={categories}
+        onChanged={() => load(filter)}
+      />
+      <Budgets open={budgetsOpen} onClose={() => setBudgetsOpen(false)} categories={categories} />
 
       <TxnForm
         open={formOpen}

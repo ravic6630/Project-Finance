@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -99,6 +99,22 @@ const RANGES = [
   { key: '10Y', days: 365 * 10, label: 'the last 10 years' },
 ];
 
+// Benchmark options for the comparison overlay; the default adapts to the
+// user's base currency (their home market), and the choice is remembered.
+const BENCH_LABELS = {
+  nifty50: 'NIFTY 50',
+  sp500: 'S&P 500',
+  ftse100: 'FTSE 100',
+  stoxx50: 'EURO STOXX 50',
+  asx200: 'ASX 200',
+  nzx50: 'NZX 50',
+  tsx: 'S&P/TSX',
+};
+const BENCH_FOR_CURRENCY = {
+  INR: 'nifty50', USD: 'sp500', GBP: 'ftse100', EUR: 'stoxx50',
+  AUD: 'asx200', NZD: 'nzx50', CAD: 'tsx',
+};
+
 // Build the series for the selected window on a REAL time axis. The x-axis
 // domain is pinned to [start, end] of the range (not the data extent), and the
 // last-known net worth is carried forward to the window's start — so a day, a
@@ -159,9 +175,75 @@ const tickFormatter = (spanDays) => (ms) => {
 // Premium: net-worth trend chart. Free: a teaser that upsells (we record the
 // history for everyone, so it's already waiting when they upgrade).
 function NetWorthHistory({ data, base, onUpgrade }) {
-  // Declared before the non-premium early return so the hook order is stable
+  // All hooks live above the non-premium early return so the order is stable
   // if the user upgrades without a reload.
   const [range, setRange] = useState('1M');
+  const [bench, setBench] = useState(() => {
+    try {
+      return localStorage.getItem('sampada_bench') || BENCH_FOR_CURRENCY[base] || 'sp500';
+    } catch {
+      return BENCH_FOR_CURRENCY[base] || 'sp500';
+    }
+  });
+  const [benchData, setBenchData] = useState(null);
+
+  const hist = data.premium ? data.net_worth_history || [] : [];
+  const active = RANGES.find((r) => r.key === range) || RANGES[2];
+  const { view, startMs, endMs, exact, from } = useMemo(
+    () => buildWindow(hist, active.days),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.net_worth_history, active.days]
+  );
+
+  // Fetch the index series for the visible window (silently absent on failure).
+  useEffect(() => {
+    if (!data.premium || bench === 'none' || !startMs || !endMs || view.length < 2) {
+      setBenchData(null);
+      return undefined;
+    }
+    let stale = false;
+    api(`/prices/benchmark?index=${bench}&from=${startMs}&to=${endMs}`)
+      .then((d) => !stale && setBenchData(d.points?.length >= 2 ? d : null))
+      .catch(() => !stale && setBenchData(null));
+    return () => {
+      stale = true;
+    };
+  }, [data.premium, bench, startMs, endMs, view.length]);
+
+  // Rebase the index to the window's starting net worth: "if my money had
+  // grown like the index". Skipped when net worth starts at 0 (nothing to scale).
+  const overlay = useMemo(() => {
+    if (!benchData || view.length < 2) return null;
+    const pts = benchData.points;
+    const closeAtOrBefore = (ms) => {
+      let c = null;
+      for (const pt of pts) {
+        if (pt.ms <= ms) c = pt.close;
+        else break;
+      }
+      return c;
+    };
+    const baseline = closeAtOrBefore(startMs) ?? pts[0]?.close;
+    const factor = baseline > 0 ? (from || 0) / baseline : 0;
+    if (!Number.isFinite(factor) || factor <= 0) return null;
+    const merged = view.map((pt) => ({ ...pt, bench: (closeAtOrBefore(pt.ms) ?? baseline) * factor }));
+    const lastClose = closeAtOrBefore(endMs) ?? pts[pts.length - 1].close;
+    return {
+      merged,
+      label: benchData.label,
+      youPct: from > 0 ? ((view[view.length - 1].net_worth - from) / from) * 100 : null,
+      benchPct: ((lastClose - baseline) / baseline) * 100,
+    };
+  }, [benchData, view, startMs, endMs, from]);
+
+  const setBenchmark = (key) => {
+    setBench(key);
+    try {
+      localStorage.setItem('sampada_bench', key);
+    } catch {
+      /* private mode */
+    }
+  };
 
   if (!data.premium) {
     return (
@@ -182,10 +264,6 @@ function NetWorthHistory({ data, base, onUpgrade }) {
       </div>
     );
   }
-  const hist = data.net_worth_history || [];
-  const active = RANGES.find((r) => r.key === range) || RANGES[2];
-  const { view, startMs, endMs, exact, from } = buildWindow(hist, active.days);
-
   const latest = view[view.length - 1]?.net_worth ?? 0;
   const delta = latest - from;
   const up = delta >= 0;
@@ -208,22 +286,43 @@ function NetWorthHistory({ data, base, onUpgrade }) {
                 {from > 0 && ` (${percent((delta / from) * 100)})`}
               </span>
               <span className="text-slate-400"> · {spanLabel}</span>
+              {overlay && overlay.youPct != null && (
+                <span className="ml-1.5 text-slate-400">
+                  · you {percent(overlay.youPct)} vs {overlay.label} {percent(overlay.benchPct)}
+                  {overlay.youPct >= overlay.benchPct ? ' 🌱' : ''}
+                </span>
+              )}
             </p>
           )}
         </div>
-        <div className="inline-flex flex-wrap gap-0.5 rounded-xl border border-[#e8e2d4] bg-white p-1">
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              aria-pressed={range === r.key}
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                range === r.key ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
-              }`}
-            >
-              {r.key}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex flex-wrap gap-0.5 rounded-xl border border-[#e8e2d4] bg-white p-1">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                aria-pressed={range === r.key}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  range === r.key ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
+                }`}
+              >
+                {r.key}
+              </button>
+            ))}
+          </div>
+          <select
+            value={bench}
+            onChange={(e) => setBenchmark(e.target.value)}
+            aria-label="Benchmark index"
+            className="rounded-xl border border-[#e8e2d4] bg-white px-2 py-1.5 text-xs font-semibold text-slate-500"
+          >
+            <option value="none">No benchmark</option>
+            {Object.entries(BENCH_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>
+                vs {label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -233,7 +332,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={view} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+          <AreaChart data={overlay ? overlay.merged : view} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
             <defs>
               <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#1f3a66" stopOpacity={0.25} />
@@ -253,10 +352,36 @@ function NetWorthHistory({ data, base, onUpgrade }) {
               minTickGap={20}
             />
             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => money(v, base, { compact: true })} />
-            <Tooltip formatter={(v) => [money(v, base), 'Net worth']} labelFormatter={(ms) => dateLabel(new Date(ms).toISOString().slice(0, 10))} />
+            <Tooltip
+              formatter={(v, name) => [money(v, base), name === 'bench' ? overlay?.label || 'Index' : 'Net worth']}
+              labelFormatter={(ms) => dateLabel(new Date(ms).toISOString().slice(0, 10))}
+            />
             <Area type="monotone" dataKey="net_worth" stroke="#1f3a66" strokeWidth={2} fill="url(#nwFill)" />
+            {overlay && (
+              <Area
+                type="monotone"
+                dataKey="bench"
+                stroke="#c2a368"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                fill="none"
+                dot={false}
+                activeDot={{ r: 3 }}
+              />
+            )}
           </AreaChart>
         </ResponsiveContainer>
+      )}
+      {overlay && view.length >= 2 && (
+        <div className="mt-1 flex items-center justify-center gap-5 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <span className="h-0.5 w-5 rounded bg-brand-600" /> Your net worth
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-0.5 w-5 rounded border-t-2 border-dashed border-gold-500" /> {overlay.label}
+            <span className="text-slate-400">(scaled to your start)</span>
+          </span>
+        </div>
       )}
     </div>
   );
