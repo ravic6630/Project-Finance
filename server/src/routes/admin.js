@@ -66,6 +66,8 @@ adminRouter.delete(
     // Explicit child deletes (don't rely on FK cascade across DB backends).
     await db.batch([
       ...CHILD_TABLES.map((t) => ({ sql: `DELETE FROM ${t} WHERE user_id = ?`, args: [id] })),
+      // family_links keys by inviter/invitee, not user_id — clear both directions.
+      { sql: 'DELETE FROM family_links WHERE inviter_id = ? OR invitee_id = ?', args: [id, id] },
       { sql: 'DELETE FROM users WHERE id = ?', args: [id] },
     ]);
     res.json({ ok: true, deleted: target.email });

@@ -9,6 +9,7 @@ import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
+import { LinkedScopeNote } from '../components/FamilyBits.jsx';
 
 // Each asset type carries its own visual identity: an icon-chip tint, a soft
 // gradient wash over the card, and a watermark colour. All tones have dark
@@ -265,6 +266,7 @@ export default function Assets() {
 
   return (
     <div className="space-y-6">
+      <LinkedScopeNote />
       <div className="flex flex-wrap items-end justify-between gap-3">
         {assets.length > 0 ? (
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-4 text-white shadow-lg">

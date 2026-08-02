@@ -7,6 +7,7 @@ import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
+import { LinkedScopeNote } from '../components/FamilyBits.jsx';
 import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 
 const TYPES = [
@@ -214,6 +215,7 @@ export default function Cash() {
 
   return (
     <div className="space-y-6">
+      <LinkedScopeNote />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {Object.entries(subtotals).map(([cur, total]) => (

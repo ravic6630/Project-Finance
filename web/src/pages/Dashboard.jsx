@@ -35,6 +35,7 @@ import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
 import WealthHero from '../components/WealthHero.jsx';
 import GettingStarted from '../components/GettingStarted.jsx';
+import { FamilyInviteBanner, FamilyScopeNote } from '../components/FamilyBits.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
@@ -390,7 +391,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { active: activeProfile, profileQuery, activeLabel } = useProfile();
+  const { active: activeProfile, dashboardQuery, activeLabel } = useProfile();
   const base = user.base_currency;
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -401,7 +402,7 @@ export default function Dashboard() {
   const load = useCallback(async (refresh = false) => {
     try {
       setError('');
-      const params = [refresh ? 'refresh=1' : '', profileQuery('').replace('?', '')]
+      const params = [refresh ? 'refresh=1' : '', dashboardQuery('').replace('?', '')]
         .filter(Boolean)
         .join('&');
       const d = await api(`/dashboard${params ? `?${params}` : ''}`);
@@ -445,6 +446,9 @@ export default function Dashboard() {
           load(true);
         }}
       />
+
+      <FamilyInviteBanner />
+      <FamilyScopeNote data={data} active={activeProfile} />
 
       <GettingStarted data={data} />
 

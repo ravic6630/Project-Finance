@@ -56,6 +56,21 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
+-- Linked REAL accounts (vs profiles, which are just names). An accepted link
+-- means mutual, view-only visibility: both sides' "Everyone" includes the
+-- other's totals. Pairwise only — links never chain across households.
+CREATE TABLE IF NOT EXISTS family_links (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  inviter_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invitee_email TEXT NOT NULL,
+  invitee_id    INTEGER,
+  status        TEXT NOT NULL DEFAULT 'invited',
+  created_at    TEXT NOT NULL,
+  accepted_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_family_links_inviter ON family_links(inviter_id);
+CREATE INDEX IF NOT EXISTS idx_family_links_email ON family_links(invitee_email);
+CREATE INDEX IF NOT EXISTS idx_family_links_invitee ON family_links(invitee_id);
 CREATE TABLE IF NOT EXISTS holdings (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
