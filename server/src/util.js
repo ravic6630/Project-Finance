@@ -38,3 +38,32 @@ export const oneOf = (value, allowed, field) => {
   }
   return value;
 };
+
+// Tiny fixed-window per-IP rate limiter for the auth endpoints. In-memory is
+// fine here: one Render instance, and the goal is stopping brute force, not
+// precise accounting. Trusts x-forwarded-for because Render terminates TLS.
+const rlBuckets = new Map();
+export function rateLimit({ windowMs = 15 * 60000, max = 40, name = 'rl' } = {}) {
+  return (req, res, next) => {
+    const ip =
+      String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+      req.socket?.remoteAddress ||
+      'unknown';
+    const key = `${name}:${ip}`;
+    const t = Date.now();
+    let b = rlBuckets.get(key);
+    if (!b || t > b.reset) {
+      b = { count: 0, reset: t + windowMs };
+      rlBuckets.set(key, b);
+    }
+    b.count += 1;
+    if (b.count > max) {
+      res.setHeader('Retry-After', Math.ceil((b.reset - t) / 1000));
+      return res.status(429).json({ error: 'Too many attempts — please wait a few minutes and try again.' });
+    }
+    if (rlBuckets.size > 5000) {
+      for (const [k, v] of rlBuckets) if (t > v.reset) rlBuckets.delete(k);
+    }
+    next();
+  };
+}

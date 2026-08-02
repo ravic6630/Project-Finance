@@ -7,11 +7,15 @@ import QRCode from 'qrcode';
 import { applyEffectiveRole, authRequired, createSession, hashPassword, signToken, verifyPassword } from '../auth.js';
 import { JWT_SECRET } from '../config.js';
 import { generateSecret, otpauthUri, verifyTotp } from '../services/totp.js';
-import { HttpError, asyncHandler, bad, escapeHtml, oneOf, str } from '../util.js';
+import { HttpError, asyncHandler, bad, escapeHtml, oneOf, str, rateLimit } from '../util.js';
 import { emailConfigured, sendMail } from '../services/email.js';
 import { CURRENCIES } from '../markets.js';
 
 export const authRouter = Router();
+
+// Brute-force shield on everything credential-shaped (prefix match also covers
+// /login/2fa, /signup/verify, /signup/resend). 40 tries / 15 min / IP.
+authRouter.use(['/login', '/signup', '/forgot', '/reset'], rateLimit({ name: 'auth' }));
 
 const insertUser = db.prepare(`
   INSERT INTO users (email, name, password_hash, base_currency, role, created_at)
