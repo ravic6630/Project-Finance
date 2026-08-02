@@ -57,6 +57,10 @@ export async function createSession(userId, token, req) {
     null;
   const ts = nowISO();
   await insertSession.run(userId, tokenHash(token), ua, ip, ts, ts);
+  // Housekeeping: drop this user's long-dead sessions (tokens expire at 30d,
+  // so anything untouched for 35d is just clutter in the devices list).
+  const cutoff = new Date(Date.now() - 35 * 86400000).toISOString();
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND last_seen < ?').run(userId, cutoff).catch(() => {});
 }
 
 export const sessionTokenHash = tokenHash;

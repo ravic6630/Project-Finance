@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -37,6 +38,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false }));
+// Gzip everything compressible — dashboard JSON (history arrays) and the JS
+// bundles shrink 60-80%, which matters a lot on Render's free tier.
+app.use(compression());
 app.use(cors());
 // Capture the raw body so the Razorpay webhook can verify its HMAC signature.
 app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
@@ -73,8 +77,24 @@ app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 // Serve the built frontend in production (after `npm run build`).
 const webDist = join(__dirname, '..', '..', 'web', 'dist');
 if (existsSync(webDist)) {
-  app.use(express.static(webDist));
-  app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(join(webDist, 'index.html')));
+  // Vite content-hashes everything under /assets — safe to cache forever.
+  // index.html (and the PWA manifest/icons at the root) must stay fresh so a
+  // deploy is picked up on the next load.
+  app.use(
+    express.static(webDist, {
+      setHeaders(res, path) {
+        if (path.includes('/assets/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    })
+  );
+  app.get(/^\/(?!api).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(join(webDist, 'index.html'));
+  });
 }
 
 // Central error handler.
