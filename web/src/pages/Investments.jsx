@@ -3,6 +3,7 @@ import { Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, 
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
+import { LinkedScopeNote } from '../components/FamilyBits.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
 import { downloadHoldingsCsv } from '../lib/exportCsv.js';
 import { useConfirm } from '../lib/confirm.jsx';
@@ -181,6 +182,7 @@ export default function Investments() {
 
   return (
     <div className="space-y-6">
+      <LinkedScopeNote />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

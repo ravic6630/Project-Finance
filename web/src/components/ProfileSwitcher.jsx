@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { Check, ChevronDown, Link2, Loader2, Mail, Pencil, Plus, Trash2, Users, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { ErrorBanner, Field, Modal } from './ui.jsx';
@@ -16,7 +16,7 @@ const initials = (name = '') =>
 // Header dropdown: whose wealth are we looking at? Everyone · Me · members,
 // plus the "Manage family" modal for add/rename/remove.
 export default function ProfileSwitcher() {
-  const { profiles, active, setActive, reload, activeLabel } = useProfile();
+  const { profiles, family, active, setActive, reload, activeLabel } = useProfile();
   const [open, setOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const ref = useRef(null);
@@ -63,11 +63,17 @@ export default function ProfileSwitcher() {
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Whose wealth to show"
-        className="flex items-center gap-1.5 rounded-xl border border-[#e8e2d4] bg-white px-3 py-2 text-sm font-semibold text-brand-700 transition hover:border-gold-300 hover:bg-[#faf8f1]"
+        className="relative flex items-center gap-1.5 rounded-xl border border-[#e8e2d4] bg-white px-3 py-2 text-sm font-semibold text-brand-700 transition hover:border-gold-300 hover:bg-[#faf8f1]"
       >
         <Users size={15} />
         <span className="max-w-[90px] truncate">{activeLabel}</span>
         <ChevronDown size={15} className={`text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+        {family.received_pending.length > 0 && (
+          <span
+            title="Family invite waiting"
+            className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white"
+          />
+        )}
       </button>
 
       {open && (
@@ -76,6 +82,14 @@ export default function ProfileSwitcher() {
           <Row value="me" label="Me" sub="Just your own money" />
           {profiles.map((p) => (
             <Row key={p.id} value={p.id} label={p.name} sub={p.relation || 'Family member'} />
+          ))}
+          {family.members.length > 0 && (
+            <p className="mt-1 border-t border-slate-100 px-3 pb-0.5 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              Linked accounts
+            </p>
+          )}
+          {family.members.map((m) => (
+            <Row key={`u:${m.user_id}`} value={`u:${m.user_id}`} label={m.name} sub="Their own login · view-only" />
           ))}
           <button
             onClick={() => {
@@ -95,11 +109,16 @@ export default function ProfileSwitcher() {
 }
 
 function ManageFamily({ open, onClose, profiles, onChanged }) {
+  const { family } = useProfile();
   const [name, setName] = useState('');
   const [relation, setRelation] = useState('');
   const [editing, setEditing] = useState(null); // profile being renamed
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [invEmail, setInvEmail] = useState('');
+  const [invBusy, setInvBusy] = useState(false);
+  const [invError, setInvError] = useState('');
+  const [invNote, setInvNote] = useState('');
   const confirm = useConfirm();
 
   useEffect(() => {
@@ -108,6 +127,9 @@ function ManageFamily({ open, onClose, profiles, onChanged }) {
     setRelation('');
     setEditing(null);
     setError('');
+    setInvEmail('');
+    setInvError('');
+    setInvNote('');
   }, [open]);
 
   async function save(e) {
@@ -142,6 +164,57 @@ function ManageFamily({ open, onClose, profiles, onChanged }) {
       onChanged();
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function invite(e) {
+    e?.preventDefault();
+    const email = invEmail.trim();
+    if (!email) return;
+    setInvBusy(true);
+    setInvError('');
+    setInvNote('');
+    try {
+      const r = await api('/family/invite', { method: 'POST', body: { email } });
+      setInvEmail('');
+      setInvNote(
+        r.account_exists
+          ? 'Invite sent — they can accept it from Manage family on their account.'
+          : "Invite saved — it'll be waiting once they create a Sampada account with that email."
+      );
+      onChanged();
+    } catch (err) {
+      setInvError(err.message);
+    } finally {
+      setInvBusy(false);
+    }
+  }
+
+  async function respondInvite(id, verb) {
+    setInvError('');
+    try {
+      await api(`/family/${id}/${verb}`, { method: 'POST' });
+      onChanged();
+    } catch (err) {
+      setInvError(err.message);
+    }
+  }
+
+  async function unlink(l, isPending) {
+    if (!isPending) {
+      const sure = await confirm({
+        title: `Unlink ${l.name}?`,
+        message: 'You stop seeing each other’s money immediately. Nothing is deleted on either side.',
+        confirmLabel: 'Unlink',
+        danger: true,
+      });
+      if (!sure) return;
+    }
+    try {
+      await api(`/family/${isPending ? l.id : l.link_id}`, { method: 'DELETE' });
+      onChanged();
+    } catch (err) {
+      setInvError(err.message);
     }
   }
 
@@ -206,6 +279,107 @@ function ManageFamily({ open, onClose, profiles, onChanged }) {
             ))}
           </ul>
         )}
+
+        {/* ------------------- Linked real accounts ------------------- */}
+        <div className="border-t border-slate-100 pt-4">
+          <h4 className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+            <Link2 size={14} className="text-gold-600" /> Linked accounts
+          </h4>
+          <p className="mt-1 text-xs text-slate-500">
+            Invite someone with their own Sampada login — a spouse, a parent who manages their own
+            money. Once they accept, you <b>both</b> see the household total under “Everyone”.
+            View-only, and either side can unlink anytime.
+          </p>
+
+          {invError && <p className="mt-2 text-sm font-medium text-rose-600">{invError}</p>}
+          {invNote && <p className="mt-2 text-sm font-medium text-emerald-600">{invNote}</p>}
+
+          {family.received_pending.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {family.received_pending.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex flex-wrap items-center gap-2 rounded-xl bg-gold-50 px-3 py-2 ring-1 ring-gold-200"
+                >
+                  <p className="min-w-0 flex-1 text-sm text-slate-700">
+                    <span className="font-semibold">{inv.inviter_name}</span>{' '}
+                    <span className="text-slate-500">({inv.inviter_email})</span> invited you
+                  </p>
+                  <button className="btn-primary !px-3 !py-1.5 text-xs" onClick={() => respondInvite(inv.id, 'accept')}>
+                    <Check size={13} /> Accept
+                  </button>
+                  <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => respondInvite(inv.id, 'decline')}>
+                    <X size={13} /> Decline
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form onSubmit={invite} className="mt-3 flex items-end gap-2">
+            <div className="min-w-[160px] flex-1">
+              <span className="label">Their email</span>
+              <input
+                className="input"
+                type="email"
+                value={invEmail}
+                onChange={(e) => setInvEmail(e.target.value)}
+                placeholder="spouse@example.com"
+              />
+            </div>
+            <button className="btn-primary" disabled={invBusy || !invEmail.trim()}>
+              {invBusy ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />} Invite
+            </button>
+          </form>
+
+          {(family.members.length > 0 || family.sent_pending.length > 0) && (
+            <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
+              {family.members.map((m) => (
+                <li key={m.link_id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold-100 text-xs font-bold text-gold-700">
+                    {initials(m.name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{m.name}</p>
+                    <p className="truncate text-xs text-slate-400">{m.email} · linked</p>
+                  </div>
+                  <button
+                    onClick={() => unlink(m, false)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600"
+                    title="Unlink"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+              {family.sent_pending.map((inv) => (
+                <li key={inv.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <Mail size={14} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-700">{inv.email}</p>
+                    <p className="text-xs text-gold-700">Invited — waiting for them to accept</p>
+                  </div>
+                  <button
+                    onClick={() => unlink(inv, true)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600"
+                    title="Cancel invite"
+                  >
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {family.members.length > 0 && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              Tip: if you also track a linked person as a plain member above, remove that copy so
+              “Everyone” doesn&apos;t count them twice.
+            </p>
+          )}
+        </div>
       </div>
     </Modal>
   );
