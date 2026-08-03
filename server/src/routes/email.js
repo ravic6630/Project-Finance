@@ -12,8 +12,9 @@ emailRouter.use(authRequired);
 
 const getPrefs = db.prepare('SELECT * FROM email_prefs WHERE user_id = ?');
 const setPrefs = db.prepare(`
-  INSERT INTO email_prefs (user_id, daily, monthly_statement) VALUES (?, ?, ?)
-  ON CONFLICT(user_id) DO UPDATE SET daily = excluded.daily, monthly_statement = excluded.monthly_statement
+  INSERT INTO email_prefs (user_id, daily, monthly_statement, daily_hour, daily_tz) VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET daily = excluded.daily, monthly_statement = excluded.monthly_statement,
+    daily_hour = excluded.daily_hour, daily_tz = excluded.daily_tz
 `);
 
 emailRouter.get(
@@ -23,6 +24,8 @@ emailRouter.get(
     res.json({
       daily: !!p?.daily,
       monthly_statement: !!p?.monthly_statement,
+      daily_hour: p?.daily_hour ?? 8,
+      daily_tz: p?.daily_tz || 'Asia/Kolkata',
       last_sent: p?.last_sent || null,
       email: req.user.email,
       configured: emailConfigured(),
@@ -44,8 +47,17 @@ emailRouter.put(
     if (turningOn && !(await premiumState(req.user)).premium) {
       throw new HttpError(402, 'Email reports are a premium feature. Upgrade to enable.');
     }
-    await setPrefs.run(req.user.id, daily, monthly);
-    res.json({ daily: !!daily, monthly_statement: !!monthly });
+    // Delivery time: any hour 0-23, in a real IANA timezone (IST by default).
+    let hour = req.body.daily_hour === undefined ? (existing?.daily_hour ?? 8) : Number(req.body.daily_hour);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new HttpError(400, 'daily_hour must be 0-23');
+    let tz = req.body.daily_tz === undefined ? existing?.daily_tz || 'Asia/Kolkata' : String(req.body.daily_tz);
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: tz });
+    } catch {
+      throw new HttpError(400, "That timezone isn't recognised");
+    }
+    await setPrefs.run(req.user.id, daily, monthly, hour, tz);
+    res.json({ daily: !!daily, monthly_statement: !!monthly, daily_hour: hour, daily_tz: tz });
   })
 );
 

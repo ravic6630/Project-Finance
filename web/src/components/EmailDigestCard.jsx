@@ -3,6 +3,20 @@ import { Crown, Eye, Loader2, Mail, Send } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { Modal } from './ui.jsx';
 
+const TIMEZONES = [
+  ['Asia/Kolkata', 'India (IST)'],
+  ['America/New_York', 'US Eastern'],
+  ['America/Chicago', 'US Central'],
+  ['America/Denver', 'US Mountain'],
+  ['America/Los_Angeles', 'US Pacific'],
+  ['Europe/London', 'UK'],
+  ['Europe/Berlin', 'Central Europe'],
+  ['Asia/Dubai', 'UAE'],
+  ['Asia/Singapore', 'Singapore'],
+  ['Australia/Sydney', 'Australia (Sydney)'],
+];
+const hourLabel = (h) => `${((h + 11) % 12) + 1}:00 ${h < 12 ? 'AM' : 'PM'}`;
+
 export default function EmailDigestCard({ onUpgrade }) {
   const [prefs, setPrefs] = useState(null);
   const [busy, setBusy] = useState('');
@@ -25,6 +39,16 @@ export default function EmailDigestCard({ onUpgrade }) {
       setMsg({ type: 'err', text: err.message });
     } finally {
       setBusy('');
+    }
+  }
+
+  async function setTime(patch) {
+    setMsg(null);
+    try {
+      const d = await api('/email/prefs', { method: 'PUT', body: patch });
+      setPrefs((p) => ({ ...p, ...d }));
+    } catch (err) {
+      setMsg({ type: 'err', text: err.message });
     }
   }
 
@@ -89,6 +113,38 @@ export default function EmailDigestCard({ onUpgrade }) {
             className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-6' : 'left-1'}`}
           />
         </button>
+      </div>
+
+      {/* Delivery time — the digest lands when THEIR clock hits this hour. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium text-slate-500">Deliver at</span>
+        <select
+          className="input w-auto"
+          value={prefs?.daily_hour ?? 8}
+          onChange={(e) => setTime({ daily_hour: Number(e.target.value) })}
+          disabled={!prefs}
+        >
+          {[...Array(24).keys()].map((h) => (
+            <option key={h} value={h}>
+              {hourLabel(h)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="input w-auto"
+          value={prefs?.daily_tz || 'Asia/Kolkata'}
+          onChange={(e) => setTime({ daily_tz: e.target.value })}
+          disabled={!prefs}
+        >
+          {TIMEZONES.map(([tz, label]) => (
+            <option key={tz} value={tz}>
+              {label}
+            </option>
+          ))}
+          {prefs?.daily_tz && !TIMEZONES.some(([tz]) => tz === prefs.daily_tz) && (
+            <option value={prefs.daily_tz}>{prefs.daily_tz}</option>
+          )}
+        </select>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">

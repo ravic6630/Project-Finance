@@ -23,8 +23,8 @@ function assertSecret(req) {
 
 // Runs the daily jobs: refresh prices (auto-sync), check price alerts, then
 // send the digest. Safe to ping repeatedly — alerts have a cooldown and the
-// digest is once-per-IST-day per user. Ping more often (e.g. hourly) to check
-// alerts more frequently.
+// digest is once per user-local day. Ping HOURLY so per-user delivery times
+// work — each tick only mails users whose local clock just hit their hour.
 const handler = asyncHandler(async (req, res) => {
   assertSecret(req);
   const refresh = await refreshAllInstruments();

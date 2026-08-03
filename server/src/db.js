@@ -340,6 +340,8 @@ export async function initDb() {
   await addColumn('pending_signups', 'ref_code', 'TEXT');
   await addColumn('email_prefs', 'monthly_statement', 'INTEGER NOT NULL DEFAULT 0');
   await addColumn('email_prefs', 'last_statement_month', 'TEXT');
+  await addColumn('email_prefs', 'daily_hour', 'INTEGER NOT NULL DEFAULT 8');
+  await addColumn('email_prefs', 'daily_tz', 'TEXT');
   await client.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_refcode ON users(referral_code)');
   await addColumn('holdings', 'profile_id', 'INTEGER');
   await addColumn('cash_accounts', 'profile_id', 'INTEGER');
