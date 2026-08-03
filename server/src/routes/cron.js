@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { asyncHandler, HttpError } from '../util.js';
-import { runDigests } from '../services/scheduler.js';
+import { runDigests, runMonthlyStatements } from '../services/scheduler.js';
 import { evaluateAlerts, refreshAllInstruments } from '../services/alerts.js';
 
 export const cronRouter = Router();
@@ -30,7 +30,8 @@ const handler = asyncHandler(async (req, res) => {
   const refresh = await refreshAllInstruments();
   const alerts = await evaluateAlerts();
   const digests = await runDigests();
-  res.json({ ok: !digests.error, refresh, alerts, digests });
+  const statements = await runMonthlyStatements(); // idempotent per month
+  res.json({ ok: !digests.error, refresh, alerts, digests, statements });
 });
 
 // GET is easiest for most cron/ping services; POST also accepted.

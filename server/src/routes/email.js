@@ -10,10 +10,10 @@ import { runDigests } from '../services/scheduler.js';
 export const emailRouter = Router();
 emailRouter.use(authRequired);
 
-const getPrefs = db.prepare('SELECT daily, last_sent FROM email_prefs WHERE user_id = ?');
+const getPrefs = db.prepare('SELECT * FROM email_prefs WHERE user_id = ?');
 const setPrefs = db.prepare(`
-  INSERT INTO email_prefs (user_id, daily) VALUES (?, ?)
-  ON CONFLICT(user_id) DO UPDATE SET daily = excluded.daily
+  INSERT INTO email_prefs (user_id, daily, monthly_statement) VALUES (?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET daily = excluded.daily, monthly_statement = excluded.monthly_statement
 `);
 
 emailRouter.get(
@@ -22,6 +22,7 @@ emailRouter.get(
     const p = await getPrefs.get(req.user.id);
     res.json({
       daily: !!p?.daily,
+      monthly_statement: !!p?.monthly_statement,
       last_sent: p?.last_sent || null,
       email: req.user.email,
       configured: emailConfigured(),
@@ -33,13 +34,18 @@ emailRouter.get(
 emailRouter.put(
   '/prefs',
   asyncHandler(async (req, res) => {
-    const daily = req.body.daily ? 1 : 0;
-    // Turning ON the daily email is a premium perk.
-    if (daily && !(await premiumState(req.user)).premium) {
-      throw new HttpError(402, 'Daily summary emails are a premium feature. Upgrade to enable.');
+    // Merge with what's stored, so setting one toggle never clears the other.
+    const existing = await getPrefs.get(req.user.id);
+    const daily = (req.body.daily === undefined ? !!existing?.daily : !!req.body.daily) ? 1 : 0;
+    const monthly =
+      (req.body.monthly_statement === undefined ? !!existing?.monthly_statement : !!req.body.monthly_statement) ? 1 : 0;
+    // Turning ON either email is a premium perk.
+    const turningOn = (daily && !existing?.daily) || (monthly && !existing?.monthly_statement);
+    if (turningOn && !(await premiumState(req.user)).premium) {
+      throw new HttpError(402, 'Email reports are a premium feature. Upgrade to enable.');
     }
-    await setPrefs.run(req.user.id, daily);
-    res.json({ daily: !!daily });
+    await setPrefs.run(req.user.id, daily, monthly);
+    res.json({ daily: !!daily, monthly_statement: !!monthly });
   })
 );
 
