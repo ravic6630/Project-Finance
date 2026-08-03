@@ -181,6 +181,30 @@ body {
 .dark .hover\:bg-slate-100:hover { background-color: #1c2c49; }
 .dark .hover\:bg-slate-200:hover { background-color: #26385a; }
 .dark .hover\:bg-slate-50\/60:hover { background-color: rgba(20, 35, 61, 0.55); }
+.dark .hover\:bg-rose-100:hover { background-color: rgba(225, 29, 72, 0.16); }
+
+/* Gold accents (invite banners, manual-payment panel, chips) — champagne on
+   navy instead of cream. Ring utilities color via --tw-ring-color, not border. */
+.dark .bg-gold-50 { background-color: rgba(194, 163, 104, 0.14); }
+.dark .bg-gold-50\/60 { background-color: rgba(194, 163, 104, 0.1); }
+.dark .bg-gold-50\/40 { background-color: rgba(194, 163, 104, 0.08); }
+.dark .bg-gold-100 { background-color: rgba(194, 163, 104, 0.22); }
+.dark .text-gold-700 { color: #d9be85; }
+.dark .text-gold-600 { color: #cfb076; }
+.dark .border-gold-200 { border-color: #4a3f26; }
+.dark .ring-gold-200 { --tw-ring-color: #4a3f26; }
+.dark .hover\:ring-gold-300:hover { --tw-ring-color: #5d4f30; }
+.dark .hover\:border-gold-300:hover { border-color: #5d4f30; }
+
+/* Translucent panels that kept their light tint in dark mode. */
+.dark .bg-brand-50\/50 { background-color: rgba(20, 39, 68, 0.55); }
+.dark .border-brand-200 { border-color: #2b3f63; }
+.dark .bg-slate-50\/60 { background-color: rgba(20, 35, 61, 0.55); }
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.12); }
+.dark .bg-emerald-50\/60 { background-color: rgba(16, 185, 129, 0.1); }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.18); }
+.dark .text-emerald-700 { color: #56c998; }
+.dark .border-emerald-200 { border-color: #1e4a3a; }
 
 /* Keep the net-worth trend line readable on a dark card. */
 .dark .recharts-cartesian-grid line { stroke: #22324f; }
