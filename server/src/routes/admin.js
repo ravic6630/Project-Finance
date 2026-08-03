@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { applyEffectiveRole, authRequired, hashPassword, requireAdmin } from '../auth.js';
 import { asyncHandler, HttpError } from '../util.js';
-import { activatePremium, deactivatePremium, premiumState } from '../services/billing.js';
+import { activatePremium, deactivatePremium, extendPremium, premiumState } from '../services/billing.js';
 import { sendPremiumWelcome } from '../services/premiumEmail.js';
 
 export const adminRouter = Router();
@@ -80,7 +80,11 @@ adminRouter.post(
     const id = Number(req.params.id);
     if (!(await getUser.get(id))) throw new HttpError(404, 'User not found');
     if (req.body.grant) {
-      await activatePremium(id, { provider: 'admin', days: 365 });
+      // With days (manual payments): STACK on any active window, so a monthly
+      // payer's repeat grants add up. Without: legacy full-year switch.
+      const days = Math.min(Math.max(Number(req.body.days) || 0, 0), 730);
+      if (days) await extendPremium(id, days, 'admin');
+      else await activatePremium(id, { provider: 'admin', days: 365 });
       await sendPremiumWelcome(id, { provider: 'admin' }); // "an admin upgraded you" copy
     } else {
       await deactivatePremium(id);

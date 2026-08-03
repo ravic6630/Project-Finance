@@ -39,10 +39,24 @@ export default function Admin() {
     load();
   }, [load]);
 
-  async function togglePremium(u) {
+  // Grant with days STACKS on an active window — built for manual payments
+  // (verify the UPI/Zelle credit, then +1 month per payment). Revoke ends it.
+  async function grantPremium(u, days) {
     setBusy(u.id);
     try {
-      await api(`/admin/users/${u.id}/premium`, { method: 'POST', body: { grant: !u.premium } });
+      await api(`/admin/users/${u.id}/premium`, { method: 'POST', body: { grant: true, days } });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(0);
+    }
+  }
+
+  async function revokePremium(u) {
+    setBusy(u.id);
+    try {
+      await api(`/admin/users/${u.id}/premium`, { method: 'POST', body: { grant: false } });
       await load();
     } catch (err) {
       setError(err.message);
@@ -149,13 +163,33 @@ export default function Admin() {
                   <td className="px-2 pr-4">
                     <div className="flex justify-end gap-2">
                       {u.role !== 'admin' && (
-                        <button
-                          onClick={() => togglePremium(u)}
-                          disabled={busy === u.id}
-                          className="rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
-                        >
-                          {u.premium ? 'Revoke' : 'Grant'} premium
-                        </button>
+                        <>
+                          <button
+                            onClick={() => grantPremium(u, 31)}
+                            disabled={busy === u.id}
+                            title="Add 31 days of Premium (stacks on an active plan)"
+                            className="rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                          >
+                            +1 mo
+                          </button>
+                          <button
+                            onClick={() => grantPremium(u, 366)}
+                            disabled={busy === u.id}
+                            title="Add a year of Premium (stacks on an active plan)"
+                            className="rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                          >
+                            +1 yr
+                          </button>
+                          {u.premium && (
+                            <button
+                              onClick={() => revokePremium(u)}
+                              disabled={busy === u.id}
+                              className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </>
                       )}
                       <button
                         onClick={() => resetPw(u)}
