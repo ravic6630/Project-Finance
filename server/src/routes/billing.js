@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
+import QRCode from 'qrcode';
 import { Router } from 'express';
-import { db } from '../db.js';
+import { db, now } from '../db.js';
 import { authRequired } from '../auth.js';
-import { asyncHandler, HttpError } from '../util.js';
+import { asyncHandler, HttpError, escapeHtml, rateLimit } from '../util.js';
 import {
   activatePremium,
   canSubscribe,
@@ -16,8 +17,23 @@ import {
 import { planFor, providerFor } from '../services/pricing.js';
 import { createCheckout, stripeConfigured, verifyStripeWebhook } from '../services/stripe.js';
 import { sendPremiumWelcome } from '../services/premiumEmail.js';
+import { ADMIN_EMAILS } from '../config.js';
+import { sendMail, emailConfigured } from '../services/email.js';
 
 export const billingRouter = Router();
+
+// Manual payments while the card/UPI gateways are being set up: customers pay
+// straight to the owner's PhonePe UPI (India) or Zelle (US), tap "I've paid",
+// and the owner verifies the money and grants Premium from the Admin page.
+// These are RECEIVING addresses (shown to customers), not secrets.
+const MANUAL_UPI_ID = process.env.MANUAL_UPI_ID || '7330428449@ybl';
+const MANUAL_UPI_NAME = process.env.MANUAL_UPI_NAME || 'Sampada';
+const MANUAL_ZELLE_ID = process.env.MANUAL_ZELLE_ID || 'ravic6631@gmail.com';
+const manualInfo = () => ({
+  upi_id: MANUAL_UPI_ID,
+  zelle_id: MANUAL_ZELLE_ID,
+  zelle_amounts: { monthly: planFor('USD', 'monthly').amount, annual: planFor('USD', 'annual').amount },
+});
 
 // --- Razorpay webhook (no auth; signature-verified; raw body) ---
 billingRouter.post(
@@ -101,6 +117,7 @@ billingRouter.get(
       monthly: planFor(cur, 'monthly'),
       annual: planFor(cur, 'annual'),
       can_subscribe: ready,
+      manual: { method: cur === 'INR' ? 'upi' : 'zelle', ...manualInfo() },
     });
   })
 );
@@ -134,6 +151,64 @@ billingRouter.post(
     const baseUrl = process.env.APP_URL || process.env.BROKER_REDIRECT_BASE || `${proto}://${req.get('host')}`;
     const { url } = await createCheckout({ user: req.user, plan, baseUrl });
     return res.json({ provider: 'stripe', url, plan });
+  })
+);
+
+// UPI QR for the manual path — amount + a note naming the payer, so the
+// owner can match the PhonePe credit to the right account.
+billingRouter.get(
+  '/manual-qr',
+  asyncHandler(async (req, res) => {
+    const interval = req.query.interval === 'annual' ? 'annual' : 'monthly';
+    const plan = planFor('INR', interval);
+    const tn = `Sampada ${interval} ${req.user.email}`.slice(0, 78);
+    const upiUrl =
+      `upi://pay?pa=${encodeURIComponent(MANUAL_UPI_ID)}&pn=${encodeURIComponent(MANUAL_UPI_NAME)}` +
+      `&am=${plan.amount}&cu=INR&tn=${encodeURIComponent(tn)}`;
+    res.json({
+      qr: await QRCode.toDataURL(upiUrl, { margin: 1, width: 240 }),
+      upi_url: upiUrl,
+      upi_id: MANUAL_UPI_ID,
+      amount: plan.amount,
+      currency: 'INR',
+    });
+  })
+);
+
+// "I've paid" — drops a claim into the support inbox and emails the admins.
+// Premium is NEVER granted here; the owner verifies the money first.
+const insertSupportMsg = db.prepare(
+  'INSERT INTO support_messages (user_id, sender, body, created_at) VALUES (?, ?, ?, ?)'
+);
+billingRouter.post(
+  '/manual-claim',
+  rateLimit({ name: 'payclaim', max: 3, windowMs: 10 * 60000 }),
+  asyncHandler(async (req, res) => {
+    const interval = req.body.interval === 'annual' ? 'annual' : 'monthly';
+    const isZelle = req.body.method === 'zelle';
+    const plan = planFor(isZelle ? 'USD' : req.user.base_currency, interval);
+    const reference = String(req.body.reference || '').slice(0, 120);
+    const methodLabel = isZelle ? `Zelle (${MANUAL_ZELLE_ID})` : `UPI (${MANUAL_UPI_ID})`;
+    const claim =
+      `💳 Payment claim: ${plan.symbol}${plan.amount} ${plan.currency} — ${interval} plan via ${methodLabel}.` +
+      (reference ? ` Ref: ${reference}.` : '') +
+      ' Please verify and activate.';
+    await insertSupportMsg.run(req.user.id, 'user', claim, now());
+    if (emailConfigured()) {
+      const who = `${req.user.name || 'A customer'} (${req.user.email})`;
+      for (const admin of ADMIN_EMAILS) {
+        sendMail({
+          to: admin,
+          subject: `💳 Payment claim — ${req.user.email} · ${plan.symbol}${plan.amount} ${interval}`,
+          html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+            <h2 style="color:#1f3a66;margin:0 0 8px">🌱 Sampada</h2>
+            <p style="color:#334155"><b>${escapeHtml(who)}</b> says they paid <b>${plan.symbol}${plan.amount} ${plan.currency}</b> (${interval}) via <b>${escapeHtml(methodLabel)}</b>.${reference ? ` Reference: <b>${escapeHtml(reference)}</b>.` : ''}</p>
+            <p style="color:#334155">Check ${isZelle ? 'Zelle' : 'PhonePe'} for the credit, then grant Premium from the <b>Admin</b> page (+1 month or +1 year). The welcome email goes out automatically.</p>
+          </div>`,
+        }).catch((e) => console.error('[manual-claim] admin email failed:', e.message));
+      }
+    }
+    res.json({ ok: true });
   })
 );
 

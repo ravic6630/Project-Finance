@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Crown, Loader2 } from 'lucide-react';
+import { BadgeCheck, Check, Copy, Crown, Loader2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { ErrorBanner, Modal } from './ui.jsx';
@@ -26,14 +26,59 @@ export default function UpgradeModal({ open, onClose, onChanged }) {
   const [period, setPeriod] = useState('annual'); // default to the better-value plan
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [qr, setQr] = useState(null);
+  const [reference, setReference] = useState('');
+  const [claimed, setClaimed] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const refresh = () => api('/billing/status').then(setInfo).catch(() => {});
   useEffect(() => {
     if (open) {
       setError('');
+      setClaimed(false);
+      setReference('');
       refresh();
     }
   }, [open]);
+
+  // UPI QR carries the exact amount + the payer's email in the note, so the
+  // owner can match the PhonePe credit to the account. Refetch per plan.
+  useEffect(() => {
+    if (!open || info?.manual?.method !== 'upi') return;
+    setQr(null);
+    api(`/billing/manual-qr?interval=${period}`).then(setQr).catch(() => {});
+  }, [open, period, info?.manual?.method]);
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const el = document.createElement('textarea');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      el.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function sendClaim() {
+    setError('');
+    setBusy('claim');
+    try {
+      await api('/billing/manual-claim', {
+        method: 'POST',
+        body: { interval: period, method: info?.manual?.method, reference: reference.trim() || undefined },
+      });
+      setClaimed(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
 
   async function checkout() {
     setError('');
@@ -134,21 +179,97 @@ export default function UpgradeModal({ open, onClose, onChanged }) {
 
           <ErrorBanner message={error} />
 
-          <button className="btn-primary w-full" onClick={checkout} disabled={!!busy}>
-            {busy === 'pay' ? <Loader2 size={16} className="animate-spin" /> : <Crown size={16} />}
-            {payLabel}
-          </button>
-
-          {info && !info.can_subscribe && (
-            <p className="text-center text-xs text-slate-400">
-              Live payments aren&apos;t set up yet — add the{' '}
-              {info.provider === 'razorpay' ? 'Razorpay' : 'Stripe'} keys on the server to enable checkout.
-            </p>
+          {info?.can_subscribe && (
+            <>
+              <button className="btn-primary w-full" onClick={checkout} disabled={!!busy}>
+                {busy === 'pay' ? <Loader2 size={16} className="animate-spin" /> : <Crown size={16} />}
+                {payLabel}
+              </button>
+              <p className="text-center text-[11px] text-slate-400">
+                Auto-renews · cancel anytime ·{' '}
+                {info?.provider === 'razorpay' ? 'UPI & cards via Razorpay' : 'Apple Pay, Google Pay & cards via Stripe'}
+              </p>
+              <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <span className="h-px flex-1 bg-slate-200" /> or pay directly <span className="h-px flex-1 bg-slate-200" />
+              </div>
+            </>
           )}
-          <p className="text-center text-[11px] text-slate-400">
-            Auto-renews · cancel anytime ·{' '}
-            {info?.provider === 'razorpay' ? 'UPI & cards via Razorpay' : 'Apple Pay, Google Pay & cards via Stripe'}
-          </p>
+
+          {/* Manual path: pay the owner directly, tap "I've paid", Premium is
+              switched on after the money is verified. */}
+          {info?.manual && !claimed && (
+            <div className="rounded-2xl border border-gold-200 bg-gold-50/40 p-4">
+              {info.manual.method === 'upi' ? (
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex h-[132px] w-[132px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-gold-200">
+                    {qr?.qr ? (
+                      <img src={qr.qr} alt="UPI payment QR" className="h-full w-full" />
+                    ) : (
+                      <Loader2 size={18} className="animate-spin text-slate-300" />
+                    )}
+                  </div>
+                  <div className="min-w-[180px] flex-1">
+                    <p className="text-sm font-bold text-slate-800">Pay with PhonePe / any UPI app</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Scan the QR — it fills {plan ? money(plan.amount, 'INR') : '…'} and your email
+                      automatically. Or send to:
+                    </p>
+                    <button
+                      onClick={() => copyText(info.manual.upi_id)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 font-mono text-xs font-semibold text-brand-700 ring-1 ring-gold-200 hover:ring-gold-300"
+                    >
+                      {info.manual.upi_id} {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm font-bold text-slate-800">Pay with Zelle</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Send{' '}
+                    <span className="font-semibold text-slate-700">
+                      {money(info.manual.zelle_amounts?.[period] ?? 0, 'USD')}
+                    </span>{' '}
+                    to the Zelle ID below, and put your Sampada email in the memo so we can match it.
+                  </p>
+                  <button
+                    onClick={() => copyText(info.manual.zelle_id)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 font-mono text-xs font-semibold text-brand-700 ring-1 ring-gold-200 hover:ring-gold-300"
+                  >
+                    {info.manual.zelle_id} {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-3 flex items-stretch gap-2">
+                <input
+                  className="input min-w-0 flex-1 text-xs"
+                  placeholder="Transaction ref / last 4 digits (optional)"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                />
+                <button className="btn-primary shrink-0" onClick={sendClaim} disabled={!!busy}>
+                  {busy === 'claim' ? <Loader2 size={15} className="animate-spin" /> : <BadgeCheck size={15} />}
+                  I&apos;ve paid
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                We verify the payment and switch on Premium — usually within a few hours. You&apos;ll
+                get a welcome email the moment it&apos;s live.
+              </p>
+            </div>
+          )}
+
+          {claimed && (
+            <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 text-center">
+              <BadgeCheck size={26} className="text-emerald-500" />
+              <p className="text-sm font-bold text-slate-800">Thanks — claim received!</p>
+              <p className="text-xs text-slate-500">
+                We&apos;ll verify the payment and activate Premium, usually within a few hours. The
+                welcome email confirms it. You can also chat with us any time from the support bubble.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </Modal>
