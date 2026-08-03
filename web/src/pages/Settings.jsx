@@ -10,6 +10,7 @@ import SecurityCard from '../components/SecurityCard.jsx';
 import EmailDigestCard from '../components/EmailDigestCard.jsx';
 import PriceAlertsCard from '../components/PriceAlertsCard.jsx';
 import ReferralCard from '../components/ReferralCard.jsx';
+import StatementsCard from '../components/StatementsCard.jsx';
 
 export default function Settings() {
   const { user, updateProfile, logout } = useAuth();
@@ -132,6 +133,8 @@ export default function Settings() {
       <ReferralCard />
 
       <EmailDigestCard onUpgrade={() => setUpgradeOpen(true)} />
+
+      <StatementsCard onUpgrade={() => setUpgradeOpen(true)} />
 
       <PriceAlertsCard premium={billing?.state?.premium} onUpgrade={() => setUpgradeOpen(true)} />
 
