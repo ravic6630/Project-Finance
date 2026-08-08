@@ -122,6 +122,7 @@ export default function BrokerConnect({ open, onClose, onImported }) {
       <Modal open={open} onClose={close} title="Connect a broker" wide>
         {data ? (
           <ImportReview
+            sync
             data={data}
             source={`Imported from ${data.broker_label}`}
             onBack={() => setData(null)}

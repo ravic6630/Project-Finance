@@ -215,3 +215,44 @@ export async function insertImportedHoldings(userId, rows, sourceLabel = 'Import
   if (stmts.length) await db.batch(stmts);
   return { imported: inserted + updated, inserted, updated, skipped };
 }
+
+// Identity for a raw preview/confirm item, normalised exactly like the
+// upsert path — so prune comparisons can never drift from insert behaviour.
+export function identityKeyForItem(r) {
+  const kind = ALL_KINDS.includes(r.kind) ? r.kind : 'IN_STOCK';
+  if (kind === 'IN_MF') return identityKey(kind, null, str(r.scheme_code));
+  const symbol =
+    kind === 'IN_STOCK'
+      ? normalizeStockSymbol(kind, r.symbol, r.exchange)
+      : symbolForMarket(kind, r.symbol);
+  return identityKey(kind, symbol, null);
+}
+
+// Broker syncs treat the broker as the source of truth for rows THEY created:
+// after the upsert, delete this source's rows whose instrument no longer
+// appears at the broker (sold stocks, redeemed funds). Scoped hard by the
+// notes label, so manual holdings and other imports are never touched.
+// keepKeys must come from the broker's FULL response — never the user's
+// review selection — so unticking an item can't delete a still-held position.
+export async function pruneMissingImported(userId, sourceLabel, keepKeys) {
+  const keep = new Set((keepKeys || []).filter(Boolean));
+  if (!keep.size) return { removed: 0, removed_names: [] }; // empty snapshot: refuse to mass-delete
+  const rows = await db
+    .prepare('SELECT id, kind, symbol, scheme_code, name FROM holdings WHERE user_id = ? AND notes = ?')
+    .all(userId, sourceLabel);
+  const stale = rows.filter((h) => {
+    const key = identityKey(h.kind, h.symbol, h.scheme_code);
+    return key && !keep.has(key);
+  });
+  if (!stale.length) return { removed: 0, removed_names: [] };
+  const stmts = [];
+  for (const h of stale) {
+    stmts.push({
+      sql: "DELETE FROM goal_links WHERE user_id = ? AND kind = 'holding' AND ref_id = ?",
+      args: [userId, h.id],
+    });
+    stmts.push({ sql: 'DELETE FROM holdings WHERE id = ? AND user_id = ?', args: [h.id, userId] });
+  }
+  await db.batch(stmts);
+  return { removed: stale.length, removed_names: stale.map((h) => h.name) };
+}
