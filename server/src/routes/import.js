@@ -5,8 +5,10 @@ import { asyncHandler, bad } from '../util.js';
 import { casAvailable, parseCasBuffer, selfTest } from '../services/cas.js';
 import {
   dedupSets,
+  identityKeyForItem,
   insertImportedHoldings,
   normalizeStockSymbol,
+  pruneMissingImported,
   resolveName,
 } from '../services/importer.js';
 import { FREE_HOLDINGS_LIMIT, premiumState } from '../services/billing.js';
@@ -157,15 +159,22 @@ importRouter.post(
 );
 
 // Generic confirm — used by BOTH CAS and broker imports (same item shape).
+// Broker syncs also send prune + all_items (the broker's FULL current
+// snapshot): rows this source imported earlier that are no longer in the
+// snapshot get removed — that's how sold stocks/redeemed funds disappear.
 const confirm = asyncHandler(async (req, res) => {
   const rows = Array.isArray(req.body.items) ? req.body.items : [];
   if (rows.length === 0) throw bad('No holdings selected to import');
   const premium = (await premiumState(req.user)).premium;
-  res.json(
-    await insertImportedHoldings(req.user.id, rows, req.body.source || 'Imported', {
-      maxTotal: premium ? null : FREE_HOLDINGS_LIMIT,
-    })
-  );
+  const source = req.body.source || 'Imported';
+  const result = await insertImportedHoldings(req.user.id, rows, source, {
+    maxTotal: premium ? null : FREE_HOLDINGS_LIMIT,
+  });
+  if (req.body.prune === true && Array.isArray(req.body.all_items) && req.body.all_items.length) {
+    const keep = req.body.all_items.map(identityKeyForItem);
+    Object.assign(result, await pruneMissingImported(req.user.id, source, keep));
+  }
+  res.json(result);
 });
 
 importRouter.post('/confirm', confirm);

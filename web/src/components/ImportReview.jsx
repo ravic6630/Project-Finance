@@ -17,7 +17,7 @@ const KIND_LABEL = {
 
 // Shared review + confirm step for any import source (CAS or broker).
 // `data` = { items, summary, investor?/name?, file_type?/broker_label? }
-export default function ImportReview({ data, source = 'Imported', onBack, onClose, onImported }) {
+export default function ImportReview({ data, source = 'Imported', sync = false, onBack, onClose, onImported }) {
   // Duplicates are selected by default now — re-importing UPDATES the existing
   // holding (refreshes quantity/price) instead of creating a second copy.
   const [items, setItems] = useState(
@@ -37,7 +37,14 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
     setError('');
     setBusy(true);
     try {
-      const res = await api('/import/confirm', { method: 'POST', body: { items: chosen, source } });
+      const body = { items: chosen, source };
+      if (sync) {
+        // Broker sync: send the FULL snapshot too, so holdings this broker
+        // imported earlier but no longer holds (sold) get cleaned up.
+        body.prune = true;
+        body.all_items = items.map(({ kind, symbol, scheme_code, exchange }) => ({ kind, symbol, scheme_code, exchange }));
+      }
+      const res = await api('/import/confirm', { method: 'POST', body });
       setResult(res);
       onImported?.(res);
     } catch (err) {
@@ -54,6 +61,12 @@ export default function ImportReview({ data, source = 'Imported', onBack, onClos
         <h3 className="text-lg font-bold text-slate-900">
           {result.imported} holding{result.imported === 1 ? '' : 's'} imported 🎉
         </h3>
+        {result.removed > 0 && (
+          <p className="text-sm font-medium text-slate-500">
+            {result.removed} sold position{result.removed === 1 ? '' : 's'} removed
+            {result.removed_names?.length ? ` (${result.removed_names.slice(0, 3).join(', ')}${result.removed_names.length > 3 ? '…' : ''})` : ''}.
+          </p>
+        )}
         {(result.inserted > 0 || result.updated > 0) && (
           <p className="text-sm text-slate-500">
             {result.inserted > 0 && `${result.inserted} added`}
