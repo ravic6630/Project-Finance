@@ -440,6 +440,7 @@ export default function Landing() {
               <Link to="/login" className="hover:text-brand-700">Sign in</Link>
               <Link to="/signup" className="hover:text-brand-700">Create account</Link>
               <Link to="/calculators" className="hover:text-brand-700">Calculators</Link>
+              <Link to="/privacy" className="hover:text-brand-700">Privacy</Link>
             </div>
           </div>
           <p className="pb-8 text-center text-xs text-slate-400">

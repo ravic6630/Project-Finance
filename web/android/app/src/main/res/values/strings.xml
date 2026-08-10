@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sampada</string>
+    <string name="title_activity_main">Sampada</string>
+    <string name="package_name">app.sampada.wealth</string>
+    <string name="custom_url_scheme">app.sampada.wealth</string>
+</resources>

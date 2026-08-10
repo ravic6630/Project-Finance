@@ -13,6 +13,8 @@ export function getTheme() {
 export function applyTheme(theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark');
   document.documentElement.style.colorScheme = theme;
+  // Native shells get the OS status bar tinted to match (no-op on the web).
+  import('./native.js').then((n) => n.syncStatusBar(theme)).catch(() => {});
 }
 
 export function setTheme(theme) {

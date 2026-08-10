@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, Gift } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { haptic, isNative, shareContent } from '../lib/native.js';
 
 // "Give a month, get a month" — share link + a live tally. The code is minted
 // server-side on first load, so this card always has something to show.
@@ -15,6 +16,17 @@ export default function ReferralCard() {
   if (!data?.code) return null;
 
   async function copyLink() {
+    // On a phone the share sheet is the natural gesture (WhatsApp, Messages…);
+    // on the web, copying the link is.
+    if (isNative) {
+      await shareContent({
+        title: 'Join me on Sampada',
+        text: 'I track my whole net worth on Sampada — join with my link and I get a free month of Premium.',
+        url: data.link,
+      });
+      haptic('success');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(data.link);
     } catch {
@@ -51,7 +63,7 @@ export default function ReferralCard() {
             />
             <button className="btn-primary shrink-0" onClick={copyLink}>
               {copied ? <Check size={16} /> : <Copy size={16} />}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? 'Copied' : isNative ? 'Share' : 'Copy'}
             </button>
           </div>
 

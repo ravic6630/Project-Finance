@@ -1,4 +1,10 @@
+import { API_ORIGIN } from './native.js';
+
 const TOKEN_KEY = 'sampada_token';
+
+// Absolute on native (the app is served from capacitor://localhost), relative
+// on the web so the dev proxy and same-origin production both keep working.
+export const apiUrl = (path) => `${API_ORIGIN}/api${path}`;
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
@@ -6,7 +12,7 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
 export async function api(path, { method = 'GET', body } = {}) {
   const token = getToken();
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -34,7 +40,7 @@ export async function api(path, { method = 'GET', body } = {}) {
 // Multipart upload (FormData) — lets the browser set the multipart boundary.
 export async function apiUpload(path, formData) {
   const token = getToken();
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(apiUrl(path), {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
