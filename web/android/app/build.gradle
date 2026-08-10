@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// Release signing. The upload key belongs to YOU and never enters git: create
+// keystore.properties next to this file (it is gitignored) with
+//   storeFile=/absolute/path/sampada-upload.jks
+//   storePassword=...
+//   keyAlias=sampada
+//   keyPassword=...
+// Without that file, release builds are simply unsigned — nothing breaks.
+def keystorePropsFile = rootProject.file("app/keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace = "app.sampada.wealth"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -8,7 +21,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +29,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            release {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

@@ -9,6 +9,7 @@ import Landing from './pages/Landing.jsx'; // eager: the public front door (moti
 // pages (charts, etc.) only download when they're actually opened.
 const Signup = lazy(() => import('./pages/Signup.jsx'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
+const Privacy = lazy(() => import('./pages/Privacy.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Calculators = lazy(() => import('./pages/Calculators.jsx'));
 const Investments = lazy(() => import('./pages/Investments.jsx'));
@@ -51,6 +52,8 @@ export default function App() {
           {/* Reset is now code-based and lives on /forgot; redirect old links. */}
           <Route path="/reset" element={<Navigate to="/forgot" replace />} />
           <Route path="/calculators" element={<Calculators />} />
+          {/* Public: app stores require a policy URL reachable without signing in. */}
+          <Route path="/privacy" element={<Privacy />} />
           {/* Deep links from a signed-out session (e.g. /investments) land on
               the landing page; after sign-in they go where they wanted. */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -75,6 +78,14 @@ export default function App() {
         <Route path="/broker/:broker/callback" element={<BrokerCallback />} />
         <Route path="/admin" element={<Admin />} />
       </Route>
+      <Route
+        path="/privacy"
+        element={
+          <Suspense fallback={<Splash />}>
+            <Privacy />
+          </Suspense>
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

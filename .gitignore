@@ -26,3 +26,7 @@ web/ios/App/DerivedData/
 web/ios/App/Pods/
 web/ios/App/App/public/
 web/ios/App/App/config.xml
+# Android upload key — never commit
+web/android/app/keystore.properties
+*.jks
+*.keystore
