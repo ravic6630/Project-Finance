@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Crown, Globe2, LogOut, Users, Download } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
-import { api, getToken } from '../lib/api.js';
+import { api, apiUrl, getToken } from '../lib/api.js';
 import { dateLabel } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { ErrorBanner, Field } from '../components/ui.jsx';
@@ -11,6 +11,7 @@ import EmailDigestCard from '../components/EmailDigestCard.jsx';
 import PriceAlertsCard from '../components/PriceAlertsCard.jsx';
 import ReferralCard from '../components/ReferralCard.jsx';
 import StatementsCard from '../components/StatementsCard.jsx';
+import { AppLockCard } from '../components/AppLock.jsx';
 
 export default function Settings() {
   const { user, updateProfile, logout } = useAuth();
@@ -45,7 +46,7 @@ export default function Settings() {
 
   async function downloadExport() {
     try {
-      const res = await fetch('/api/export', {
+      const res = await fetch(apiUrl('/export'), {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (!res.ok) throw new Error('Export failed — try again.');
@@ -151,6 +152,8 @@ export default function Settings() {
           </p>
         </div>
       </div>
+
+      <AppLockCard />
 
       <SecurityCard user={user} onUserChanged={() => updateProfile({})} />
 

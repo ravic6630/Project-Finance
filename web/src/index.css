@@ -290,3 +290,25 @@ body {
 .dark .hover\:bg-\[\#faf8f1\]:hover { background-color: #1c2c49; }
 .dark .hover\:border-slate-300:hover { border-color: #3a5175; }
 .dark .hover\:border-brand-200:hover { border-color: #2e4a75; }
+
+/* Native builds flag connectivity on <body>; the banner is CSS-only so it can
+   never fail to render because of a JS error. */
+body.is-offline::before {
+  content: 'No connection — showing the last loaded data';
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 100;
+  padding: 10px 14px;
+  background: #7c2d12;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+/* Keep content clear of the notch / home indicator inside the native shell. */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

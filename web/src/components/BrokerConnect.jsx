@@ -3,6 +3,7 @@ import { ChevronLeft, Crown, Loader2, RefreshCw, Search, ShieldCheck, Sparkles }
 import { api } from '../lib/api.js';
 import { ErrorBanner, Modal } from './ui.jsx';
 import ImportReview from './ImportReview.jsx';
+import { isNative } from '../lib/native.js';
 import UpgradeModal from './UpgradeModal.jsx';
 
 // Adding a broker here (+ its backend support) surfaces it in the picker.
@@ -197,10 +198,19 @@ export default function BrokerConnect({ open, onClose, onImported }) {
                   </button>
                 </>
               ) : (
-                <button className="btn-primary" onClick={() => connect(selected.id)} disabled={!!busy}>
-                  {busy === selected.id ? <Loader2 size={16} className="animate-spin" /> : null}
-                  Connect {selected.label}
-                </button>
+                isNative ? (
+                  <p className="rounded-xl bg-slate-100 px-3 py-2.5 text-xs font-medium text-slate-500">
+                    First-time connection to {selected.label} happens on the Sampada website — the
+                    broker sends you back there to finish signing in. Once it&apos;s linked,
+                    <span className="font-semibold text-slate-700"> Sync now</span> works right here
+                    on your phone.
+                  </p>
+                ) : (
+                  <button className="btn-primary" onClick={() => connect(selected.id)} disabled={!!busy}>
+                    {busy === selected.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                    Connect {selected.label}
+                  </button>
+                )
               )}
             </div>
           </div>

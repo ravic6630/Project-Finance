@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Crown, FileText, Loader2 } from 'lucide-react';
-import { api, getToken } from '../lib/api.js';
+import { api, apiUrl, getToken } from '../lib/api.js';
 
 // Monthly statements: pick a month and open a crisp printable statement
 // (browser print = save as PDF). Premium users can also opt in to receive
@@ -27,7 +27,7 @@ export default function StatementsCard({ onUpgrade }) {
     setError('');
     setBusy('view');
     try {
-      const res = await fetch(`/api/statements/${ym}/html`, {
+      const res = await fetch(apiUrl(`/statements/${ym}/html`), {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (!res.ok) throw new Error('Could not build that statement — try again.');

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BadgeCheck, Check, Copy, Crown, Loader2 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { canPurchaseInApp } from '../lib/native.js';
 import { dateLabel, money } from '../lib/format.js';
 import { ErrorBanner, Modal } from './ui.jsx';
 
@@ -131,6 +132,24 @@ export default function UpgradeModal({ open, onClose, onChanged }) {
           </p>
           <button className="btn-primary mt-2" onClick={onClose}>
             Done
+          </button>
+        </div>
+      ) : !canPurchaseInApp ? (
+        /* Native builds carry no purchase path: Apple and Google require their
+           own billing for digital subscriptions, and this app doesn't ship it
+           yet. Members keep every feature; plans are handled on the account. */
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+            <Crown size={28} />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900">Sampada Premium</h3>
+          <p className="max-w-xs text-sm text-slate-500">
+            Premium unlocks Returns &amp; tax, goals, net-worth history, price alerts, broker
+            auto-sync and email reports. Your plan is managed on your Sampada account — once it&apos;s
+            active, everything here unlocks automatically.
+          </p>
+          <button className="btn-ghost mt-2" onClick={onClose}>
+            Close
           </button>
         </div>
       ) : (

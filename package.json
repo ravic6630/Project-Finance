@@ -2,7 +2,7 @@
   "name": "sampada",
   "version": "0.1.0",
   "private": true,
-  "description": "Sampada — track your investments (India + US) and full personal finances in one place.",
+  "description": "Sampada \u2014 track your investments (India + US) and full personal finances in one place.",
   "type": "module",
   "workspaces": [
     "server",
@@ -14,7 +14,11 @@
     "dev:web": "npm run dev --workspace web",
     "build": "npm run build --workspace web",
     "start": "npm run start --workspace server",
-    "seed": "npm run seed --workspace server"
+    "seed": "npm run seed --workspace server",
+    "mobile:sync": "npm run build && cd web && npx cap sync",
+    "mobile:android": "npm run mobile:sync && cd web/android && ./gradlew assembleDebug",
+    "mobile:android:release": "npm run mobile:sync && cd web/android && ./gradlew bundleRelease",
+    "mobile:ios": "npm run mobile:sync && cd web && npx cap open ios"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

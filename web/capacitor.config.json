@@ -1,0 +1,24 @@
+{
+  "appId": "app.sampada.wealth",
+  "appName": "Sampada",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0d1626"
+  },
+  "ios": {
+    "backgroundColor": "#0d1626",
+    "contentInset": "always"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#0d1626",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    }
+  }
+}
