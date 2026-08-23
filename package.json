@@ -2,7 +2,7 @@
   "name": "sampada",
   "version": "0.1.0",
   "private": true,
-  "description": "Sampada \u2014 track your investments (India + US) and full personal finances in one place.",
+  "description": "Sampada — track your investments (India + US) and full personal finances in one place.",
   "type": "module",
   "workspaces": [
     "server",
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "eslint": "^10.9.0",
+    "eslint": "^9.37.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.11.0"
