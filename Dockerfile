@@ -15,15 +15,23 @@ RUN python3 -m venv /opt/cas-venv \
 
 WORKDIR /app
 
-# Copy everything, then do a CLEAN install so Linux-native binaries (esbuild,
-# rollup) resolve correctly. Dropping the host lockfile avoids the cross-platform
-# optional-dependency issue that makes `vite build` fail when the lockfile was
-# generated on a different OS (e.g. macOS).
 COPY . .
+
+# Install from the COMMITTED lockfile. This used to delete the lockfile and run
+# a fresh `npm install`, which dated from npm 6/7 — back then a macOS-generated
+# lockfile omitted Linux binaries and broke `vite build`. lockfileVersion 3
+# records every platform's optional deps (@rollup/rollup-linux-x64-gnu,
+# @esbuild/linux-x64, @libsql/linux-x64-gnu are all in ours), so re-resolving
+# ~600 packages from scratch in the builder bought nothing and was the step that
+# failed. `npm ci` is deterministic, quicker and needs far less memory.
+#
 # --include=dev is REQUIRED, not cosmetic: the host injects NODE_ENV=production
 # into the build, which makes npm skip devDependencies — and vite lives there,
 # so `npm run build` would fail with "vite: not found".
-RUN rm -f package-lock.json && npm install --include=dev
+#
+# The fallback keeps a deploy alive if package.json and the lockfile ever drift
+# (npm ci refuses to guess); the build then just costs a resolution pass.
+RUN npm ci --include=dev || npm install --include=dev
 RUN npm run build
 # The bundle is built; drop build-only packages so the runtime image stays small
 # (the API only needs server/ dependencies at run time).
