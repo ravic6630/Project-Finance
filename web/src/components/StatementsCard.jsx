@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Crown, FileText, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Crown, FileText, Loader2, Printer } from 'lucide-react';
 import { api, apiUrl, getToken } from '../lib/api.js';
+import { Modal } from './ui.jsx';
 
 // Monthly statements: pick a month and open a crisp printable statement
 // (browser print = save as PDF). Premium users can also opt in to receive
@@ -11,6 +12,8 @@ export default function StatementsCard({ onUpgrade }) {
   const [prefs, setPrefs] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [doc, setDoc] = useState(null); // statement HTML, shown in a modal
+  const frameRef = useRef(null);
 
   useEffect(() => {
     api('/statements')
@@ -31,8 +34,10 @@ export default function StatementsCard({ onUpgrade }) {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (!res.ok) throw new Error('Could not build that statement — try again.');
-      const blob = await res.blob();
-      window.open(URL.createObjectURL(blob), '_blank');
+      // Show it in-page rather than via window.open: after an await the click's
+      // user activation is gone, so Safari (and every iOS browser, and the
+      // native shell) silently blocks the popup and nothing happens.
+      setDoc(await res.text());
     } catch (err) {
       setError(err.message);
     } finally {
@@ -110,6 +115,32 @@ export default function StatementsCard({ onUpgrade }) {
           </div>
         </div>
       </div>
+
+      <Modal open={!!doc} onClose={() => setDoc(null)} title={`Statement · ${months.find((m) => m.ym === ym)?.label || ''}`} wide>
+        <iframe
+          title="Monthly statement"
+          srcDoc={doc || ''}
+          className="h-[60vh] w-full rounded-xl border border-slate-200 bg-white"
+          ref={(el) => {
+            frameRef.current = el;
+          }}
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="btn-ghost" onClick={() => setDoc(null)}>
+            Close
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              // Print the statement itself, not the app around it.
+              frameRef.current?.contentWindow?.focus();
+              frameRef.current?.contentWindow?.print();
+            }}
+          >
+            <Printer size={16} /> Save as PDF
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -25,7 +25,7 @@ export default function PriceAlertsCard({ premium, onUpgrade }) {
   };
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [premium]);
 
   const market = MARKETS.find((m) => m.value === form.kind) || MARKETS[0];

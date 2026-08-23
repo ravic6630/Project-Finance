@@ -342,6 +342,23 @@ export async function initDb() {
   await addColumn('email_prefs', 'last_statement_month', 'TEXT');
   await addColumn('email_prefs', 'daily_hour', 'INTEGER NOT NULL DEFAULT 8');
   await addColumn('email_prefs', 'daily_tz', 'TEXT');
+  await addColumn('subscriptions', 'pending_sub_id', 'TEXT');
+
+  // Recurring transactions must be unique per (rule, date). Older rows may
+  // already contain duplicates from the check-then-insert race, and CREATE
+  // UNIQUE INDEX would fail on them — collapse those to the earliest row first.
+  await client.execute(`
+    DELETE FROM transactions
+     WHERE recurring_rule_id IS NOT NULL
+       AND id NOT IN (
+         SELECT MIN(id) FROM transactions
+          WHERE recurring_rule_id IS NOT NULL
+          GROUP BY user_id, recurring_rule_id, date
+       )
+  `);
+  await client.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_txn_recurring ON transactions(user_id, recurring_rule_id, date) WHERE recurring_rule_id IS NOT NULL'
+  );
   await client.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_refcode ON users(referral_code)');
   await addColumn('holdings', 'profile_id', 'INTEGER');
   await addColumn('cash_accounts', 'profile_id', 'INTEGER');

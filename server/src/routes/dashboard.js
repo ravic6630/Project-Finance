@@ -40,8 +40,10 @@ dashboardRouter.get(
       const members = await linkedMembers(req.user.id);
       summary = members.length ? await buildFamilySummary(req.user, own, members, { refresh }) : own;
       if (premium) {
-        const series = [await getHistory(req.user.id, base)];
-        for (const m of members) series.push(await getHistory(m.id, base));
+        const series = await Promise.all([
+          getHistory(req.user.id, base),
+          ...members.map((m) => getHistory(m.id, base)),
+        ]);
         summary.net_worth_history = mergeHistorySeries(series);
       } else {
         summary.net_worth_history = null;

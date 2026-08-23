@@ -1,6 +1,6 @@
 import { db } from '../db.js';
 import { HttpError } from '../util.js';
-import { buildSummary } from './summary.js';
+import { buildSummary, cashflowMonths } from './summary.js';
 
 // Linked REAL accounts (family_links, status=active), as user rows. Pairwise
 // and direction-agnostic: an accepted link makes each side a member of the
@@ -24,20 +24,22 @@ export async function isLinked(userId, otherId) {
 
 // Family view shows BALANCE SHEET only (holdings/cash/assets → net worth).
 // Cash-flow (transactions), goals and budgets stay private to each login.
-const emptyCashflow = () => {
-  const months = [];
-  const ref = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(ref.getFullYear(), ref.getMonth() - i, 1);
-    months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, income: 0, expense: 0 });
-  }
-  return { months, this_month_income: 0, this_month_expense: 0, this_month_net: 0 };
-};
+const emptyCashflow = () => ({
+  // Same IST-anchored buckets buildSummary uses, so the keys line up.
+  months: cashflowMonths(),
+  this_month_income: 0,
+  this_month_expense: 0,
+  this_month_net: 0,
+});
 
 // A member's summary, converted directly to the VIEWER's base currency (each
 // row converts from its own currency — no double hop through their base).
 async function memberSummary(viewer, member, { refresh = false } = {}) {
-  const s = await buildSummary({ ...member, base_currency: viewer.base_currency }, { refresh, scope: null });
+  // cashflow/goals are overwritten below, so don't pay to compute them.
+  const s = await buildSummary(
+    { ...member, base_currency: viewer.base_currency },
+    { refresh, scope: null, skipCashflow: true }
+  );
   s.cashflow = emptyCashflow();
   s.counts = { ...s.counts, transactions: 0, goals: 0 };
   s.setup = { imported: true, daily_email: true }; // never nudge inside a read-only view
@@ -83,8 +85,14 @@ export async function buildFamilySummary(viewer, own, members, { refresh = false
     counts: { ...own.counts },
   };
   const included = [];
-  for (const m of members) {
-    const s = await memberSummary(viewer, m, { refresh: false }); // members ride the price cache
+  // One member at a time meant N x (queries + FX + pricing) of serial latency.
+  // They're independent, so fan out and merge in the original order.
+  const summaries = await Promise.all(
+    members.map((m) => memberSummary(viewer, m, { refresh: false })) // members ride the price cache
+  );
+  for (let i = 0; i < members.length; i += 1) {
+    const m = members[i];
+    const s = summaries[i];
     merged.net_worth += s.net_worth;
     merged.investments.value += s.investments.value;
     merged.investments.cost += s.investments.cost;

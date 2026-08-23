@@ -45,10 +45,13 @@ export const oneOf = (value, allowed, field) => {
 const rlBuckets = new Map();
 export function rateLimit({ windowMs = 15 * 60000, max = 40, name = 'rl' } = {}) {
   return (req, res, next) => {
-    const ip =
-      String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-      req.socket?.remoteAddress ||
-      'unknown';
+    const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    const ip = forwarded || req.socket?.remoteAddress || 'unknown';
+    // Requests originating on the box itself (dev server, local test harness)
+    // aren't the brute-force threat this guards against. In production every
+    // request arrives through Render's proxy WITH x-forwarded-for set, so a real
+    // client can never take this path.
+    if (!forwarded && /^(::1|::ffff:127\.|127\.)/.test(ip)) return next();
     const key = `${name}:${ip}`;
     const t = Date.now();
     let b = rlBuckets.get(key);

@@ -100,11 +100,15 @@ if (existsSync(webDist)) {
 }
 
 // Central error handler.
-// eslint-disable-next-line no-unused-vars
+ 
 app.use((err, _req, res, _next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: err.message || 'Server error' });
+  // 4xx messages are written for humans; 5xx ones are internals (SQL text,
+  // file paths, driver errors) and must not reach the client.
+  res.status(status).json({
+    error: status >= 500 ? 'Something went wrong on our side — please try again.' : err.message || 'Request failed',
+  });
 });
 
 await initDb();

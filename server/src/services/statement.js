@@ -1,7 +1,7 @@
 import { db } from '../db.js';
 import { escapeHtml } from '../util.js';
 import { buildSummary } from './summary.js';
-import { enrichHoldings } from './portfolio.js';
+import { todayIST } from './recurring.js';
 import { getFxRate } from './prices.js';
 
 // Monthly statement: one crisp page per calendar month.
@@ -30,7 +30,6 @@ const monthTxns = db.prepare(
   'SELECT * FROM transactions WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date'
 );
 const allBudgets = db.prepare('SELECT * FROM budgets WHERE user_id = ? ORDER BY category');
-const holdingsFor = db.prepare('SELECT * FROM holdings WHERE user_id = ? ORDER BY kind, name');
 const accountsFor = db.prepare('SELECT * FROM cash_accounts WHERE user_id = ? ORDER BY type, name');
 const assetsFor = db.prepare('SELECT * FROM assets WHERE user_id = ? ORDER BY value DESC, name');
 
@@ -44,9 +43,11 @@ export async function availableMonths(user) {
   ].filter(Boolean);
   const earliest = firsts.sort()[0].slice(0, 7);
   const out = [];
-  const nowD = new Date();
-  let y = nowD.getFullYear();
-  let m = nowD.getMonth() + 1;
+  // IST like every other date convention in the app, so "this month" doesn't
+  // flip early/late depending on where the server happens to run.
+  const [istY, istM] = todayIST().split('-').map(Number);
+  let y = istY;
+  let m = istM;
   for (let i = 0; i < 12; i += 1) {
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     if (ym < earliest) break;
@@ -115,9 +116,12 @@ export async function statementData(user, ym) {
   }
 
   // --- positions today ---
-  const summary = await buildSummary(user, { scope: null });
-  const { items: holdings } = await enrichHoldings(await holdingsFor.all(user.id), base, {});
-  holdings.sort((a, b) => b.market_value_base - a.market_value_base);
+  // buildSummary already priced every holding — reuse its enriched rows instead
+  // of fetching and re-pricing the identical portfolio a second time.
+  const summary = await buildSummary(user, { scope: null, withItems: true });
+  const holdings = [...(summary.items || [])].sort((a, b) => b.market_value_base - a.market_value_base);
+  // Seed the local FX memo from the rates it already resolved.
+  Object.assign(fx, summary.rates || {});
   const accounts = [];
   for (const a of await accountsFor.all(user.id)) {
     accounts.push({ name: a.name, type: a.type, value: await toBase(a.balance, a.currency) });

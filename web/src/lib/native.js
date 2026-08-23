@@ -88,6 +88,15 @@ export async function openExternal(url) {
 /* -------------------------------- biometrics ------------------------------- */
 // Face ID / Touch ID / fingerprint. Reported capability drives whether the
 // app-lock setting is offered at all.
+// @aparajita/capacitor-biometric-auth BiometryType enum → what users call it.
+const BIOMETRY_NAMES = {
+  1: 'Touch ID',
+  2: 'Face ID',
+  3: 'fingerprint',
+  4: 'face unlock',
+  5: 'iris unlock',
+};
+
 export async function biometricAvailable() {
   if (!isNative) return { available: false, name: null };
   const res = await safe(async () => {
@@ -95,8 +104,9 @@ export async function biometricAvailable() {
     const info = await BiometricAuth.checkBiometry();
     return {
       available: !!info.isAvailable,
-      // 'Face ID' / 'Touch ID' / 'Fingerprint' — used verbatim in the UI copy.
-      name: info.biometryType ? String(info.strongReason || '').trim() || null : null,
+      // strongReason is an error explanation, not a name — map the enum instead.
+      // 'Face ID' / 'Touch ID' / 'Fingerprint' is used verbatim in the UI copy.
+      name: BIOMETRY_NAMES[info.biometryType] || 'biometrics',
       type: info.biometryType ?? 0,
     };
   });

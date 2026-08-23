@@ -56,6 +56,7 @@ function GoalForm({ open, onClose, onSaved, editing }) {
   const [busy, setBusy] = useState(false);
   // Portfolio linking: when items are linked, "saved so far" tracks them live.
   const [links, setLinks] = useState([]); // [{kind, ref_id}]
+  const [linksReady, setLinksReady] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linkables, setLinkables] = useState(null); // {holdings, accounts, assets}
 
@@ -88,10 +89,19 @@ function GoalForm({ open, onClose, onSaved, editing }) {
     setError('');
     setPickerOpen(false);
     setLinks([]);
+    // Saving PUTs the full link list, so an unloaded/failed GET would wipe the
+    // goal's existing links. Track readiness, and ignore a response that
+    // belongs to a goal we've since navigated away from.
+    setLinksReady(!editing);
     if (editing) {
-      api(`/goals/${editing.id}/links`)
-        .then((d) => setLinks((d.links || []).map((l) => ({ kind: l.kind, ref_id: l.ref_id }))))
-        .catch(() => {});
+      const forGoal = editing.id;
+      api(`/goals/${forGoal}/links`)
+        .then((d) => {
+          if (forGoal !== editing.id) return;
+          setLinks((d.links || []).map((l) => ({ kind: l.kind, ref_id: l.ref_id })));
+          setLinksReady(true);
+        })
+        .catch(() => setError("Couldn't load this goal's linked investments — reopen it before saving."));
     }
     setForm(
       editing
@@ -142,7 +152,8 @@ function GoalForm({ open, onClose, onSaved, editing }) {
         const d = await api('/goals', { method: 'POST', body: payload });
         goalId = d.goal.id;
       }
-      await api(`/goals/${goalId}/links`, { method: 'PUT', body: { links } });
+      // Only write links when we actually know what they were.
+      if (linksReady) await api(`/goals/${goalId}/links`, { method: 'PUT', body: { links } });
       onSaved();
       onClose();
     } catch (err) {
@@ -391,6 +402,9 @@ export default function Goals() {
         setGoals(d.goals);
       }
     } catch (err) {
+      // Don't leave `premium` at its loading value on a network blip — that
+      // renders the upgrade lock to paying members with nothing explaining why.
+      setPremium((cur) => (cur === null ? false : cur));
       setError(err.message);
     } finally {
       setLoading(false);

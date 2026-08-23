@@ -69,7 +69,16 @@ export async function assertHoldingsCapacity(user, adding = 1) {
 
 export async function activatePremium(userId, { provider, providerSubId, days = 30, periodEnd } = {}) {
   const end = periodEnd || new Date(Date.now() + days * 86400000).toISOString();
-  await upsertSub.run(userId, provider || 'trial', providerSubId || null, end, now());
+  // Fall back to the pending checkout id when the webhook didn't carry one, so
+  // the live subscription stays linked for future renewals.
+  let subId = providerSubId || null;
+  if (!subId) {
+    subId = (await getSub.get(userId))?.pending_sub_id || null;
+  }
+  await upsertSub.run(userId, provider || 'trial', subId, end, now());
+  // The checkout is settled — free the slot so a later one can't be confused
+  // with it.
+  await db.prepare('UPDATE subscriptions SET pending_sub_id = NULL WHERE user_id = ?').run(userId);
   return end;
 }
 
@@ -94,16 +103,25 @@ const deactivateStmt = db.prepare(`
 // gets a fresh welcome email (they've "become premium" again).
 export const deactivatePremium = (userId) => deactivateStmt.run(now(), userId);
 
-// Record the pending Razorpay subscription id so the webhook can match it to the user.
+// Record the pending Razorpay subscription id so the webhook can match it to
+// the user. It goes in its OWN column: writing it over provider_sub_id would
+// break renewal webhooks for an existing subscriber who merely opens the
+// upgrade screen again (their live subscription id would be replaced by a
+// checkout that may never complete). Status/provider are left alone for the
+// same reason — activatePremium sets those once the money actually lands.
 const markPendingStmt = db.prepare(`
-  INSERT INTO subscriptions (user_id, plan, status, provider, provider_sub_id, updated_at)
+  INSERT INTO subscriptions (user_id, plan, status, provider, pending_sub_id, updated_at)
   VALUES (?, 'free', 'created', 'razorpay', ?, ?)
-  ON CONFLICT(user_id) DO UPDATE SET provider='razorpay', provider_sub_id=excluded.provider_sub_id, updated_at=excluded.updated_at
+  ON CONFLICT(user_id) DO UPDATE SET pending_sub_id=excluded.pending_sub_id, updated_at=excluded.updated_at
 `);
 export const markPending = (userId, subId) => markPendingStmt.run(userId, subId, now());
 
-const bySubId = db.prepare('SELECT user_id FROM subscriptions WHERE provider_sub_id = ?');
-export const userIdBySubId = async (subId) => (await bySubId.get(subId))?.user_id || null;
+// Match on either column: the id arriving from a webhook is the live one for a
+// renewal, or the pending one for a first activation.
+const bySubId = db.prepare(
+  'SELECT user_id FROM subscriptions WHERE provider_sub_id = ? OR pending_sub_id = ?'
+);
+export const userIdBySubId = async (subId) => (subId ? (await bySubId.get(subId, subId))?.user_id || null : null);
 
 async function razorpay(path, method = 'GET', body) {
   const auth = Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString('base64');

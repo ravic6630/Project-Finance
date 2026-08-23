@@ -32,6 +32,12 @@ async function http(path, { method = 'GET', body, token, ip } = {}) {
   return { status: res.status, json };
 }
 
+// The claim limiter is an in-memory fixed window keyed by IP, so every run
+// needs its own addresses — otherwise re-running inside 10 minutes inherits
+// the previous run's spent budget and healthy claims get 429'd.
+const RL_NET = `198.51.${100 + Math.floor(Math.random() * 100)}`;
+const ipFor = (n) => `${RL_NET}.${n}`;
+
 const DOMAIN = '@paytest.sampada';
 async function cleanup() {
   const rows = await db.prepare(`SELECT id FROM users WHERE email LIKE '%${DOMAIN}'`).all();
@@ -79,7 +85,7 @@ ok(near(qa.json.amount, 1069.2), 'annual QR (₹1069.20 = 12mo −10%)', String(
 const claim = await http('/billing/manual-claim', {
   method: 'POST',
   token: IN.token,
-  ip: '198.51.100.1',
+  ip: ipFor(1),
   body: { interval: 'monthly', method: 'upi', reference: 'UTR12345' },
 });
 ok(claim.status === 200, 'UPI claim accepted');
@@ -91,20 +97,23 @@ ok(/💳/.test(msg?.body) && /₹99/.test(msg.body) && /UTR12345/.test(msg.body)
 const zclaim = await http('/billing/manual-claim', {
   method: 'POST',
   token: US.token,
-  ip: '198.51.100.2',
+  ip: ipFor(2),
   body: { interval: 'annual', method: 'zelle' },
 });
 ok(zclaim.status === 200, 'Zelle claim accepted');
 const zmsg = await db.prepare('SELECT body FROM support_messages WHERE user_id = ? ORDER BY id DESC').get(US.id);
 ok(/\$21\.49/.test(zmsg?.body) && /Zelle \(ravic6631@gmail\.com\)/.test(zmsg.body), 'Zelle claim: USD annual amount + address', zmsg?.body);
 
-// 4) Claim spam is throttled (3 per 10 min per IP).
+// 4) Claim spam is throttled (3 per 10 min per IP). The limiter is an in-memory
+// fixed window, so use a fresh IP each run — otherwise re-running the suite
+// inside 10 minutes inherits the previous run's spent budget.
+const rlIp = ipFor(3);
 let blocked = 0;
 for (let i = 0; i < 4; i += 1) {
   const r = await http('/billing/manual-claim', {
     method: 'POST',
     token: IN.token,
-    ip: '198.51.100.77',
+    ip: rlIp,
     body: { interval: 'monthly', method: 'upi' },
   });
   if (r.status === 429) blocked += 1;

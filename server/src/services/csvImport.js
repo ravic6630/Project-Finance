@@ -84,10 +84,20 @@ export function autoMap(headers) {
 }
 
 // "1,234.50" / "$1,234.50" / "(12)" → number; junk → 0.
+// Also handles the European convention ("1.234,50" / "1234,50"), since
+// detectDelimiter deliberately accepts the ';' CSVs those locales export —
+// without this, a comma decimal was stripped and inflated the value 100x.
+const EU_GROUPED = /^-?\d{1,3}(\.\d{3})+(,\d+)?$/; // 1.234.567,89
+const EU_PLAIN = /^-?\d+,\d{1,2}$/;                   // 1234,50
 const parseNum = (v) => {
   let t = String(v ?? '').trim();
   const neg = /^\(.*\)$/.test(t);
-  t = t.replace(/[^0-9.\-]/g, '');
+  const bare = t.replace(/[()\s]/g, '').replace(/[^\d.,-]/g, ''); // drop currency symbols
+  if (EU_GROUPED.test(bare) || EU_PLAIN.test(bare)) {
+    t = bare.replace(/\./g, '').replace(',', '.');
+  } else {
+    t = t.replace(/[^0-9.\-]/g, '');
+  }
   const n = Number(t);
   if (!Number.isFinite(n)) return 0;
   return neg ? -Math.abs(n) : n;

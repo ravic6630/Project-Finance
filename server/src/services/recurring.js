@@ -42,8 +42,12 @@ const activeRules = db.prepare('SELECT * FROM recurring_rules WHERE user_id = ? 
 const alreadyLogged = db.prepare(
   'SELECT 1 FROM transactions WHERE user_id = ? AND recurring_rule_id = ? AND date = ?'
 );
+// OR IGNORE + the (user_id, recurring_rule_id, date) unique index in db.js is
+// the real guard: the read-then-write check below is only a fast path, and two
+// concurrent requests can both pass it. The DB refuses the duplicate.
 const insertTxn = db.prepare(`
-  INSERT INTO transactions (user_id, type, amount, currency, category, account, date, note, recurring_rule_id, created_at)
+  INSERT OR IGNORE INTO transactions
+    (user_id, type, amount, currency, category, account, date, note, recurring_rule_id, created_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const markRun = db.prepare('UPDATE recurring_rules SET last_run = ?, updated_at = ? WHERE id = ?');
@@ -59,11 +63,12 @@ export async function materializeRecurring(userId) {
     const due = occurrencesBetween(rule, rule.last_run, today);
     for (const date of due) {
       if (await alreadyLogged.get(userId, rule.id, date)) continue;
-      await insertTxn.run(
+      const res = await insertTxn.run(
         userId, rule.type, rule.amount, rule.currency, rule.category,
         rule.account, date, rule.note, rule.id, now()
       );
-      created += 1;
+      // A concurrent request may have won the race — count only real inserts.
+      created += res.changes ? 1 : 0;
     }
     await markRun.run(today, now(), rule.id);
   }

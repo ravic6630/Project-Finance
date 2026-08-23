@@ -13,26 +13,37 @@ const update = db.prepare('UPDATE profiles SET name = ?, relation = ? WHERE id =
 const remove = db.prepare('DELETE FROM profiles WHERE id = ? AND user_id = ?');
 const MAX_PROFILES = 15;
 
-// Counts let the manage UI say "3 holdings · 1 account" per member.
-const countsFor = async (userId, profileId) => {
-  const one = async (table) =>
-    Number(
-      (
-        await db
-          .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ? AND profile_id = ?`)
-          .get(userId, profileId)
-      )?.n || 0
-    );
-  return { holdings: await one('holdings'), accounts: await one('cash_accounts'), assets: await one('assets') };
-};
+// Counts let the manage UI say "3 holdings · 1 account" per member. One grouped
+// query per table instead of three per profile — the old shape was 3N round
+// trips to Turso, which is remote in production.
+const countsByProfile = (table) =>
+  db.prepare(
+    `SELECT profile_id, COUNT(*) AS n FROM ${table} WHERE user_id = ? AND profile_id IS NOT NULL GROUP BY profile_id`
+  );
+const countHoldings = countsByProfile('holdings');
+const countAccounts = countsByProfile('cash_accounts');
+const countAssets = countsByProfile('assets');
+const toMap = (rows) => new Map(rows.map((r) => [Number(r.profile_id), Number(r.n)]));
 
 profilesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await list.all(req.user.id);
-    const profiles = [];
-    for (const p of rows) profiles.push({ ...p, counts: await countsFor(req.user.id, p.id) });
-    res.json({ profiles });
+    const [rows, hRows, cRows, aRows] = await Promise.all([
+      list.all(req.user.id),
+      countHoldings.all(req.user.id),
+      countAccounts.all(req.user.id),
+      countAssets.all(req.user.id),
+    ]);
+    const h = toMap(hRows);
+    const c = toMap(cRows);
+    const a = toMap(aRows);
+    // A member with nothing yet produces no group row — default those to 0.
+    res.json({
+      profiles: rows.map((p) => ({
+        ...p,
+        counts: { holdings: h.get(p.id) || 0, accounts: c.get(p.id) || 0, assets: a.get(p.id) || 0 },
+      })),
+    });
   })
 );
 

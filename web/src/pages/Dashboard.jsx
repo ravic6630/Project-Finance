@@ -193,7 +193,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
   const active = RANGES.find((r) => r.key === range) || RANGES[2];
   const { view, startMs, endMs, exact, from } = useMemo(
     () => buildWindow(hist, active.days),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [data.net_worth_history, active.days]
   );
 
@@ -418,7 +418,7 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [load, base, activeProfile]);
 
   if (loading) return <Spinner label="Loading your dashboard…" />;

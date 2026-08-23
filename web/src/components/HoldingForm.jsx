@@ -159,7 +159,7 @@ function StockSearch({ kind, onPick }) {
   );
 }
 
-export default function HoldingForm({ open, onClose, onSaved, editing }) {
+export default function HoldingForm({ open, onClose, onSaved, editing, profileId = null }) {
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

@@ -48,4 +48,10 @@ export function relativeTime(iso) {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+// The user's OWN calendar day. toISOString() is UTC, which hands an IST user
+// yesterday's date before 05:30 and a US user tomorrow's in the evening — both
+// silently file transactions into the wrong day (and month).
+export const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};

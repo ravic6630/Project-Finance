@@ -30,6 +30,8 @@ export default function CsvImport({ open, onClose, onImported }) {
   async function onFile(e) {
     const f = e.target.files?.[0];
     if (!f) return;
+    // Clear it, or picking the SAME file again fires no change event at all.
+    e.target.value = '';
     setError('');
     try {
       setCsv(await f.text());

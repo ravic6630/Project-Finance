@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Pause, Pencil, Play, Plus, Repeat, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { todayISO } from '../lib/format.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
@@ -16,7 +17,7 @@ const blank = {
   category: '',
   note: '',
   day_of_month: '1',
-  start_date: new Date().toISOString().slice(0, 10),
+  start_date: '', // filled per form-open below — a module-load UTC date goes stale
   end_date: '',
 };
 
@@ -33,7 +34,7 @@ function RuleForm({ editing, categories, defaultCurrency, onSaved, onCancel }) {
           start_date: editing.start_date,
           end_date: editing.end_date || '',
         }
-      : { ...blank, currency: defaultCurrency || 'INR' }
+      : { start_date: todayISO(), ...blank, currency: defaultCurrency || 'INR' }
   );
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

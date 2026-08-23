@@ -17,6 +17,7 @@ function useCountUp(target, duration = 900) {
   const fromRef = useRef(0);
   useEffect(() => {
     if (reducedMotion()) {
+      fromRef.current = target;
       setVal(target);
       return undefined;
     }
@@ -25,9 +26,12 @@ function useCountUp(target, duration = 900) {
     const step = (now) => {
       const t = Math.min(1, (now - start) / duration);
       const eased = 1 - (1 - t) ** 3; // easeOutCubic
-      setVal(from + (target - from) * eased);
+      const v = from + (target - from) * eased;
+      // Commit every frame, not just the last one: a refresh mid-count used to
+      // restart from the previous target and visibly snap backwards.
+      fromRef.current = v;
+      setVal(v);
       if (t < 1) raf.current = requestAnimationFrame(step);
-      else fromRef.current = target;
     };
     raf.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf.current);

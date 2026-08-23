@@ -13,18 +13,48 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!getToken()) {
       setLoading(false);
-      return;
+      return undefined;
     }
     const slow = setTimeout(() => setWaking(true), 2500);
-    api('/auth/me')
-      .then((d) => setUser(d.user))
-      .catch(() => clearToken())
-      .finally(() => {
+    let cancelled = false;
+
+    // A transient failure (network blip, server restarting) must NOT log the
+    // user out — that punishes exactly the phone-on-patchy-data case. Retry a
+    // couple of times; only a definitive 401 (api() already cleared the token)
+    // ends the session.
+    const boot = async (attempt = 0) => {
+      try {
+        const d = await api('/auth/me');
+        if (!cancelled) setUser(d.user);
+      } catch (err) {
+        if (cancelled) return;
+        const authFailure = err.status === 401 || err.status === 403;
+        if (!authFailure && attempt < 2) {
+          setTimeout(() => boot(attempt + 1), 3000);
+          return; // keep loading until the retry settles
+        }
+        // Auth failure: token already cleared by api(). Transient failure after
+        // retries: keep the token so the next launch signs straight back in.
+      }
+      if (!cancelled) {
         clearTimeout(slow);
         setWaking(false);
         setLoading(false);
-      });
-    return () => clearTimeout(slow);
+      }
+    };
+    boot();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(slow);
+    };
+  }, []);
+
+  // Any 401 anywhere in the app drops us back to the sign-in screen.
+  useEffect(() => {
+    const onLogout = () => setUser(null);
+    window.addEventListener('sampada:logout', onLogout);
+    return () => window.removeEventListener('sampada:logout', onLogout);
   }, []);
 
   // Resolves to { requires_2fa, ticket } when the account has 2FA — the caller

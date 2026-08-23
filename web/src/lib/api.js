@@ -10,6 +10,13 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
+// A revoked/expired token used to be cleared silently, leaving the UI rendered
+// as if still signed in until a manual reload. Tell the app too.
+function signedOut() {
+  clearToken();
+  window.dispatchEvent(new Event('sampada:logout'));
+}
+
 export async function api(path, { method = 'GET', body } = {}) {
   const token = getToken();
   const res = await fetch(apiUrl(path), {
@@ -29,7 +36,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401) clearToken();
+    if (res.status === 401) signedOut();
     const err = new Error(data?.error || `Request failed (${res.status})`);
     err.status = res.status;
     throw err;
@@ -52,7 +59,7 @@ export async function apiUpload(path, formData) {
     /* empty */
   }
   if (!res.ok) {
-    if (res.status === 401) clearToken();
+    if (res.status === 401) signedOut();
     const err = new Error(data?.error || `Upload failed (${res.status})`);
     err.status = res.status;
     throw err;

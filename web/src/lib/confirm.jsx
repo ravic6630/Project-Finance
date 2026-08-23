@@ -40,12 +40,21 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, danger, onCa
 
   useEffect(() => {
     confirmRef.current?.focus();
+    // Capture phase + stopPropagation: otherwise Escape here ALSO reaches the
+    // Modal underneath and closes both dialogs at once.
     const onKey = (e) => {
-      if (e.key === 'Escape') onCancel();
-      if (e.key === 'Enter') onConfirm();
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        e.preventDefault();
+        onCancel();
+      } else if (e.key === 'Enter') {
+        e.stopPropagation();
+        e.preventDefault();
+        onConfirm();
+      }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, [onCancel, onConfirm]);
 
   return (

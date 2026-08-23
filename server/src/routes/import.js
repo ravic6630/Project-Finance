@@ -117,9 +117,22 @@ importRouter.post(
   })
 );
 
+// Multer raises a bare MulterError with no .status, which the central handler
+// would turn into a 500. Map it to a client error with usable copy.
+const uploadCas = (req, res, next) =>
+  upload.single('file')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      err.status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        err.message = 'That PDF is over 15 MB — upload the original CAS PDF emailed by the depository.';
+      }
+    }
+    next(err);
+  });
+
 importRouter.post(
   '/cas',
-  upload.single('file'),
+  uploadCas,
   asyncHandler(async (req, res) => {
     if (!casAvailable()) return res.status(503).json({ error: FRIENDLY.not_installed });
     if (!req.file) throw bad('Please choose a CAS PDF file to upload');

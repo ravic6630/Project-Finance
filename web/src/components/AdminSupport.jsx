@@ -27,14 +27,26 @@ export default function AdminSupport() {
     }
   }, []);
 
+  // Which thread is on screen right now. A ref, because loadChat's closure is
+  // created once and can't read the openId state.
+  const openIdRef = useRef(null);
+
   const loadChat = useCallback(async (userId) => {
     if (!userId) return;
     try {
-      setChat(await api(`/support/admin/threads/${userId}`));
+      const d = await api(`/support/admin/threads/${userId}`);
+      // Switching threads while a request is in flight used to render customer
+      // A's conversation under customer B's id — and replies went to B.
+      if (String(userId) !== String(openIdRef.current)) return;
+      setChat(d);
     } catch (err) {
       setError(err.message);
     }
   }, []);
+
+  useEffect(() => {
+    openIdRef.current = openId;
+  }, [openId]);
 
   useEffect(() => {
     const tick = () => {
@@ -47,7 +59,14 @@ export default function AdminSupport() {
     return () => clearInterval(timer);
   }, [openId, loadThreads, loadChat]);
 
+  // Only jump to the newest message when the message list actually grew — the
+  // 5s poll replaces `chat` every cycle, which used to yank the admin out of
+  // scrollback mid-read.
+  const lastMsgRef = useRef(null);
   useEffect(() => {
+    const latest = chat?.messages?.length ? chat.messages[chat.messages.length - 1].id : null;
+    if (latest === lastMsgRef.current) return;
+    lastMsgRef.current = latest;
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [chat]);
 

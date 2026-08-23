@@ -18,10 +18,15 @@
     "mobile:sync": "npm run build && cd web && npx cap sync",
     "mobile:android": "npm run mobile:sync && cd web/android && ./gradlew assembleDebug",
     "mobile:android:release": "npm run mobile:sync && cd web/android && ./gradlew bundleRelease",
-    "mobile:ios": "npm run mobile:sync && cd web && npx cap open ios"
+    "mobile:ios": "npm run mobile:sync && cd web && npx cap open ios",
+    "lint": "eslint web/src server/src"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "eslint": "^10.9.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.11.0"
   },
   "engines": {
     "node": ">=22.5.0"

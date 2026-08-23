@@ -31,9 +31,15 @@ const findUserById = db.prepare(
 
 // Gate a route behind an active premium subscription (402 if not). Must run after authRequired.
 export async function requirePremium(req, _res, next) {
-  const { premiumState } = await import('./services/billing.js');
-  if ((await premiumState(req.user)).premium) return next();
-  next(new HttpError(402, 'This is a premium feature. Upgrade to Sampada Premium to use it.'));
+  // Mounted bare via router.use, so it is NOT wrapped by asyncHandler — a
+  // rejection here would be an unhandled rejection, not a 500. Catch it.
+  try {
+    const { premiumState } = await import('./services/billing.js');
+    if ((await premiumState(req.user)).premium) return next();
+    next(new HttpError(402, 'This is a premium feature. Upgrade to Sampada Premium to use it.'));
+  } catch (e) {
+    next(e);
+  }
 }
 
 // ---- Device sessions -------------------------------------------------------

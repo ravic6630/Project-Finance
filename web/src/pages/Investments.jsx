@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef} from 'react';
 import { Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
@@ -104,21 +104,30 @@ export default function Investments() {
   const [csvOpen, setCsvOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
 
+  // Every load claims a ticket; only the newest one may write to state. Without
+  // this, a slow response for the previous profile (or an in-flight 30s poll)
+  // lands after the switch and repaints the wrong person's holdings.
+  const reqRef = useRef(0);
+
   const load = useCallback(async ({ refresh = false, live = false } = {}) => {
+    const ticket = ++reqRef.current;
     try {
       setError('');
       const parts = [refresh ? 'refresh=1' : live ? 'live=1' : '', profileQuery('').replace('?', '')]
         .filter(Boolean)
         .join('&');
       const d = await api(`/holdings${parts ? `?${parts}` : ''}`);
+      if (reqRef.current !== ticket) return;
       setHoldings(d.holdings);
       setUpdatedAt(new Date().toISOString());
     } catch (err) {
       // A background poll failing shouldn't disrupt the page; only surface real loads.
-      if (!live) setError(err.message);
+      if (reqRef.current === ticket && !live) setError(err.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (reqRef.current === ticket) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [activeProfile]);
 

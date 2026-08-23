@@ -175,11 +175,15 @@ export default function Returns() {
     load();
   }, [load]);
 
+  // RFC 4180: a quote inside a quoted field is doubled. A holding named
+  // 6\" Pipe Co used to shift every later column on that row.
+  const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
   function exportCsv() {
     if (!data) return;
     const head = ['Holding', 'Currency', 'XIRR %', 'Invested', 'Market value', 'Realized ST', 'Realized LT', 'Unrealized ST', 'Unrealized LT'];
     const rows = data.holdings.map((h) => [
-      `"${h.name}"`, h.currency, h.xirr == null ? '' : (h.xirr * 100).toFixed(2),
+      csvCell(h.name), h.currency, h.xirr == null ? '' : (h.xirr * 100).toFixed(2),
       Math.round(h.invested), Math.round(h.market_value),
       Math.round(h.realized.short), Math.round(h.realized.long),
       Math.round(h.unrealized.short), Math.round(h.unrealized.long),

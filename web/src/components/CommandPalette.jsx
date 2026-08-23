@@ -54,17 +54,22 @@ export default function CommandPalette() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Reset + focus + lazily fetch holdings the first time it opens.
+  // Reset + focus, ONLY on open. This used to also depend on `holdings`, so the
+  // first fetch resolving mid-search blanked whatever the user had typed.
   useEffect(() => {
     if (!open) return;
     setQuery('');
     setActive(0);
     setTimeout(() => inputRef.current?.focus(), 30);
-    if (holdings === null) {
-      api('/holdings')
-        .then((d) => setHoldings(d.holdings || []))
-        .catch(() => setHoldings([]));
-    }
+  }, [open]);
+
+  // Lazily fetch holdings the first time it opens; the null guard makes the
+  // re-run after setHoldings a no-op.
+  useEffect(() => {
+    if (!open || holdings !== null) return;
+    api('/holdings')
+      .then((d) => setHoldings(d.holdings || []))
+      .catch(() => setHoldings([]));
   }, [open, holdings]);
 
   const close = useCallback(() => setOpen(false), []);
@@ -101,7 +106,7 @@ export default function CommandPalette() {
         `${i.label} ${i.sub || ''} ${i.keywords || ''}`.toLowerCase().includes(q)
       )
       .slice(0, 12);
-  }, [query, holdings, user?.role, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, holdings, user?.role, open]);  
 
   useEffect(() => setActive(0), [query]);
 

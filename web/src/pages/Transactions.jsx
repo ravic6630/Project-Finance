@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef} from 'react';
 import { ArrowDownCircle, ArrowUpCircle, Pencil, PiggyBank, Plus, Repeat, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money, todayISO } from '../lib/format.js';
@@ -182,17 +182,22 @@ export default function Transactions() {
   const [budgetsOpen, setBudgetsOpen] = useState(false);
   const confirm = useConfirm();
 
+  // Filter changes fire overlapping requests; only the newest may paint.
+  const reqRef = useRef(0);
+
   const load = useCallback(async (f) => {
+    const ticket = ++reqRef.current;
     try {
       setError('');
       const q = f && f !== 'ALL' ? `?type=${f}` : '';
       const d = await api(`/transactions${q}`);
+      if (reqRef.current !== ticket) return;
       setTxns(d.transactions);
       setCategories(d.categories);
     } catch (err) {
-      setError(err.message);
+      if (reqRef.current === ticket) setError(err.message);
     } finally {
-      setLoading(false);
+      if (reqRef.current === ticket) setLoading(false);
     }
   }, []);
 

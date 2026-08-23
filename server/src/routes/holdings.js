@@ -48,6 +48,8 @@ function readBody(body) {
   };
 }
 
+const TRADE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 const listScoped = (scopeSql) => db.prepare(`SELECT * FROM holdings WHERE user_id = ?${scopeSql} ORDER BY kind, name`);
 const getOne = db.prepare('SELECT * FROM holdings WHERE id = ? AND user_id = ?');
 const insert = db.prepare(`
@@ -169,11 +171,18 @@ holdingsRouter.post(
     const h = await getOne.get(req.params.id, req.user.id);
     if (!h) throw new HttpError(404, 'Holding not found');
     const type = oneOf(String(req.body.type || 'BUY').toUpperCase(), ['BUY', 'SELL'], 'type');
+    // A malformed date silently breaks FIFO lot matching and the short/long-term
+    // split in capital gains, and can push XIRR to absurd values — reject early,
+    // matching the sibling transaction/recurring routes.
     const tradeDate = str(req.body.trade_date);
-    if (!tradeDate) throw bad('trade_date is required');
+    if (!tradeDate || !TRADE_DATE_RE.test(tradeDate) || Number.isNaN(Date.parse(tradeDate))) {
+      throw bad('trade_date must be a real date in YYYY-MM-DD form');
+    }
     const quantity = num(req.body.quantity ?? 0, 'quantity');
     const price = num(req.body.price ?? 0, 'price');
     if (quantity <= 0) throw bad('quantity must be greater than 0');
+    // Zero stays legal (bonus/gift lots); negative corrupts avg cost and gains.
+    if (price < 0) throw bad('price cannot be negative');
 
     // Apply the trade to the holding's position so it shows on the Investments
     // tab too. BUY raises quantity (weighted-average cost); SELL lowers it.

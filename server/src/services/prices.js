@@ -240,6 +240,10 @@ const upsertPrice = db.prepare(`
     name = excluded.name, source = excluded.source, updated_at = excluded.updated_at
 `);
 
+// Requests currently in flight, keyed by price key, so concurrent callers for
+// the same instrument share one upstream fetch.
+const priceInFlight = new Map();
+
 // Get a live/cached price for one holding. Never throws — on failure it
 // returns the last cached value (if any) flagged as stale.
 export async function getPrice(holding, { force = false, ttl } = {}) {
@@ -256,14 +260,24 @@ export async function getPrice(holding, { force = false, ttl } = {}) {
     return { ...cached, stale: false };
   }
 
+  // Two holdings of the same instrument (or two tabs refreshing at once) used to
+  // hit Yahoo twice for the identical symbol. Share the in-flight request; each
+  // caller still gets its own fallback handling below.
   try {
-    const fresh =
-      holding.kind === 'IN_MF'
-        ? await fetchMfNav(holding.scheme_code)
-        : await fetchStock(holding.symbol);
-    const ts = now();
-    await upsertPrice.run(key, fresh.price, fresh.currency, fresh.name, fresh.source, ts);
-    return { price_key: key, ...fresh, updated_at: ts, stale: false };
+    let inFlight = priceInFlight.get(key);
+    if (!inFlight) {
+      inFlight = (async () => {
+        const fresh =
+          holding.kind === 'IN_MF'
+            ? await fetchMfNav(holding.scheme_code)
+            : await fetchStock(holding.symbol);
+        const ts = now();
+        await upsertPrice.run(key, fresh.price, fresh.currency, fresh.name, fresh.source, ts);
+        return { price_key: key, ...fresh, updated_at: ts, stale: false };
+      })().finally(() => priceInFlight.delete(key));
+      priceInFlight.set(key, inFlight);
+    }
+    return await inFlight;
   } catch (err) {
     if (cached) return { ...cached, stale: true, error: err.message };
     return { price: null, currency: holding.currency, stale: true, error: err.message };
@@ -343,6 +357,7 @@ export async function getBenchmarkSeries(key, fromMs, toMs) {
   const ck = `${key}:${day(fromMs)}:${day(toMs)}`;
   const hit = benchCache.get(ck);
   if (hit && Date.now() - hit.at < BENCH_TTL_MS) return hit.data;
+  if (hit) benchCache.delete(ck); // expired — don't let old windows accumulate
 
   const p1 = Math.floor((fromMs - 7 * 86400000) / 1000);
   const p2 = Math.floor(toMs / 1000) + 86400;
@@ -358,5 +373,11 @@ export async function getBenchmarkSeries(key, fromMs, toMs) {
     .filter((pt) => Number.isFinite(pt.close));
   const data = { key, label: bench.label, symbol: bench.symbol, points };
   benchCache.set(ck, { at: Date.now(), data });
+  // Only today's windows are ever re-requested, so evicting stale keys costs at
+  // most one refetch and keeps this Map from growing for the process lifetime.
+  if (benchCache.size > 50) {
+    const cutoff = Date.now() - BENCH_TTL_MS;
+    for (const [k, v] of benchCache) if (v.at < cutoff) benchCache.delete(k);
+  }
   return data;
 }

@@ -36,7 +36,7 @@ export default function Signup() {
     if (password !== confirm) return setError('Passwords do not match');
     setBusy(true);
     try {
-      const r = await startSignup({ name, email: cleanEmail(), password, base_currency: currency });
+      const r = await startSignup({ name, email: cleanEmail(), password, base_currency: currency, ref: refCode });
       setEmailSent(r.email_sent);
       setNote('');
       setStep('verify');
