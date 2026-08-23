@@ -20,8 +20,14 @@ WORKDIR /app
 # optional-dependency issue that makes `vite build` fail when the lockfile was
 # generated on a different OS (e.g. macOS).
 COPY . .
-RUN rm -f package-lock.json && npm install
+# --include=dev is REQUIRED, not cosmetic: the host injects NODE_ENV=production
+# into the build, which makes npm skip devDependencies — and vite lives there,
+# so `npm run build` would fail with "vite: not found".
+RUN rm -f package-lock.json && npm install --include=dev
 RUN npm run build
+# The bundle is built; drop build-only packages so the runtime image stays small
+# (the API only needs server/ dependencies at run time).
+RUN npm prune --omit=dev
 
 ENV NODE_ENV=production
 ENV PORT=8080
