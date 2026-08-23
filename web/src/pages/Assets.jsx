@@ -5,8 +5,9 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
-import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
-import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
+import { cardRise, pageVisible } from '../lib/motion.js';
+import { EmptyState, ErrorBanner, Field, Modal } from '../components/ui.jsx';
+import { CardSkeleton, Magnetic, Spotlight } from '../components/fx.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { LinkedScopeNote } from '../components/FamilyBits.jsx';
@@ -65,6 +66,18 @@ const TYPES = [
   },
 ];
 const typeMeta = (t) => TYPES.find((x) => x.value === t) || TYPES[5];
+
+// Cards rise in reading order, with the delay capped so a large portfolio of
+// assets lands promptly instead of cascading for several seconds.
+const STAGGER_CAP = 12;
+const listContainer = { hidden: {}, show: {} };
+const riseAt = (i) => ({
+  hidden: cardRise.hidden,
+  show: {
+    ...cardRise.show,
+    transition: { ...cardRise.show.transition, delay: Math.min(i, STAGGER_CAP) * 0.045 },
+  },
+});
 
 // Ease-out count-up for the summary total (skips animation when the tab loads
 // hidden or the user prefers reduced motion).
@@ -267,34 +280,50 @@ export default function Assets() {
   return (
     <div className="space-y-6">
       <LinkedScopeNote />
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        {assets.length > 0 ? (
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-4 text-white shadow-lg">
-            <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-              <div className="aurora-blob absolute -right-10 -top-14 h-36 w-36 rounded-full bg-gold-400/25 blur-2xl" />
-            </div>
-            <p className="relative text-[10px] font-semibold uppercase tracking-widest text-brand-200">
-              Total assets
-            </p>
-            <p className="num relative mt-0.5 text-2xl font-extrabold tracking-tight sm:text-3xl">
-              {money(shownTotal, base)}
-            </p>
-            <p className="relative mt-1 text-xs text-brand-200">
-              {assets.length} asset{assets.length === 1 ? '' : 's'} · {typeCount} type{typeCount === 1 ? '' : 's'}
+
+      <header>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div>
+            <h2 className="font-display text-2xl font-bold tracking-tight text-brand-900">Assets</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Property, land, business, vehicles and gold — what you own outright.
             </p>
           </div>
-        ) : (
-          <p className="text-sm text-slate-500">No assets yet.</p>
-        )}
-        <button className="btn-primary" onClick={openAdd}>
-          <Plus size={16} /> Add asset
-        </button>
-      </div>
+          <Magnetic>
+            <button className="btn-primary" onClick={openAdd}>
+              <Plus size={16} /> Add asset
+            </button>
+          </Magnetic>
+        </div>
+        <div className="rule-fade mt-4" />
+      </header>
+
+      {assets.length > 0 && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-4 text-white shadow-lg">
+          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="aurora-blob absolute -right-10 -top-14 h-36 w-36 rounded-full bg-gold-400/25 blur-2xl" />
+          </div>
+          <p className="relative text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-200">
+            Total assets
+          </p>
+          <p className="num relative mt-0.5 text-2xl font-bold tracking-tight sm:text-3xl">
+            {money(shownTotal, base)}
+          </p>
+          <div className="gold-rule relative mt-2.5" />
+          <p className="relative mt-2 text-xs text-brand-200">
+            {assets.length} asset{assets.length === 1 ? '' : 's'} · {typeCount} type{typeCount === 1 ? '' : 's'}
+          </p>
+        </div>
+      )}
 
       <ErrorBanner message={error} />
 
       {loading ? (
-        <Spinner label="Loading assets…" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
       ) : assets.length === 0 ? (
         <EmptyState
           illo="assets"
@@ -302,89 +331,97 @@ export default function Assets() {
           title="No assets yet"
           hint="Add property, land, a business, vehicles or gold — anything with real value — so your net worth reflects everything you own."
           action={
-            <button className="btn-primary" onClick={openAdd}>
-              <Plus size={16} /> Add an asset
-            </button>
+            <Magnetic>
+              <button className="btn-primary" onClick={openAdd}>
+                <Plus size={16} /> Add an asset
+              </button>
+            </Magnetic>
           }
         />
       ) : (
         <motion.div
-          variants={gridStagger}
+          variants={listContainer}
           initial={pageVisible() ? 'hidden' : false}
           animate="show"
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {assets.map((a) => {
+          {assets.map((a, i) => {
             const meta = typeMeta(a.type);
             const pct = totalBase > 0 ? ((a.value_base ?? a.value) / totalBase) * 100 : 0;
             return (
-              <motion.div
-                key={a.id}
-                variants={cardRise}
-                whileHover={{ y: -5 }}
-                className="card group relative overflow-hidden p-5"
-              >
-                {/* type-tinted wash + oversized watermark that stirs on hover */}
-                <div aria-hidden className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${meta.wash} to-transparent`} />
-                <meta.icon
-                  aria-hidden
-                  size={116}
-                  strokeWidth={1}
-                  className={`pointer-events-none absolute -bottom-7 -right-6 -rotate-12 ${meta.mark} opacity-[0.08] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:opacity-[0.12]`}
-                />
+              // The hover lift lives on .card-interactive (CSS); framer only owns
+              // the entrance, so the two never fight over `transform`.
+              <motion.div key={a.id} variants={riseAt(i)} className="h-full">
+                <Spotlight className="card-interactive group relative h-full overflow-hidden p-5">
+                  {/* type-tinted wash + oversized watermark that stirs on hover */}
+                  <div aria-hidden className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${meta.wash} to-transparent`} />
+                  <meta.icon
+                    aria-hidden
+                    size={116}
+                    strokeWidth={1}
+                    className={`pointer-events-none absolute -bottom-7 -right-6 -rotate-12 ${meta.mark} opacity-[0.08] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:opacity-[0.12]`}
+                  />
 
-                <div className="relative">
-                  <div className="flex items-start justify-between">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${meta.chip}`}>
-                      <meta.icon size={20} />
+                  <div className="relative">
+                    <div className="flex items-start justify-between">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${meta.chip}`}>
+                        <meta.icon size={20} />
+                      </div>
+                      <div className="flex gap-1 opacity-0 transition duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                        <button
+                          onClick={() => {
+                            setEditing(a);
+                            setFormOpen(true);
+                          }}
+                          aria-label={`Edit ${a.name}`}
+                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={() => onDelete(a)}
+                          aria-label={`Delete ${a.name}`}
+                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-100 hover:text-rose-600"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                      <button
-                        onClick={() => {
-                          setEditing(a);
-                          setFormOpen(true);
-                        }}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        onClick={() => onDelete(a)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </div>
 
-                  <p className="mt-4 font-semibold text-slate-900">{a.name}</p>
-                  <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.chip}`}>
-                    {meta.label}
-                  </span>
-                  <p className="num mt-2.5 text-2xl font-extrabold tracking-tight text-slate-900">
-                    {money(a.value_base ?? a.value, base)}
-                  </p>
-                  {a.currency !== base && (
-                    <p className="text-xs text-slate-400">entered as {money(a.value, a.currency)}</p>
-                  )}
-
-                  {/* share of the whole portfolio of assets */}
-                  <div className="mt-3.5">
-                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#1c2c49]">
-                      <motion.div
-                        initial={pageVisible() ? { width: 0 } : false}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ delay: 0.35, duration: 0.8, ease: 'easeOut' }}
-                        className="h-full rounded-full bg-gradient-to-r from-gold-500 to-gold-300"
-                      />
-                    </div>
-                    <p className="mt-1 text-[11px] font-medium text-slate-400">
-                      {pct.toFixed(pct >= 10 ? 0 : 1)}% of your assets
+                    <p className="mt-4 truncate font-semibold text-slate-900">{a.name}</p>
+                    <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.chip}`}>
+                      {meta.label}
+                    </span>
+                    <p className="num mt-2.5 text-2xl font-bold tracking-tight text-slate-900">
+                      {money(a.value_base ?? a.value, base)}
                     </p>
-                  </div>
+                    {a.currency !== base && (
+                      <p className="num text-xs text-slate-400">entered as {money(a.value, a.currency)}</p>
+                    )}
 
-                  {a.notes && <p className="mt-2 text-xs text-slate-500">{a.notes}</p>}
-                </div>
+                    {/* share of the whole portfolio of assets */}
+                    <div className="mt-3.5">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#1c2c49]">
+                        <motion.div
+                          initial={pageVisible() ? { width: 0 } : false}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ delay: 0.35, duration: 0.8, ease: 'easeOut' }}
+                          className="h-full rounded-full bg-gradient-to-r from-gold-500 to-gold-300"
+                        />
+                      </div>
+                      <p className="mt-1.5 text-[11px] font-medium text-slate-500">
+                        <span className="num font-semibold text-slate-500">
+                          {pct.toFixed(pct >= 10 ? 0 : 1)}%
+                        </span>{' '}
+                        of your assets
+                      </p>
+                    </div>
+
+                    {a.notes && (
+                      <p className="mt-2.5 line-clamp-2 text-xs text-slate-500">{a.notes}</p>
+                    )}
+                  </div>
+                </Spotlight>
               </motion.div>
             );
           })}

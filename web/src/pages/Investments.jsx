@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef} from 'react';
-import { Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowDownRight, ArrowUpRight, Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
@@ -7,7 +8,9 @@ import { LinkedScopeNote } from '../components/FamilyBits.jsx';
 import { money, number, percent, relativeTime } from '../lib/format.js';
 import { downloadHoldingsCsv } from '../lib/exportCsv.js';
 import { useConfirm } from '../lib/confirm.jsx';
-import { EmptyState, ErrorBanner, Spinner } from '../components/ui.jsx';
+import { EmptyState, ErrorBanner } from '../components/ui.jsx';
+import { Magnetic, Shimmer, Spotlight, settle } from '../components/fx.jsx';
+import { pageVisible } from '../lib/motion.js';
 import HoldingForm from '../components/HoldingForm.jsx';
 import CasImport from '../components/CasImport.jsx';
 import CsvImport from '../components/CsvImport.jsx';
@@ -24,16 +27,25 @@ const SECTIONS = [
   { kind: 'IN_MF', label: 'Indian Mutual Funds' },
 ];
 
+// Only the first dozen rows stagger; past that the delay is capped so a large
+// portfolio arrives at once instead of cascading for several seconds.
+const STAGGER_CAP = 12;
+const rowDelay = (i) => Math.min(i, STAGGER_CAP) * 0.025;
+
 function PriceCell({ h }) {
   if (h.price == null) return <span className="text-slate-400">—</span>;
   return (
     <div>
-      <span className="font-medium text-slate-800">{money(h.price, h.price_currency)}</span>
-      <div className="mt-0.5 flex items-center gap-1.5 text-[11px]">
+      <span className="num font-medium text-slate-800">{money(h.price, h.price_currency)}</span>
+      <div className="mt-0.5 flex items-center justify-end gap-1.5 text-[11px]">
         {h.price_source === 'manual' ? (
-          <span className="chip bg-slate-100 text-slate-500">manual</span>
+          <span className="chip bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            manual
+          </span>
         ) : h.price_stale ? (
-          <span className="chip bg-amber-100 text-amber-700">stale</span>
+          <span className="chip bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-400/15 dark:text-amber-300">
+            stale
+          </span>
         ) : (
           <span className="text-slate-400">{relativeTime(h.price_updated_at)}</span>
         )}
@@ -42,49 +54,92 @@ function PriceCell({ h }) {
   );
 }
 
-function HoldingRow({ h, base, onEdit, onDelete }) {
+function HoldingRow({ h, base, index, animateIn, onEdit, onDelete }) {
   const up = (h.gain_base ?? 0) >= 0;
+  const Arrow = up ? ArrowUpRight : ArrowDownRight;
   return (
-    <tr className="border-t border-slate-100 hover:bg-slate-50/60">
-      <td className="py-3 pl-4 pr-2">
+    <motion.tr
+      initial={animateIn ? { opacity: 0, y: 6 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ ...settle, delay: rowDelay(index) }}
+      className="group border-t border-slate-100 transition-colors duration-150 hover:bg-slate-50/60"
+    >
+      {/* the gold hairline is a pseudo-element so the row never shifts on hover */}
+      <td className="relative py-3 pl-4 pr-2 before:absolute before:inset-y-1.5 before:left-0 before:w-[2px] before:origin-center before:scale-y-0 before:rounded-full before:bg-gold-400 before:opacity-0 before:transition before:duration-200 before:content-[''] group-hover:before:scale-y-100 group-hover:before:opacity-100">
         <p className="font-semibold text-slate-900">{h.name}</p>
         <p className="text-xs text-slate-400">{h.symbol || `Scheme #${h.scheme_code}`}</p>
       </td>
-      <td className="px-2 text-right tabular-nums text-slate-600">{number(h.quantity, 3)}</td>
-      <td className="px-2 text-right tabular-nums text-slate-600">
+      <td className="num px-2 text-right text-slate-600">{number(h.quantity, 3)}</td>
+      <td className="num px-2 text-right text-slate-600">
         {money(h.avg_cost, h.currency)}
       </td>
       <td className="px-2 text-right">
         <PriceCell h={h} />
       </td>
-      <td className="px-2 text-right font-semibold tabular-nums text-slate-900">
+      <td className="num px-2 text-right font-semibold text-slate-900">
         {money(h.market_value_base, base)}
       </td>
-      <td className="px-2 text-right tabular-nums">
-        <span className={up ? 'text-emerald-600' : 'text-rose-600'}>
-          {money(h.gain_base, base)}
-          {h.gain_pct != null && (
-            <span className="ml-1 text-xs">({percent(h.gain_pct)})</span>
-          )}
+      <td className="px-2 text-right">
+        <span
+          className={`num inline-flex items-center justify-end gap-1 font-semibold ${
+            up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-300'
+          }`}
+        >
+          <Arrow size={13} strokeWidth={2.5} className="shrink-0" aria-hidden />
+          <span>
+            {money(h.gain_base, base)}
+            {h.gain_pct != null && (
+              <span className="ml-1 text-xs font-medium opacity-80">({percent(h.gain_pct)})</span>
+            )}
+          </span>
         </span>
       </td>
       <td className="px-2 pr-4 text-right">
-        <div className="flex justify-end gap-1">
+        <div className="flex justify-end gap-1 opacity-60 transition group-hover:opacity-100">
           <button
             onClick={() => onEdit(h)}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+            aria-label={`Edit ${h.name}`}
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
           >
             <Pencil size={15} />
           </button>
           <button
             onClick={() => onDelete(h)}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600"
+            aria-label={`Delete ${h.name}`}
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-100 hover:text-rose-600"
           >
             <Trash2 size={15} />
           </button>
         </div>
       </td>
-    </tr>
+    </motion.tr>
+  );
+}
+
+// A skeleton shaped like the holdings table, so the real data drops straight
+// into the outline instead of replacing a spinner with a layout jump.
+function HoldingsSkeleton({ rows = 5 }) {
+  return (
+    <div className="card overflow-hidden" aria-hidden>
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
+        <Shimmer className="h-4 w-36" />
+        <Shimmer className="h-4 w-24" />
+      </div>
+      <div className="divide-y divide-slate-100">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="flex items-center gap-6 px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <Shimmer className="h-3.5 w-44 max-w-full" />
+              <Shimmer className="mt-2 h-2.5 w-20" />
+            </div>
+            <Shimmer className="hidden h-3.5 w-14 sm:block" />
+            <Shimmer className="hidden h-3.5 w-20 md:block" />
+            <Shimmer className="h-3.5 w-24" />
+            <Shimmer className="h-3.5 w-20" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -173,6 +228,8 @@ export default function Investments() {
   const totalValue = holdings.reduce((s, h) => s + (h.market_value_base || 0), 0);
   const totalCost = holdings.reduce((s, h) => s + (h.cost_value_base || 0), 0);
   const totalGain = totalValue - totalCost;
+  const up = totalGain >= 0;
+  const TotalArrow = up ? ArrowUpRight : ArrowDownRight;
 
   // Group holdings by market for display. Any holding whose kind isn't a known
   // section still shows under "Other" — so nothing is ever silently hidden.
@@ -189,79 +246,118 @@ export default function Investments() {
     }))
     .filter((g) => g.rows.length > 0);
 
+  const animateIn = pageVisible();
+  // Running index across every section, so rows stagger in true reading order.
+  let rowIndex = 0;
+
   return (
     <div className="space-y-6">
       <LinkedScopeNote />
-      <div className="flex flex-wrap items-center justify-between gap-3">
+
+      <header>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div>
+            <h2 className="font-display text-2xl font-bold tracking-tight text-brand-900">Investments</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Stocks and funds across your markets, priced automatically.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setRefreshing(true);
+                load({ refresh: true });
+              }}
+              disabled={refreshing}
+            >
+              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+            <button className="btn-ghost" onClick={() => setBrokerOpen(true)}>
+              <Building2 size={16} /> Connect broker
+            </button>
+            <button className="btn-ghost" onClick={() => setImportOpen(true)}>
+              <FileUp size={16} /> Import CAS
+            </button>
+            <button className="btn-ghost" onClick={() => setCsvOpen(true)}>
+              <FileSpreadsheet size={16} /> Import CSV
+            </button>
+            {holdings.length > 0 && (
+              <button className="btn-ghost" onClick={() => downloadHoldingsCsv(holdings, base)}>
+                <Download size={16} /> Export CSV
+              </button>
+            )}
+            <Magnetic>
+              <button className="btn-primary" onClick={openAdd}>
+                <Plus size={16} /> Add holding
+              </button>
+            </Magnetic>
+          </div>
+        </div>
+        <div className="rule-fade mt-4" />
+      </header>
+
+      {/* Valuation line — the one number this page exists for. Hidden entirely
+          when there's nothing to value, so the empty state carries the screen. */}
+      {(loading || holdings.length > 0) && (
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-slate-500">Portfolio value</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Portfolio value
+            </p>
             {holdings.length > 0 && (
               <span
-                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700"
                 title="Prices refresh automatically every 30s"
               >
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                </span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/25" />
                 Live
               </span>
             )}
           </div>
-          <p className="text-3xl font-extrabold tracking-tight text-slate-900">
-            {money(totalValue, base)}
-            {holdings.length > 0 && (
-              <span
-                className={`ml-2 text-base font-semibold ${
-                  totalGain >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                }`}
-              >
-                {totalGain >= 0 ? '▲' : '▼'} {money(Math.abs(totalGain), base)} (
-                {percent(totalCost > 0 ? (totalGain / totalCost) * 100 : 0)})
-              </span>
-            )}
-          </p>
+          {loading ? (
+            <Shimmer className="mt-1.5 h-8 w-56 max-w-full sm:h-10" />
+          ) : (
+            <p className="num mt-1 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              {money(totalValue, base)}
+            </p>
+          )}
+          <div className="gold-rule mt-3" />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {updatedAt && holdings.length > 0 && (
-            <span className="hidden text-xs text-slate-400 sm:inline">Updated {relativeTime(updatedAt)}</span>
-          )}
-          <button
-            className="btn-ghost"
-            onClick={() => {
-              setRefreshing(true);
-              load({ refresh: true });
-            }}
-            disabled={refreshing}
-          >
-            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-          <button className="btn-ghost" onClick={() => setBrokerOpen(true)}>
-            <Building2 size={16} /> Connect broker
-          </button>
-          <button className="btn-ghost" onClick={() => setImportOpen(true)}>
-            <FileUp size={16} /> Import CAS
-          </button>
-          <button className="btn-ghost" onClick={() => setCsvOpen(true)}>
-            <FileSpreadsheet size={16} /> Import CSV
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
           {holdings.length > 0 && (
-            <button className="btn-ghost" onClick={() => downloadHoldingsCsv(holdings, base)}>
-              <Download size={16} /> Export CSV
-            </button>
+            <span
+              className={`num inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${
+                up
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300'
+              }`}
+            >
+              <TotalArrow size={15} strokeWidth={2.5} aria-hidden />
+              {money(Math.abs(totalGain), base)}
+              <span className="opacity-70">
+                ({percent(totalCost > 0 ? (totalGain / totalCost) * 100 : 0)})
+              </span>
+            </span>
           )}
-          <button className="btn-primary" onClick={openAdd}>
-            <Plus size={16} /> Add holding
-          </button>
+          {updatedAt && holdings.length > 0 && (
+            <span className="hidden text-xs text-slate-400 sm:inline">
+              Updated {relativeTime(updatedAt)}
+            </span>
+          )}
         </div>
       </div>
+      )}
 
       <ErrorBanner message={error} />
 
       {loading ? (
-        <Spinner label="Loading holdings…" />
+        <div className="space-y-6">
+          <HoldingsSkeleton rows={5} />
+          <HoldingsSkeleton rows={3} />
+        </div>
       ) : holdings.length === 0 ? (
         <EmptyState
           illo="invest"
@@ -269,27 +365,36 @@ export default function Investments() {
           title="No investments yet"
           hint="Add your Indian stocks, US stocks and mutual funds. We'll fetch live prices automatically."
           action={
-            <button className="btn-primary" onClick={openAdd}>
-              <Plus size={16} /> Add your first holding
-            </button>
+            <Magnetic>
+              <button className="btn-primary" onClick={openAdd}>
+                <Plus size={16} /> Add your first holding
+              </button>
+            </Magnetic>
           }
         />
       ) : (
         groups.map(({ kind, label, rows }) => {
           const secValue = rows.reduce((s, h) => s + (h.market_value_base || 0), 0);
           return (
-            <div key={kind} className="card overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <h3 className="font-bold text-slate-900">{label}</h3>
-                <span className="text-sm font-semibold text-slate-500">
+            <Spotlight key={kind} className="card overflow-hidden">
+              {/* `relative` keeps the header and table painted above the
+                  Spotlight sheen, so hovering never washes out a number. */}
+              <div className="relative flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3.5">
+                <div className="flex items-baseline gap-2.5">
+                  <h3 className="font-display text-base font-bold text-slate-900">{label}</h3>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    {rows.length} holding{rows.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <span className="num text-sm font-semibold text-slate-600">
                   {money(secValue, base)}
                 </span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs uppercase tracking-wide text-slate-400">
-                      <th className="py-2 pl-4 text-left font-semibold">Name</th>
+                    <tr className="bg-slate-50/60 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                      <th className="py-2.5 pl-4 text-left font-semibold">Name</th>
                       <th className="px-2 text-right font-semibold">Qty</th>
                       <th className="px-2 text-right font-semibold">Avg cost</th>
                       <th className="px-2 text-right font-semibold">Price</th>
@@ -304,6 +409,8 @@ export default function Investments() {
                         key={h.id}
                         h={h}
                         base={base}
+                        index={rowIndex++}
+                        animateIn={animateIn}
                         onEdit={openEdit}
                         onDelete={onDelete}
                       />
@@ -311,7 +418,7 @@ export default function Investments() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Spotlight>
           );
         })
       )}

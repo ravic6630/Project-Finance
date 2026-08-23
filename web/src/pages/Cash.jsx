@@ -4,11 +4,24 @@ import { Banknote, Landmark, Lock, Pencil, Plus, Trash2, Wallet } from 'lucide-r
 import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
-import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
+import { EmptyState, ErrorBanner, Field, Modal } from '../components/ui.jsx';
+import { CardSkeleton, Magnetic, Spotlight } from '../components/fx.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { LinkedScopeNote } from '../components/FamilyBits.jsx';
-import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
+import { cardRise, pageVisible } from '../lib/motion.js';
+
+// Cards rise in reading order, but the delay is capped so a long list of
+// accounts arrives promptly instead of trickling in for several seconds.
+const STAGGER_CAP = 12;
+const listContainer = { hidden: {}, show: {} };
+const riseAt = (i) => ({
+  hidden: cardRise.hidden,
+  show: {
+    ...cardRise.show,
+    transition: { ...cardRise.show.transition, delay: Math.min(i, STAGGER_CAP) * 0.045 },
+  },
+});
 
 const TYPES = [
   { value: 'BANK', label: 'Bank', icon: Landmark },
@@ -216,38 +229,18 @@ export default function Cash() {
   return (
     <div className="space-y-6">
       <LinkedScopeNote />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {Object.entries(subtotals).map(([cur, total]) => (
-            <div key={cur} className="rounded-xl bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200">
-              <span className="text-xs font-semibold uppercase text-slate-400">{cur} total</span>
-              <p className="text-lg font-bold text-slate-900">{money(total, cur)}</p>
-            </div>
-          ))}
-          {accounts.length === 0 && <p className="text-sm text-slate-500">No accounts yet.</p>}
-        </div>
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus size={16} /> Add account
-        </button>
-      </div>
 
-      <ErrorBanner message={error} />
-
-      {loading ? (
-        <Spinner label="Loading accounts…" />
-      ) : accounts.length === 0 ? (
-        <EmptyState
-          illo="cash"
-          icon={Wallet}
-          title="No cash or bank accounts yet"
-          hint="Add your savings accounts, fixed deposits and cash so your net worth is complete."
-          action={
+      <header>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div>
+            <h2 className="font-display text-2xl font-bold tracking-tight text-brand-900">
+              Cash &amp; deposits
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Savings, current accounts, fixed deposits and cash in hand.
+            </p>
+          </div>
+          <Magnetic>
             <button
               className="btn-primary"
               onClick={() => {
@@ -255,66 +248,124 @@ export default function Cash() {
                 setFormOpen(true);
               }}
             >
-              <Plus size={16} /> Add an account
+              <Plus size={16} /> Add account
             </button>
+          </Magnetic>
+        </div>
+        <div className="rule-fade mt-4" />
+      </header>
+
+      {/* Per-currency subtotals. No FX here on purpose — each currency stands
+          on its own so nothing is quietly converted behind the user's back. */}
+      {Object.keys(subtotals).length > 0 && (
+        <div className="flex flex-wrap items-stretch gap-3">
+          {Object.entries(subtotals).map(([cur, total]) => (
+            <Spotlight key={cur} className="card px-4 py-2.5">
+              <span className="relative block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {cur} total
+              </span>
+              <p className="num relative mt-0.5 text-lg font-bold tracking-tight text-slate-900">
+                {money(total, cur)}
+              </p>
+            </Spotlight>
+          ))}
+        </div>
+      )}
+
+      <ErrorBanner message={error} />
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+      ) : accounts.length === 0 ? (
+        <EmptyState
+          illo="cash"
+          icon={Wallet}
+          title="No cash or bank accounts yet"
+          hint="Add your savings accounts, fixed deposits and cash so your net worth is complete."
+          action={
+            <Magnetic>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setEditing(null);
+                  setFormOpen(true);
+                }}
+              >
+                <Plus size={16} /> Add an account
+              </button>
+            </Magnetic>
           }
         />
       ) : (
         <motion.div
-          variants={gridStagger}
+          variants={listContainer}
           initial={pageVisible() ? 'hidden' : false}
           animate="show"
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {accounts.map((a) => {
+          {accounts.map((a, i) => {
             const meta = typeMeta(a.type);
             return (
-              <motion.div
-                key={a.id}
-                variants={cardRise}
-                whileHover={{ y: -5 }}
-                className="card group relative overflow-hidden p-5"
-              >
-                <meta.icon
-                  aria-hidden
-                  size={116}
-                  strokeWidth={1}
-                  className="pointer-events-none absolute -bottom-7 -right-6 -rotate-12 text-brand-700 opacity-[0.07] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:text-[#8fa9cd] dark:opacity-[0.12]"
-                />
-                <div className="relative flex items-start justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-                    <meta.icon size={20} />
+              // The lift lives on .card-interactive (CSS); framer only owns the
+              // entrance, so the two never fight over `transform`.
+              <motion.div key={a.id} variants={riseAt(i)} className="h-full">
+                <Spotlight className="card-interactive group relative h-full overflow-hidden p-5">
+                  <meta.icon
+                    aria-hidden
+                    size={116}
+                    strokeWidth={1}
+                    className="pointer-events-none absolute -bottom-7 -right-6 -rotate-12 text-brand-700 opacity-[0.07] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:text-[#8fa9cd] dark:opacity-[0.12]"
+                  />
+                  <div className="relative flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100 dark:ring-[#22375c]">
+                      <meta.icon size={20} />
+                    </div>
+                    <div className="flex gap-1 opacity-0 transition duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                      <button
+                        onClick={() => {
+                          setEditing(a);
+                          setFormOpen(true);
+                        }}
+                        aria-label={`Edit ${a.name}`}
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => onDelete(a)}
+                        aria-label={`Delete ${a.name}`}
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-100 hover:text-rose-600"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                    <button
-                      onClick={() => {
-                        setEditing(a);
-                        setFormOpen(true);
-                      }}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(a)}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-                <p className="relative mt-4 font-semibold text-slate-900">{a.name}</p>
-                <p className="relative text-xs font-medium uppercase text-slate-400">{meta.label}</p>
-                <p className="num relative mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
-                  {money(a.balance, a.currency)}
-                </p>
-                {a.type === 'FD' && (a.interest_rate || a.maturity_date) && (
-                  <p className="mt-2 text-xs text-slate-500">
-                    {a.interest_rate ? `${a.interest_rate}% p.a.` : ''}
-                    {a.interest_rate && a.maturity_date ? ' · ' : ''}
-                    {a.maturity_date ? `matures ${dateLabel(a.maturity_date)}` : ''}
+                  <p className="relative mt-4 truncate font-semibold text-slate-900">{a.name}</p>
+                  <p className="relative mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {meta.label} · {a.currency}
                   </p>
-                )}
+                  <p className="num relative mt-2 text-2xl font-bold tracking-tight text-slate-900">
+                    {money(a.balance, a.currency)}
+                  </p>
+                  {a.type === 'FD' && (a.interest_rate || a.maturity_date) && (
+                    <>
+                      <div className="rule-fade relative mt-3" />
+                      <p className="relative mt-2.5 text-xs text-slate-500">
+                        {a.interest_rate ? (
+                          <span className="num font-semibold text-gold-600">
+                            {a.interest_rate}% p.a.
+                          </span>
+                        ) : null}
+                        {a.interest_rate && a.maturity_date ? ' · ' : ''}
+                        {a.maturity_date ? `matures ${dateLabel(a.maturity_date)}` : ''}
+                      </p>
+                    </>
+                  )}
+                </Spotlight>
               </motion.div>
             );
           })}

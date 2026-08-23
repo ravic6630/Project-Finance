@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { MotionConfig, motion, useReducedMotion } from 'framer-motion';
 import {
   Area,
   AreaChart,
@@ -32,7 +32,9 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
-import { ErrorBanner, Spinner } from '../components/ui.jsx';
+import { ErrorBanner } from '../components/ui.jsx';
+import { Aurora, CardSkeleton, Shimmer, Sparkline, Spotlight } from '../components/fx.jsx';
+import { cardRise, gridStagger } from '../lib/motion.js';
 import WealthHero from '../components/WealthHero.jsx';
 import GettingStarted from '../components/GettingStarted.jsx';
 import { FamilyInviteBanner, FamilyScopeNote } from '../components/FamilyBits.jsx';
@@ -40,49 +42,69 @@ import UpgradeModal from '../components/UpgradeModal.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
 
-// Staggered spring entrance for the stat cards (respects reduced motion via
-// framer-motion's built-in MotionConfig / prefers-reduced-motion handling).
-const gridStagger = { hidden: {}, show: { transition: { staggerChildren: 0.07 } } };
-const cardRise = {
-  hidden: { opacity: 0, y: 18 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 240, damping: 26 } },
-};
 const MONTH_LABEL = (key) =>
   new Date(`${key}-01T00:00:00`).toLocaleDateString('en-US', { month: 'short' });
 
-function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to }) {
-  const tones = {
-    slate: 'bg-slate-100 text-slate-600',
-    brand: 'bg-brand-100 text-brand-700',
-    emerald: 'bg-emerald-100 text-emerald-700',
-    amber: 'bg-amber-100 text-amber-700',
-  };
+// Icon tiles. Amber has no `.dark` override in the theme sheet, so the one warm
+// tone here is the brand's own champagne — which does.
+const TONES = {
+  slate: 'bg-slate-100 text-slate-600',
+  brand: 'bg-brand-100 text-brand-700',
+  emerald: 'bg-emerald-100 text-emerald-700',
+  gold: 'bg-gold-100 text-gold-700',
+};
+
+// Shared eyebrow + fading hairline. Gives the page chapters instead of one long
+// run of cards, without adding another heavy heading weight.
+function SectionRule({ label }) {
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</span>
+      <div className="rule-fade flex-1" aria-hidden="true" />
+    </div>
+  );
+}
+
+// One bento tile. `size="lg"` is the wide/tall variant; `footer` is where a tile
+// earns its extra span (a sparkline, a class breakdown) instead of just being
+// the same card stretched.
+function StatCard({ icon: Icon, label, value, sub, tone = 'slate', to, size = 'sm', footer }) {
   const content = (
     <>
-      <div className="flex items-center gap-3">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>
-          <Icon size={20} />
+      <div className="flex items-start gap-3">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES[tone]}`}>
+          <Icon size={18} />
         </div>
-        <span className="flex flex-1 items-center justify-between text-sm font-semibold text-slate-500">
+        <span className="flex flex-1 items-center justify-between gap-2 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
           {label}
-          {to && <ChevronRight size={16} className="text-slate-300" />}
+          {to && (
+            <ChevronRight
+              size={15}
+              className="text-slate-300 transition duration-200 group-hover:translate-x-0.5 group-hover:text-brand-500"
+            />
+          )}
         </span>
       </div>
-      <p className="num mt-4 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p
+        className={`num font-bold tracking-tight text-slate-900 ${
+          size === 'lg' ? 'mt-6 text-3xl sm:text-4xl' : 'mt-5 text-2xl'
+        }`}
+      >
+        {value}
+      </p>
       {sub && <div className="mt-1 text-sm">{sub}</div>}
+      {footer && <div className="mt-auto pt-5">{footer}</div>}
     </>
   );
+  const shell = `group flex h-full flex-col ${size === 'lg' ? 'p-5 sm:p-6' : 'p-5'}`;
   if (to) {
     return (
-      <Link
-        to={to}
-        className="card block p-5 transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
-      >
+      <Spotlight as={Link} to={to} className={`card-interactive ${shell}`}>
         {content}
-      </Link>
+      </Spotlight>
     );
   }
-  return <div className="card p-5">{content}</div>;
+  return <Spotlight className={`card ${shell}`}>{content}</Spotlight>;
 }
 
 const DAY = 86400000;
@@ -179,6 +201,7 @@ const tickFormatter = (spanDays) => (ms) => {
 function NetWorthHistory({ data, base, onUpgrade }) {
   // All hooks live above the non-premium early return so the order is stable
   // if the user upgrades without a reload.
+  const reduced = useReducedMotion();
   const [range, setRange] = useState('1M');
   const [bench, setBench] = useState(() => {
     try {
@@ -193,7 +216,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
   const active = RANGES.find((r) => r.key === range) || RANGES[2];
   const { view, startMs, endMs, exact, from } = useMemo(
     () => buildWindow(hist, active.days),
-     
+
     [data.net_worth_history, active.days]
   );
 
@@ -249,20 +272,30 @@ function NetWorthHistory({ data, base, onUpgrade }) {
 
   if (!data.premium) {
     return (
-      <div className="card p-5">
-        <h3 className="mb-1 flex flex-wrap items-center gap-2 font-display text-lg font-bold text-slate-900">
-          <LineChartIcon size={18} className="text-brand-600" /> Net worth over time
-          <span className="chip bg-amber-100 text-amber-700">
-            <Crown size={12} className="mr-1" /> Premium
-          </span>
-        </h3>
-        <p className="max-w-md text-sm text-slate-500">
-          Watch your wealth grow with a daily net-worth trend. We&apos;re already recording your
-          history — upgrade to unlock the chart.
-        </p>
-        <button className="btn-primary mt-4" onClick={onUpgrade}>
-          <Sparkles size={16} /> Upgrade to Premium
-        </button>
+      <div className="card relative overflow-hidden rounded-3xl p-5 sm:p-6">
+        <Aurora className="opacity-40" />
+        <div className="relative">
+          <div className="flex items-start gap-3">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.gold}`}>
+              <LineChartIcon size={18} />
+            </div>
+            <div>
+              <h3 className="flex flex-wrap items-center gap-2 font-display text-lg font-bold text-slate-900">
+                Net worth over time
+                <span className="chip bg-gold-100 text-gold-700">
+                  <Crown size={12} className="mr-1" /> Premium
+                </span>
+              </h3>
+              <p className="mt-1 max-w-md text-sm text-slate-500">
+                Watch your wealth grow with a daily net-worth trend. We&apos;re already recording your
+                history — upgrade to unlock the chart.
+              </p>
+            </div>
+          </div>
+          <button className="btn-primary mt-5" onClick={onUpgrade}>
+            <Sparkles size={16} /> Upgrade to Premium
+          </button>
+        </div>
       </div>
     );
   }
@@ -275,40 +308,61 @@ function NetWorthHistory({ data, base, onUpgrade }) {
   const spanLabel = exact ? active.label : `since ${sinceLabel(startMs)}`;
 
   return (
-    <div className="card p-5">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 font-display text-lg font-bold text-slate-900">
-            <LineChartIcon size={18} className="text-brand-600" /> Net worth over time
-          </h3>
-          {view.length > 1 && (
-            <p className="mt-0.5 text-sm">
-              <span className={`font-semibold ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {up ? '▲' : '▼'} {money(Math.abs(delta), base)}
-                {from > 0 && ` (${percent((delta / from) * 100)})`}
-              </span>
-              <span className="text-slate-400"> · {spanLabel}</span>
-              {overlay && overlay.youPct != null && (
-                <span className="ml-1.5 text-slate-400">
-                  · you {percent(overlay.youPct)} vs {overlay.label} {percent(overlay.benchPct)}
-                  {overlay.youPct >= overlay.benchPct ? ' 🌱' : ''}
+    <div className="card rounded-3xl p-5 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="flex items-start gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.brand}`}>
+            <LineChartIcon size={18} />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trend</p>
+            <h3 className="font-display text-xl font-bold tracking-tight text-slate-900">
+              Net worth over time
+            </h3>
+            {view.length > 1 && (
+              <p className="mt-1 text-sm">
+                <span
+                  className={`num font-semibold ${
+                    up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                >
+                  {up ? '▲' : '▼'} {money(Math.abs(delta), base)}
+                  {from > 0 && ` (${percent((delta / from) * 100)})`}
                 </span>
-              )}
-            </p>
-          )}
+                <span className="text-slate-400"> · {spanLabel}</span>
+                {overlay && overlay.youPct != null && (
+                  <span className="ml-1.5 text-slate-400">
+                    · you {percent(overlay.youPct)} vs {overlay.label} {percent(overlay.benchPct)}
+                    {overlay.youPct >= overlay.benchPct ? ' 🌱' : ''}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Segmented control: one shared pill slides between ranges, so the
+              selection reads as a single object moving rather than two states
+              blinking. */}
           <div className="inline-flex flex-wrap gap-0.5 rounded-xl border border-[#e8e2d4] bg-white p-1">
             {RANGES.map((r) => (
               <button
                 key={r.key}
                 onClick={() => setRange(r.key)}
                 aria-pressed={range === r.key}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  range === r.key ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
+                className={`relative rounded-lg px-2.5 py-1 text-xs font-semibold transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+                  range === r.key ? 'text-white' : 'text-slate-500 hover:text-brand-700'
                 }`}
               >
-                {r.key}
+                {range === r.key && (
+                  <motion.span
+                    layoutId="nw-range-pill"
+                    aria-hidden="true"
+                    className="absolute inset-0 rounded-lg bg-brand-700 dark:bg-brand-500"
+                    transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 460, damping: 38 }}
+                  />
+                )}
+                <span className="relative">{r.key}</span>
               </button>
             ))}
           </div>
@@ -333,7 +387,7 @@ function NetWorthHistory({ data, base, onUpgrade }) {
           Your net-worth history will build here day by day — check back tomorrow to see the trend.
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={overlay ? overlay.merged : view} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
             <defs>
               <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
@@ -389,6 +443,63 @@ function NetWorthHistory({ data, base, onUpgrade }) {
   );
 }
 
+// Loading state mirrors the real bento, so content lands where the eye is
+// already looking instead of replacing a spinner with a different layout.
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" role="status" aria-busy="true">
+      <span className="sr-only">Loading your dashboard…</span>
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 p-6 shadow-xl sm:p-8">
+        <Aurora />
+        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-inset ring-white/10" />
+        <div className="relative space-y-3" aria-hidden="true">
+          <div className="h-3.5 w-44 rounded-full bg-white/15" />
+          <div className="h-2.5 w-28 rounded-full bg-white/10" />
+          <div className="h-10 w-56 rounded-xl bg-white/15 sm:h-12 sm:w-72" />
+          <div className="h-0.5 w-14 rounded bg-gold-400/70" />
+          <div className="h-3 w-64 max-w-full rounded-full bg-white/10" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="card flex flex-col p-5 sm:p-6 lg:col-span-2 lg:row-span-2">
+          <Shimmer className="h-10 w-10 !rounded-xl" />
+          <Shimmer className="mt-6 h-9 w-3/5" />
+          <Shimmer className="mt-2 h-4 w-2/5" />
+          <Shimmer className="mt-auto h-1.5 w-full !rounded-full" />
+        </div>
+        <div className="lg:col-span-2">
+          <CardSkeleton />
+        </div>
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+
+      <div className="card rounded-3xl p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <Shimmer className="h-3 w-16" />
+            <Shimmer className="mt-2 h-6 w-52" />
+          </div>
+          <Shimmer className="h-8 w-52 !rounded-xl" />
+        </div>
+        <Shimmer className="mt-6 h-[280px] w-full !rounded-2xl" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="card p-5">
+          <Shimmer className="h-6 w-44" />
+          <Shimmer className="mt-4 h-[280px] w-full !rounded-2xl" />
+        </div>
+        <div className="card p-5">
+          <Shimmer className="h-6 w-56" />
+          <Shimmer className="mt-4 h-[280px] w-full !rounded-2xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { active: activeProfile, dashboardQuery, activeLabel } = useProfile();
@@ -418,10 +529,10 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
     load();
-     
+
   }, [load, base, activeProfile]);
 
-  if (loading) return <Spinner label="Loading your dashboard…" />;
+  if (loading) return <DashboardSkeleton />;
   if (error) return <ErrorBanner message={error} />;
   if (!data) return null;
 
@@ -433,175 +544,263 @@ export default function Dashboard() {
     (counts.assets ?? 0) === 0 &&
     counts.transactions === 0;
 
+  // The only per-tile series the payload genuinely supports: six months of
+  // net cashflow. Investments/cash/assets have no history on the wire, so those
+  // tiles get real structure instead of an invented trend line.
+  const cashflowSeries = (cashflow.months || []).map((m) => m.income - m.expense);
+  const kinds = (investments.by_kind || []).filter((k) => k.value > 0);
+  const kindsTotal = kinds.reduce((s, k) => s + k.value, 0);
+
   return (
-    <div className="space-y-6">
-      <WealthHero
-        data={data}
-        base={base}
-        user={user}
-        isEmpty={isEmpty}
-        refreshing={refreshing}
-        onRefresh={() => {
-          setRefreshing(true);
-          load(true);
-        }}
-      />
+    <MotionConfig reducedMotion="user">
+      <div className="space-y-6">
+        <WealthHero
+          data={data}
+          base={base}
+          user={user}
+          isEmpty={isEmpty}
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            load(true);
+          }}
+        />
 
-      <FamilyInviteBanner />
-      <FamilyScopeNote data={data} active={activeProfile} />
+        <FamilyInviteBanner />
+        <FamilyScopeNote data={data} active={activeProfile} />
 
-      <GettingStarted data={data} />
+        <GettingStarted data={data} />
 
-      <motion.div
-        variants={gridStagger}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        <motion.div variants={cardRise}>
-          <StatCard
-            icon={TrendingUp}
-            tone="brand"
-            label="Investments"
-            to="/investments"
-            value={money(investments.value, base)}
-            sub={
-              <span className={gainPositive ? 'text-emerald-600' : 'text-rose-600'}>
-                {gainPositive ? '▲' : '▼'} {money(Math.abs(investments.gain), base)} (
-                {percent(investments.gain_pct)})
-              </span>
-            }
-          />
+        <SectionRule label="Your holdings" />
+
+        {/* Bento: one tile carries the weight (investments, wide + tall), the
+            rest step down in size. A uniform 4-across grid gave four things
+            equal importance when they don't have it. */}
+        <motion.div
+          variants={gridStagger}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <motion.div variants={cardRise} className="lg:col-span-2 lg:row-span-2">
+            <StatCard
+              icon={TrendingUp}
+              tone="brand"
+              size="lg"
+              label="Investments"
+              to="/investments"
+              value={money(investments.value, base)}
+              sub={
+                <span
+                  className={`num font-semibold ${
+                    gainPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                >
+                  {gainPositive ? '▲' : '▼'} {money(Math.abs(investments.gain), base)} (
+                  {percent(investments.gain_pct)})
+                </span>
+              }
+              footer={
+                kindsTotal > 0 ? (
+                  <>
+                    <div className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+                      {kinds.map((k, i) => (
+                        <span
+                          key={k.key}
+                          title={`${k.label} · ${money(k.value, base)}`}
+                          style={{ width: `${(k.value / kindsTotal) * 100}%`, background: COLORS[i % COLORS.length] }}
+                          className="h-full"
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                      {kinds.slice(0, 4).map((k, i) => (
+                        <span key={k.key} className="inline-flex items-center gap-1.5">
+                          <span
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ background: COLORS[i % COLORS.length] }}
+                            aria-hidden="true"
+                          />
+                          {k.label}
+                        </span>
+                      ))}
+                    </p>
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Invested <span className="num">{money(investments.cost, base)}</span>
+                    </p>
+                  </>
+                ) : null
+              }
+            />
+          </motion.div>
+          <motion.div variants={cardRise} className="lg:col-span-2">
+            <StatCard
+              icon={Wallet}
+              tone="emerald"
+              label="Cash & Bank"
+              to="/cash"
+              value={money(cash.total, base)}
+              sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
+            />
+          </motion.div>
+          <motion.div variants={cardRise}>
+            <StatCard
+              icon={Building2}
+              tone="brand"
+              label="Assets"
+              to="/assets"
+              value={money(assets?.total ?? 0, base)}
+              sub={<span className="text-slate-400">{counts.assets ?? 0} asset(s)</span>}
+            />
+          </motion.div>
+          <motion.div variants={cardRise}>
+            <StatCard
+              icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
+              tone="gold"
+              label="This month's cashflow"
+              to="/transactions"
+              value={money(cashflow.this_month_net, base)}
+              sub={
+                <span className="num text-slate-400">
+                  +{money(cashflow.this_month_income, base)} / −{money(cashflow.this_month_expense, base)}
+                </span>
+              }
+              footer={
+                cashflowSeries.length > 1 ? (
+                  <Sparkline
+                    points={cashflowSeries}
+                    height={24}
+                    className="text-gold-500 dark:text-gold-300"
+                  />
+                ) : null
+              }
+            />
+          </motion.div>
         </motion.div>
-        <motion.div variants={cardRise}>
-          <StatCard
-            icon={Wallet}
-            tone="emerald"
-            label="Cash & Bank"
-            to="/cash"
-            value={money(cash.total, base)}
-            sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
-          />
-        </motion.div>
-        <motion.div variants={cardRise}>
-          <StatCard
-            icon={Building2}
-            tone="brand"
-            label="Assets"
-            to="/assets"
-            value={money(assets?.total ?? 0, base)}
-            sub={<span className="text-slate-400">{counts.assets ?? 0} asset(s)</span>}
-          />
-        </motion.div>
-        <motion.div variants={cardRise}>
-          <StatCard
-            icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
-            tone="amber"
-            label="This month's cashflow"
-            to="/transactions"
-            value={money(cashflow.this_month_net, base)}
-            sub={
-              <span className="text-slate-400">
-                +{money(cashflow.this_month_income, base)} / −{money(cashflow.this_month_expense, base)}
-              </span>
-            }
-          />
-        </motion.div>
-      </motion.div>
 
-      {!isEmpty && <NetWorthHistory data={data} base={base} onUpgrade={() => setUpgradeOpen(true)} />}
+        {!isEmpty && (
+          <>
+            <SectionRule label="Performance" />
+            <NetWorthHistory data={data} base={base} onUpgrade={() => setUpgradeOpen(true)} />
+          </>
+        )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Allocation */}
-        <div className="card p-5">
-          <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-slate-900">
-            <PieIcon size={18} className="text-brand-600" /> Asset allocation
-          </h3>
-          {allocation.length === 0 ? (
-            <p className="py-16 text-center text-sm text-slate-400">
-              No assets yet — add investments or accounts.
-            </p>
-          ) : (
+        <SectionRule label="Breakdown" />
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Allocation */}
+          <div className="card p-5">
+            <div className="mb-2 flex items-center gap-3">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.brand}`}>
+                <PieIcon size={18} />
+              </div>
+              <h3 className="font-display text-lg font-bold text-slate-900">Asset allocation</h3>
+            </div>
+            {allocation.length === 0 ? (
+              <p className="py-16 text-center text-sm text-slate-400">
+                No assets yet — add investments or accounts.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={allocation}
+                    dataKey="value"
+                    nameKey="label"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={2}
+                  >
+                    {allocation.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => money(v, base)} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Cashflow */}
+          <div className="card p-5">
+            <div className="mb-2 flex items-center gap-3">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.emerald}`}>
+                <ArrowUpRight size={18} />
+              </div>
+              <h3 className="font-display text-lg font-bold text-slate-900">
+                Income vs expense
+                <span className="ml-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  6 months
+                </span>
+              </h3>
+            </div>
             <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={allocation}
-                  dataKey="value"
-                  nameKey="label"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
-                >
-                  {allocation.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => money(v, base)} />
-                <Legend />
-              </PieChart>
+              <BarChart data={cashflow.months} margin={{ top: 16, right: 8, left: -8, bottom: 0 }}>
+                <XAxis
+                  dataKey="key"
+                  tickFormatter={MONTH_LABEL}
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={48}
+                  tickFormatter={(v) => money(v, base, { compact: true })}
+                />
+                <Tooltip
+                  formatter={(v, n) => [money(v, base), n === 'income' ? 'Income' : 'Expense']}
+                  labelFormatter={MONTH_LABEL}
+                />
+                <Bar dataKey="income" fill="#2f7a53" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                <Bar dataKey="expense" fill="#b0455a" radius={[6, 6, 0, 0]} maxBarSize={28} />
+              </BarChart>
             </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Cashflow */}
-        <div className="card p-5">
-          <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-slate-900">
-            <ArrowUpRight size={18} className="text-emerald-600" /> Income vs expense (6 months)
-          </h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={cashflow.months} margin={{ top: 16, right: 8, left: -8, bottom: 0 }}>
-              <XAxis
-                dataKey="key"
-                tickFormatter={MONTH_LABEL}
-                tick={{ fontSize: 12, fill: '#94a3b8' }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 11, fill: '#94a3b8' }}
-                axisLine={false}
-                tickLine={false}
-                width={48}
-                tickFormatter={(v) => money(v, base, { compact: true })}
-              />
-              <Tooltip
-                formatter={(v, n) => [money(v, base), n === 'income' ? 'Income' : 'Expense']}
-                labelFormatter={MONTH_LABEL}
-              />
-              <Bar dataKey="income" fill="#2f7a53" radius={[6, 6, 0, 0]} maxBarSize={28} />
-              <Bar dataKey="expense" fill="#b0455a" radius={[6, 6, 0, 0]} maxBarSize={28} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Investments by class */}
-      {investments.by_kind.length > 0 && (
-        <div className="card p-5">
-          <h3 className="mb-4 font-display text-lg font-bold text-slate-900">Investments by class</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {investments.by_kind.map((k) => {
-              const gain = k.value - k.cost;
-              const up = gain >= 0;
-              return (
-                <Link
-                  key={k.key}
-                  to="/investments"
-                  className="rounded-xl border border-slate-200 p-4 transition hover:border-brand-200 hover:bg-slate-50"
-                >
-                  <p className="text-sm font-semibold text-slate-500">{k.label}</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">{money(k.value, base)}</p>
-                  <p className={`mt-0.5 text-sm font-medium ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {up ? '▲' : '▼'} {money(Math.abs(gain), base)}
-                  </p>
-                </Link>
-              );
-            })}
           </div>
         </div>
-      )}
 
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={() => load()} />
-    </div>
+        {/* Investments by class */}
+        {investments.by_kind.length > 0 && (
+          <div className="card p-5">
+            <h3 className="mb-4 font-display text-lg font-bold text-slate-900">Investments by class</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {investments.by_kind.map((k) => {
+                const gain = k.value - k.cost;
+                const up = gain >= 0;
+                return (
+                  <Spotlight
+                    as={Link}
+                    key={k.key}
+                    to="/investments"
+                    className="group block rounded-2xl border border-slate-200 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-gold-300 hover:bg-slate-50"
+                  >
+                    <p className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      {k.label}
+                      <ChevronRight
+                        size={14}
+                        className="text-slate-300 transition duration-200 group-hover:translate-x-0.5 group-hover:text-brand-500"
+                      />
+                    </p>
+                    <p className="num mt-2 text-xl font-bold text-slate-900">{money(k.value, base)}</p>
+                    <p
+                      className={`num mt-0.5 text-sm font-medium ${
+                        up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {up ? '▲' : '▼'} {money(Math.abs(gain), base)}
+                    </p>
+                  </Spotlight>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={() => load()} />
+      </div>
+    </MotionConfig>
   );
 }

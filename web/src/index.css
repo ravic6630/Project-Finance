@@ -57,7 +57,27 @@ body {
   .card {
     @apply rounded-2xl bg-white;
     border: 1px solid #e8e2d4;
-    box-shadow: 0 1px 2px rgba(16, 30, 55, 0.04), 0 2px 6px rgba(16, 30, 55, 0.04);
+    /* Layered and navy-tinted: a neutral grey shadow reads as "unfinished",
+       a tinted one reads as a real surface sitting on the page. The inset
+       hairline is the light catching the top edge. */
+    box-shadow:
+      0 1px 2px rgba(16, 30, 55, 0.05),
+      0 4px 12px -2px rgba(16, 30, 55, 0.06),
+      0 12px 32px -8px rgba(16, 30, 55, 0.07),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  /* Opt-in lift for cards that are actually clickable. */
+  .card-interactive {
+    @apply card transition duration-300;
+  }
+  .card-interactive:hover {
+    transform: translateY(-3px);
+    border-color: #d8c9a4;
+    box-shadow:
+      0 2px 4px rgba(16, 30, 55, 0.06),
+      0 10px 24px -4px rgba(16, 30, 55, 0.10),
+      0 24px 56px -12px rgba(16, 30, 55, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60;
@@ -119,7 +139,21 @@ body {
 .dark .card {
   background-color: #101d33;
   border-color: #223250;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Dark surfaces read as "lit from above" rather than "floating": a deeper
+     ambient shadow plus a faint top highlight where the light would catch. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 8px 24px -6px rgba(0, 0, 0, 0.5),
+    0 24px 56px -16px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+.dark .card-interactive:hover {
+  border-color: #3a4a6b;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    0 14px 34px -6px rgba(0, 0, 0, 0.55),
+    0 34px 72px -18px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 .dark .btn-ghost {
   background-color: #1c2c49;
@@ -171,6 +205,7 @@ body {
 
 /* Borders */
 .dark .border-slate-100 { border-color: #1b2942; }
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1b2942; }
 .dark .border-slate-200 { border-color: #24334f; }
 .dark .border-slate-300 { border-color: #2e4064; }
 .dark .border-\[\#e8e2d4\] { border-color: #223250; }
@@ -310,5 +345,148 @@ body.is-offline::before {
   body {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ============================================================================
+   Surface & effect layer. Everything here is decorative and pointer-transparent;
+   nothing changes layout, so it can't shift a number on screen.
+   ========================================================================== */
+
+/* --- Film grain -----------------------------------------------------------
+   One SVG turbulence tile at very low opacity over the whole page. This is the
+   cheapest trick in the book for making flat colour look like a material
+   instead of a swatch — it hides banding in the gradients too. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark body::after {
+  opacity: 0.05;
+}
+
+/* --- Cursor spotlight -----------------------------------------------------
+   Warm white at 6%, positioned from --mx/--my set by the Spotlight component.
+   Fades in on hover so a static screenshot is unaffected. */
+.spotlight {
+  position: relative;
+}
+.spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    380px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(194, 163, 104, 0.1),
+    rgba(194, 163, 104, 0) 62%
+  );
+}
+.spotlight:hover::before {
+  opacity: 1;
+}
+.dark .spotlight::before {
+  background: radial-gradient(
+    380px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(194, 163, 104, 0.13),
+    rgba(194, 163, 104, 0) 62%
+  );
+}
+
+/* --- Skeleton shimmer ----------------------------------------------------- */
+@keyframes shimmer-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: #eef1f6;
+}
+.dark .shimmer {
+  background: #16233a;
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: shimmer-sweep 1.6s infinite;
+}
+.dark .shimmer::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+}
+
+/* --- Marquee -------------------------------------------------------------- */
+@keyframes marquee-slide {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  animation: marquee-slide linear infinite;
+}
+.marquee-mask:hover .marquee-track {
+  animation-play-state: paused;
+}
+/* Fade the ends instead of hard-cutting them. */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+/* --- Glass header --------------------------------------------------------- */
+.glass {
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  background: rgba(250, 249, 245, 0.72);
+}
+.dark .glass {
+  background: rgba(13, 22, 38, 0.68);
+}
+
+/* Modal scrim. The tint has to live ON the backdrop: a `fixed` child of a
+   backdrop-filter element is positioned against that element, not the viewport,
+   so it scrolled out of view on any dialog taller than the screen. */
+.glass-scrim {
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+  background: rgba(11, 20, 38, 0.35);
+}
+.dark .glass-scrim {
+  background: rgba(5, 10, 20, 0.62);
+}
+
+/* --- Champagne gradient text (headline accents only) ---------------------- */
+.text-gradient-gold {
+  background: linear-gradient(100deg, #a8884b 0%, #d8bb79 45%, #a8884b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* --- Hairline divider that fades at both ends ----------------------------- */
+.rule-fade {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(16, 30, 55, 0.12), transparent);
+}
+.dark .rule-fade {
+  background: linear-gradient(90deg, transparent, rgba(194, 163, 104, 0.22), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after,
+  .marquee-track {
+    animation: none;
   }
 }
