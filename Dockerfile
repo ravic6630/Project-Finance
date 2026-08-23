@@ -17,21 +17,21 @@ WORKDIR /app
 
 COPY . .
 
-# Install from the COMMITTED lockfile. This used to delete the lockfile and run
-# a fresh `npm install`, which dated from npm 6/7 — back then a macOS-generated
-# lockfile omitted Linux binaries and broke `vite build`. lockfileVersion 3
-# records every platform's optional deps (@rollup/rollup-linux-x64-gnu,
-# @esbuild/linux-x64, @libsql/linux-x64-gnu are all in ours), so re-resolving
-# ~600 packages from scratch in the builder bought nothing and was the step that
-# failed. `npm ci` is deterministic, quicker and needs far less memory.
+# Drop the host lockfile and resolve fresh, so the Linux-native optional
+# binaries (@rollup/rollup-linux-x64-gnu, @esbuild/linux-x64,
+# @libsql/linux-x64-gnu) are the ones installed. Do NOT "optimise" this into
+# `npm ci`: npm's optional-dependency handling (npm/cli#4828) then leaves the
+# builder with the lockfile author's platform binaries, and `vite build` dies
+# with "Cannot find module @rollup/rollup-linux-x64-gnu".
 #
 # --include=dev is REQUIRED, not cosmetic: the host injects NODE_ENV=production
 # into the build, which makes npm skip devDependencies — and vite lives there,
 # so `npm run build` would fail with "vite: not found".
 #
-# The fallback keeps a deploy alive if package.json and the lockfile ever drift
-# (npm ci refuses to guess); the build then just costs a resolution pass.
-RUN npm ci --include=dev || npm install --include=dev
+# A fresh resolve also means peer-dependency conflicts are fatal here even
+# though they'd be silent locally against a warm cache — keep direct
+# devDependencies pinned to ranges their peers actually allow.
+RUN rm -f package-lock.json && npm install --include=dev
 RUN npm run build
 # The bundle is built; drop build-only packages so the runtime image stays small
 # (the API only needs server/ dependencies at run time).
