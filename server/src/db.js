@@ -344,6 +344,35 @@ export async function initDb() {
   await addColumn('email_prefs', 'daily_tz', 'TEXT');
   await addColumn('subscriptions', 'pending_sub_id', 'TEXT');
 
+  // ---- Insights ------------------------------------------------------------
+  // Per-user assumptions behind the Financial Independence projection. Defaults
+  // match the conventional 4% safe-withdrawal study; every one is editable
+  // because they are assumptions, not facts, and the UI says so.
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS insight_prefs (
+      user_id           INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      withdrawal_rate   REAL NOT NULL DEFAULT 4,
+      expected_return   REAL NOT NULL DEFAULT 10,
+      inflation         REAL NOT NULL DEFAULT 6,
+      annual_spend      REAL,
+      updated_at        TEXT
+    )
+  `);
+  // Target asset mix, one row per bucket. Buckets are the allocation keys the
+  // summary already emits (holding kinds plus CASH / ASSETS).
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS allocation_targets (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bucket     TEXT NOT NULL,
+      target_pct REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(user_id, bucket)
+    )
+  `);
+  await client.execute('CREATE INDEX IF NOT EXISTS idx_alloc_targets_user ON allocation_targets(user_id)');
+
   // Recurring transactions must be unique per (rule, date). Older rows may
   // already contain duplicates from the check-then-insert race, and CREATE
   // UNIQUE INDEX would fail on them — collapse those to the earliest row first.
