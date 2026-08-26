@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle,
   CalendarClock,
+  Check,
   CheckCircle2,
   ChevronDown,
   Flag,
@@ -169,12 +170,77 @@ function Stat({ icon: Icon, label, value, hint, tone = 'plain', estimate = false
 }
 
 /* ------------------------------- assumptions ------------------------------ */
-const seed = (prefs) => ({
+// The ticked set comes from the server's resolved `counted` flags rather than
+// from prefs.fi_buckets — that way the default ("everything but property")
+// arrives already expanded, and the checklist never has to re-derive it.
+const seedBuckets = (fi) =>
+  (Array.isArray(fi?.buckets) ? fi.buckets : []).filter((b) => b.counted).map((b) => b.bucket);
+
+const seed = (prefs, fi) => ({
   withdrawal_rate: String(prefs?.withdrawal_rate ?? 4),
   expected_return: String(prefs?.expected_return ?? 10),
   inflation: String(prefs?.inflation ?? 6),
   annual_spend: prefs?.annual_spend == null ? '' : String(prefs.annual_spend),
+  fi_target: prefs?.fi_target == null ? '' : String(prefs.fi_target),
+  buckets: seedBuckets(fi),
 });
+
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+
+/* ------------------------------ bucket picker ----------------------------- */
+// Which pots count toward the target. Property is the one thing left out by
+// default — but "my stocks and funds only, ignore the cash" is a perfectly good
+// question to ask, so every pot is a switch.
+// onToggle takes the bucket, NOT a computed list: two switches flipped inside
+// one render (a fast double-click, a held key) would otherwise both derive their
+// new list from the same stale `chosen` and the first flip would be lost.
+function BucketPicker({ buckets, chosen, onToggle, base }) {
+  if (!buckets.length) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-200">
+        What counts toward it
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {buckets.map((b) => {
+          const on = chosen.includes(b.bucket);
+          return (
+            <button
+              key={b.bucket}
+              type="button"
+              role="switch"
+              aria-checked={on}
+              onClick={() => onToggle(b.bucket)}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                on
+                  ? 'bg-gold-400/20 text-white ring-1 ring-inset ring-gold-300/50'
+                  : 'bg-white/5 text-brand-200 ring-1 ring-inset ring-white/10 hover:bg-white/10'
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`flex h-4 w-4 flex-none items-center justify-center rounded-[5px] ${
+                  on ? 'bg-gold-300 text-brand-900' : 'ring-1 ring-inset ring-white/25'
+                }`}
+              >
+                {on && <Check size={11} strokeWidth={3.5} />}
+              </span>
+              <span>
+                {b.label}
+                <span className="num ml-1.5 font-normal opacity-70">{money(b.value, base, { compact: true })}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-brand-200/85">
+        Untick anything that won&apos;t fund your retirement. Property is left out by default — a home you live in
+        can&apos;t pay for it, since selling means buying or renting another one.
+      </p>
+    </div>
+  );
+}
 
 function NumField({ label, suffix, value, onChange, hint, placeholder }) {
   return (
@@ -200,20 +266,39 @@ function NumField({ label, suffix, value, onChange, hint, placeholder }) {
 }
 
 function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
-  const [form, setForm] = useState(() => seed(prefs));
+  const [form, setForm] = useState(() => seed(prefs, fi));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const reduced = useReducedMotion();
 
   // Re-seed whenever the server's saved prefs change, so a reload after saving
   // shows what was actually stored rather than what was typed.
-  useEffect(() => setForm(seed(prefs)), [prefs]);
+  useEffect(() => setForm(seed(prefs, fi)), [prefs, fi]);
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
   const measured = fi?.measured;
   const usingOverride = fi?.spend_source === 'override';
+  const usingTarget = fi?.target_source === 'custom';
+  const available = Array.isArray(fi?.buckets) ? fi.buckets : [];
+  // Everything but property IS the default, so a selection that matches it is
+  // saved as "no selection" — otherwise a bucket the user opens tomorrow (their
+  // first US stock) would sit outside a set that was frozen today.
+  const defaultBuckets = available.filter((b) => b.bucket !== 'ASSETS').map((b) => b.bucket);
 
-  const save = async (clearOverride = false) => {
+  // What to send for fi_buckets. null means "no selection — count everything but
+  // property", and it must be sent ONLY when that is genuinely what the user is
+  // on. Inferring it from "the ticked set happens to match the default" is not
+  // safe: a pool they deliberately left out can empty to zero, at which point
+  // the two sets look identical and their choice would be silently thrown away.
+  // So once a selection exists it is always sent explicitly, and the one way
+  // back to the default is the button that says so.
+  const bucketPayload = (reset) => {
+    if (reset) return null;
+    if (prefs?.fi_buckets) return form.buckets;
+    return sameSet(form.buckets, defaultBuckets) ? null : form.buckets;
+  };
+
+  const save = async ({ clearSpend = false, clearTarget = false, resetBuckets = false } = {}) => {
     const w = Number(form.withdrawal_rate);
     const r = Number(form.expected_return);
     const i = Number(form.inflation);
@@ -223,23 +308,48 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
     }
     const raw = String(form.annual_spend).trim();
     let spend = null;
-    if (!clearOverride && raw !== '') {
+    if (!clearSpend && raw !== '') {
       spend = Number(raw);
       if (!Number.isFinite(spend) || spend < 0) {
         setErr('Annual spending must be a positive amount, or blank to use what you actually spent.');
         return;
       }
     }
+    const rawTarget = String(form.fi_target).trim();
+    let target = null;
+    if (!clearTarget && rawTarget !== '') {
+      target = Number(rawTarget);
+      if (!Number.isFinite(target) || target <= 0) {
+        setErr('Your target must be more than zero, or blank to size it from your spending.');
+        return;
+      }
+    }
+    // Refuse an empty selection only when there was something to select. Someone
+    // whose only holding is property has nothing ticked by default, and must
+    // still be able to save a withdrawal rate or a target.
+    if (!resetBuckets && defaultBuckets.length && !form.buckets.length) {
+      setErr('Tick at least one thing to count toward your target.');
+      return;
+    }
     setSaving(true);
     setErr('');
     try {
-      // null clears the override and returns to spending measured from real
-      // transactions — the honest default.
+      // null clears an override: spending goes back to what the transactions
+      // say, the target to spending × the withdrawal rate, and the pot to
+      // everything but property. Those are the honest defaults.
       await api('/insights/prefs', {
         method: 'PUT',
-        body: { withdrawal_rate: w, expected_return: r, inflation: i, annual_spend: spend },
+        body: {
+          withdrawal_rate: w,
+          expected_return: r,
+          inflation: i,
+          annual_spend: spend,
+          fi_target: target,
+          fi_buckets: bucketPayload(resetBuckets),
+        },
       });
-      if (clearOverride) setForm((f) => ({ ...f, annual_spend: '' }));
+      if (clearSpend) setForm((f) => ({ ...f, annual_spend: '' }));
+      if (clearTarget) setForm((f) => ({ ...f, fi_target: '' }));
       onSaved?.();
     } catch (e) {
       setErr(e.message);
@@ -303,37 +413,85 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
                 />
               </div>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                <div className="sm:col-span-2">
-                  <NumField
-                    label={`Annual spending (${base})`}
-                    value={form.annual_spend}
-                    onChange={set('annual_spend')}
-                    placeholder="Leave blank to measure it"
-                    hint={
-                      measured?.annual_spend != null
-                        ? `Leave blank to use what you actually spent — ${money(measured.annual_spend, base)} a year, measured across ${measured.months} month${measured.months === 1 ? '' : 's'} of transactions.`
-                        : 'Leave blank once you have a couple of months of expenses recorded, and this is measured from them instead.'
-                    }
-                  />
-                </div>
-                <div className="flex items-end gap-2">
-                  <button type="button" className={`${goldBtn} w-full`} disabled={saving} onClick={() => save(false)}>
-                    {saving ? 'Saving…' : 'Save assumptions'}
-                  </button>
-                </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <NumField
+                  label={`Annual spending (${base})`}
+                  value={form.annual_spend}
+                  onChange={set('annual_spend')}
+                  placeholder="Leave blank to measure it"
+                  hint={
+                    measured?.annual_spend != null
+                      ? `Leave blank to use what you actually spent — ${money(measured.annual_spend, base)} a year, measured across ${measured.months} month${measured.months === 1 ? '' : 's'} of transactions.`
+                      : 'Leave blank once you have a couple of months of expenses recorded, and this is measured from them instead.'
+                  }
+                />
+                <NumField
+                  label={`My target (${base})`}
+                  value={form.fi_target}
+                  onChange={set('fi_target')}
+                  placeholder="Leave blank to size it from spending"
+                  hint={
+                    form.fi_target && Number(form.fi_target) > 0 && Number(form.withdrawal_rate) > 0
+                      ? `At ${form.withdrawal_rate}% that funds about ${money(
+                          Number(form.fi_target) * (Number(form.withdrawal_rate) / 100),
+                          base
+                        )} a year.`
+                      : 'Already know your number? Set it here and it overrides the spending-based one.'
+                  }
+                />
               </div>
 
-              {usingOverride && (
-                <button
-                  type="button"
-                  className="mt-3 text-xs font-semibold text-gold-300 underline decoration-gold-300/40 underline-offset-4 transition hover:text-gold-200 disabled:opacity-60"
-                  disabled={saving}
-                  onClick={() => save(true)}
-                >
-                  Clear the override and use my measured spending
+              <div className="mt-5 border-t border-white/10 pt-4">
+                <BucketPicker
+                  buckets={available}
+                  chosen={form.buckets}
+                  onToggle={(bucket) =>
+                    setForm((f) => ({
+                      ...f,
+                      buckets: f.buckets.includes(bucket)
+                        ? f.buckets.filter((b) => b !== bucket)
+                        : [...f.buckets, bucket],
+                    }))
+                  }
+                  base={base}
+                />
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
+                <button type="button" className={goldBtn} disabled={saving} onClick={() => save()}>
+                  {saving ? 'Saving…' : 'Save assumptions'}
                 </button>
-              )}
+                {usingOverride && (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-gold-300 underline decoration-gold-300/40 underline-offset-4 transition hover:text-gold-200 disabled:opacity-60"
+                    disabled={saving}
+                    onClick={() => save({ clearSpend: true })}
+                  >
+                    Use my measured spending instead
+                  </button>
+                )}
+                {usingTarget && (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-gold-300 underline decoration-gold-300/40 underline-offset-4 transition hover:text-gold-200 disabled:opacity-60"
+                    disabled={saving}
+                    onClick={() => save({ clearTarget: true })}
+                  >
+                    Size my target from spending instead
+                  </button>
+                )}
+                {fi?.pot_source === 'custom' && (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-gold-300 underline decoration-gold-300/40 underline-offset-4 transition hover:text-gold-200 disabled:opacity-60"
+                    disabled={saving}
+                    onClick={() => save({ resetBuckets: true })}
+                  >
+                    Count everything but property again
+                  </button>
+                )}
+              </div>
 
               {err && (
                 <p className="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-100">
@@ -399,13 +557,17 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
         {data.liquid_net_worth > 0 && (
           <p className="mt-4 text-sm text-brand-200">
             What&apos;s here so far:{' '}
-            <span className="num font-bold text-white">{money(data.liquid_net_worth, base)}</span> of investments and
-            cash. That much is real — it&apos;s the target it has to be measured against that&apos;s missing.
+            <span className="num font-bold text-white">{money(data.liquid_net_worth, base)}</span> across{' '}
+            {(data.buckets || [])
+              .filter((b) => b.counted && b.value > 0)
+              .map((b) => b.label)
+              .join(', ') || 'your holdings'}
+            . That much is real — it&apos;s the target it has to be measured against that&apos;s missing.
           </p>
         )}
         {!open && (
           <button type="button" className={`${quietBtn} mt-5`} onClick={() => setOpen(true)}>
-            <SlidersHorizontal size={15} /> Set my annual spending
+            <SlidersHorizontal size={15} /> Set my target
           </button>
         )}
         <Assumptions
@@ -423,6 +585,71 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   const coastPct = data.fi_number > 0 && data.coast_fi_number != null ? (data.coast_fi_number / data.fi_number) * 100 : null;
   const multiple = data.assumptions?.withdrawal_rate > 0 ? 100 / data.assumptions.withdrawal_rate : null;
   const surplusKnown = data.monthly_surplus != null;
+  const custom = data.target_source === 'custom';
+  const counted = (data.buckets || []).filter((b) => b.counted);
+  const leftOut = (data.buckets || []).filter((b) => !b.counted && b.value > 0);
+
+  // Where the target came from. A number the user set is theirs, and saying so
+  // matters — the alternative reads as though we worked it out for them.
+  const targetHint = custom
+    ? `The target you set.${
+        data.implied_annual_spend
+          ? ` At a ${data.assumptions.withdrawal_rate}% withdrawal rate it funds about ${money(
+              data.implied_annual_spend,
+              base
+            )} a year${
+              data.annual_spend > 0
+                ? `, against the ${money(data.annual_spend, base)} a year you ${
+                    data.spend_source === 'override' ? 'told me you spend' : 'actually spend'
+                  }`
+                : ''
+            }.`
+          : ''
+      }`
+    : `${multiple ? `${multiple.toFixed(multiple % 1 ? 1 : 0)}× ` : ''}your annual spending of ${money(
+        data.annual_spend,
+        base
+      )} — ${
+        data.spend_source === 'override'
+          ? 'the figure you set'
+          : `measured across ${data.months_measured} month${data.months_measured === 1 ? '' : 's'} of your own transactions`
+      }.`;
+
+  // "Reached" against a target the user picked says nothing about whether it
+  // covers their life. Someone who set a round ₹1 crore while spending ₹12 lakh
+  // a year must not be told their pot covers their spending — at 4% it funds
+  // ₹4 lakh. Only the spending-derived target earns that sentence.
+  const reachedHint =
+    custom && data.implied_annual_spend
+      ? `Your pot covers the ${money(data.fi_number, base)} target you set. At ${
+          data.assumptions.withdrawal_rate
+        }% that funds about ${money(data.implied_annual_spend, base)} a year${
+          data.annual_spend > 0
+            ? ` — ${
+                data.implied_annual_spend >= data.annual_spend ? 'comfortably above' : 'short of'
+              } the ${money(data.annual_spend, base)} a year you spend`
+            : ''
+        }.`
+      : 'Your liquid net worth already covers your spending at this withdrawal rate.';
+
+  // What's in the pot, and — just as importantly — what isn't. Anything left out
+  // is named with its value, so the gap against the dashboard's net worth is
+  // always explained rather than discovered.
+  const potHint =
+    data.pot_source === 'custom'
+      ? `${counted.map((b) => b.label).join(', ') || 'Nothing selected'}${
+          leftOut.length
+            ? `. Deliberately leaves out ${leftOut
+                .map((b) => `${b.label} (${money(b.value, base)})`)
+                .join(', ')} — which is why this is smaller than your dashboard net worth.`
+            : ' — everything you hold counts toward this.'
+        }`
+      : data.breakdown?.excluded_assets > 0
+        ? `Investments and cash only. This deliberately leaves out ${money(
+            data.breakdown.excluded_assets,
+            base
+          )} of property and other assets — a home you live in can't pay for your retirement, which is why this is smaller than your dashboard net worth.`
+        : 'Investments and cash — the money that can actually fund a withdrawal.';
 
   return shell(
     <>
@@ -470,27 +697,13 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
             tone="gold"
             label="Your FI number"
             value={money(data.fi_number, base)}
-            hint={`${multiple ? `${multiple.toFixed(multiple % 1 ? 1 : 0)}× ` : ''}your annual spending of ${money(
-              data.annual_spend,
-              base
-            )} — ${
-              data.spend_source === 'override'
-                ? 'the figure you set'
-                : `measured across ${data.months_measured} month${data.months_measured === 1 ? '' : 's'} of your own transactions`
-            }.`}
+            hint={targetHint}
           />
           <Stat
             icon={Wallet}
-            label="Liquid net worth"
+            label={data.pot_source === 'custom' ? "What you're counting" : 'Liquid net worth'}
             value={money(data.liquid_net_worth, base)}
-            hint={
-              data.breakdown?.excluded_assets > 0
-                ? `Investments and cash only. This deliberately leaves out ${money(
-                    data.breakdown.excluded_assets,
-                    base
-                  )} of property and other assets — a home you live in can't pay for your retirement, which is why this is smaller than your dashboard net worth.`
-                : 'Investments and cash — the money that can actually fund a withdrawal.'
-            }
+            hint={potHint}
           />
           <Stat
             icon={TrendingUp}
@@ -521,7 +734,7 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
             }
             hint={
               data.reached
-                ? 'Your liquid net worth already covers your spending at this withdrawal rate.'
+                ? reachedHint
                 : data.fi_date
                   ? `About ${yearsText(data.years_to_fi)} away if you keep adding ${money(
                       data.monthly_surplus,

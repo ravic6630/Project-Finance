@@ -393,6 +393,12 @@ export async function initDb() {
   await addColumn('cash_accounts', 'profile_id', 'INTEGER');
   await addColumn('assets', 'profile_id', 'INTEGER');
   await addColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
+  // FI target set directly ("I want ₹5 crore"), instead of deriving it from
+  // spending; NULL keeps the derived one. fi_buckets is a JSON array of the
+  // allocation buckets that count toward it — NULL means the default, which is
+  // everything except ASSETS.
+  await addColumn('insight_prefs', 'fi_target', 'REAL');
+  await addColumn('insight_prefs', 'fi_buckets', 'TEXT');
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;

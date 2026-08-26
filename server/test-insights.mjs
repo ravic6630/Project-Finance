@@ -129,6 +129,131 @@ ok(r3.body?.fi?.spend_source === 'override', 'FI: labelled as an override');
 ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { withdrawal_rate: 99 } })).status === 400, 'prefs: absurd withdrawal rate rejected');
 await http('/insights/prefs', { method: 'PUT', token: U.token, body: { annual_spend: null, withdrawal_rate: 4 } });
 
+/* --------------------------- FI: a target set directly -------------------- */
+// The account is unchanged: 12,00,000 of IN_STOCK, 5,00,000 cash, a 50,00,000
+// house. Every figure below is that fixture divided by a target set by hand.
+const setTarget = await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_target: 5000000 } });
+ok(setTarget.status === 200 && setTarget.body.prefs.fi_target === 5000000, 'prefs: FI target saved', JSON.stringify(setTarget.body).slice(0, 120));
+const t1 = (await http('/insights', { token: U.token })).body?.fi;
+ok(near(t1?.fi_number, 5000000, 1), 'FI: target of 50,00,000 overrides the 25x figure', String(t1?.fi_number));
+ok(t1?.target_source === 'custom', 'FI: target labelled as the user\'s own');
+// 50,00,000 x 4% = 2,00,000 a year — the sanity check on a round number.
+ok(near(t1?.implied_annual_spend, 200000, 1), 'FI: custom target funds 2,00,000/yr at 4%', String(t1?.implied_annual_spend));
+// 17,00,000 / 50,00,000 = 34%
+ok(near(t1?.pct, 34, 0.05), 'FI: progress measured against the set target (34%)', String(t1?.pct));
+ok(near(t1?.shortfall, 3300000, 1), 'FI: shortfall = 33,00,000', String(t1?.shortfall));
+// The measured spending is still reported beside it — the set target does not
+// erase the fact that this person spends 4,80,000 a year.
+ok(near(t1?.annual_spend, 480000, 1), 'FI: measured spending still reported under a custom target', String(t1?.annual_spend));
+
+/* ------------------------- FI: which pots count --------------------------- */
+const setBuckets = await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_buckets: ['IN_STOCK', 'IN_MF'] } });
+ok(setBuckets.status === 200, 'prefs: FI buckets saved');
+const t2 = (await http('/insights', { token: U.token })).body?.fi;
+// Stocks and funds only: 12,00,000. The 5,00,000 of cash is now excluded too.
+ok(near(t2?.liquid_net_worth, 1200000, 1), 'FI: stocks + MFs only => 12,00,000 (cash dropped)', String(t2?.liquid_net_worth));
+ok(t2?.pot_source === 'custom', 'FI: pot labelled as a custom selection');
+ok(near(t2?.pct, 24, 0.05), 'FI: 12,00,000 / 50,00,000 = 24%', String(t2?.pct));
+// A bucket picked but not yet held must still be offered, or unticking it would
+// be the only way to see it again.
+ok((t2?.buckets || []).some((b) => b.bucket === 'IN_MF' && b.counted && b.value === 0), 'FI: a chosen-but-empty bucket is still listed');
+ok(near((t2?.buckets || []).filter((b) => b.counted).reduce((s, b) => s + b.value, 0), t2?.liquid_net_worth, 1),
+   'FI: counted buckets sum to the pot');
+ok(near(t2?.breakdown?.excluded_total, 5500000, 1), 'FI: excluded total = cash + house (55,00,000)', String(t2?.breakdown?.excluded_total));
+
+// Counting the house is the user's call to make — someone who really will sell
+// a second flat is right to include it, and it must move the pot.
+await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_buckets: ['IN_STOCK', 'CASH', 'ASSETS'] } });
+const t3 = (await http('/insights', { token: U.token })).body?.fi;
+ok(near(t3?.liquid_net_worth, 6700000, 1), 'FI: including property => 67,00,000', String(t3?.liquid_net_worth));
+ok(t3?.reached === true && t3?.pct > 100, 'FI: that clears the 50,00,000 target', `${t3?.pct}%`);
+ok(near(t3?.years_to_fi, 0, 0.001), 'FI: already there => zero years', String(t3?.years_to_fi));
+
+/* --------------------------- FI: rubbish refused -------------------------- */
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_target: -5 } })).status === 400, 'prefs: negative FI target rejected');
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_target: 0 } })).status === 400, 'prefs: zero FI target rejected');
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_buckets: [] } })).status === 400, 'prefs: empty bucket selection rejected');
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_buckets: ['NOT_A_BUCKET'] } })).status === 400, 'prefs: unknown bucket rejected');
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_buckets: 'IN_STOCK' } })).status === 400, 'prefs: non-list bucket selection rejected');
+// A rejected write must not have half-applied: the pot is still the 67,00,000 one.
+ok(near((await http('/insights', { token: U.token })).body?.fi?.liquid_net_worth, 6700000, 1), 'prefs: a rejected write changes nothing');
+
+/* ----------------------------- FI: back to default ------------------------ */
+const cleared = await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_target: null, fi_buckets: null } });
+ok(cleared.status === 200 && cleared.body.prefs.fi_target === null && cleared.body.prefs.fi_buckets === null, 'prefs: overrides cleared');
+const t4 = (await http('/insights', { token: U.token })).body?.fi;
+ok(near(t4?.fi_number, 12000000, 1), 'FI: back to the 25x figure', String(t4?.fi_number));
+ok(t4?.target_source === 'spending' && t4?.pot_source === 'default', 'FI: both back to the honest defaults');
+ok(near(t4?.liquid_net_worth, 1700000, 1), 'FI: pot back to investments + cash', String(t4?.liquid_net_worth));
+
+/* ------------------- FI: the pot is not built from a filtered list --------- */
+// summary.allocation drops every non-positive row, so sourcing the pot from it
+// would silently swallow an overdraft and flatter the progress figure. The
+// default pot must stay exactly investments + cash, negatives and all.
+const W = await makeUser(`fineg${DOMAIN}`);
+await db.prepare('INSERT INTO holdings (user_id,kind,symbol,name,quantity,avg_cost,currency,manual_price,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+  .run(W.id, 'IN_STOCK', 'BIGCO', 'Big Co', 1000, 600, 'INR', 1000, ts, ts);
+await db.prepare('INSERT INTO cash_accounts (user_id,name,type,balance,currency,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+  .run(W.id, 'Overdraft', 'BANK', -50000, 'INR', ts, ts);
+await http('/insights/prefs', { method: 'PUT', token: W.token, body: { fi_target: 10000000 } });
+const w1 = (await http('/insights', { token: W.token })).body?.fi;
+// 10,00,000 of stock MINUS the 50,000 overdraft = 9,50,000, not 10,00,000.
+ok(near(w1?.liquid_net_worth, 950000, 1), 'FI: an overdrawn account still counts against the pot', String(w1?.liquid_net_worth));
+ok(near(w1?.pct, 9.5, 0.05), 'FI: progress is not flattered by the overdraft', String(w1?.pct));
+ok(near(w1?.breakdown?.counted_total, w1?.breakdown?.investments + w1?.breakdown?.cash, 1),
+   'FI: default pot == investments + cash exactly', `${w1?.breakdown?.counted_total} vs ${w1?.breakdown?.investments} + ${w1?.breakdown?.cash}`);
+ok((w1?.buckets || []).some((b) => b.bucket === 'CASH' && b.value === -50000 && b.counted),
+   'FI: the negative cash bucket is shown, not hidden', JSON.stringify(w1?.buckets));
+
+/* ------------------ FI: nothing but property is not a lockout ------------- */
+// Everything this user owns is excluded by default, so the pot is legitimately
+// zero. That must still be a usable, honest reading rather than an error.
+const X = await makeUser(`fiprop${DOMAIN}`);
+await db.prepare('INSERT INTO assets (user_id,name,type,value,currency,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+  .run(X.id, 'Flat', 'PROPERTY', 8000000, 'INR', ts, ts);
+await http('/insights/prefs', { method: 'PUT', token: X.token, body: { fi_target: 5000000 } });
+const x1 = (await http('/insights', { token: X.token })).body?.fi;
+ok(x1?.ready === true && near(x1?.liquid_net_worth, 0, 0.01), 'FI: property-only pot is zero, not an error', String(x1?.liquid_net_worth));
+ok((x1?.buckets || []).length === 1 && x1.buckets[0].bucket === 'ASSETS' && x1.buckets[0].counted === false,
+   'FI: only the property is offered, and it is not counted', JSON.stringify(x1?.buckets));
+// ...and they can choose to count it, because they may well intend to sell it.
+await http('/insights/prefs', { method: 'PUT', token: X.token, body: { fi_buckets: ['ASSETS'] } });
+const x2 = (await http('/insights', { token: X.token })).body?.fi;
+ok(near(x2?.liquid_net_worth, 8000000, 1) && x2?.reached === true, 'FI: counting the property clears the target', String(x2?.liquid_net_worth));
+
+/* ------------- FI: a deliberate exclusion survives emptying the pool ------- */
+// The pool someone left out on purpose must not disappear when it hits zero —
+// the panel would then read the selection as "back to the default" and lose it.
+const Y = await makeUser(`fiempty${DOMAIN}`);
+await db.prepare('INSERT INTO holdings (user_id,kind,symbol,name,quantity,avg_cost,currency,manual_price,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+  .run(Y.id, 'IN_STOCK', 'BIGCO', 'Big Co', 1000, 600, 'INR', 1000, ts, ts);
+const yCash = await db.prepare('INSERT INTO cash_accounts (user_id,name,type,balance,currency,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+  .run(Y.id, 'Car fund', 'BANK', 300000, 'INR', ts, ts);
+await http('/insights/prefs', { method: 'PUT', token: Y.token, body: { fi_buckets: ['IN_STOCK'] } });
+const y1 = (await http('/insights', { token: Y.token })).body?.fi;
+ok(near(y1?.liquid_net_worth, 1000000, 1), 'FI: the car fund is excluded on purpose', String(y1?.liquid_net_worth));
+// They spend it. The account is now empty.
+await db.prepare('UPDATE cash_accounts SET balance = 0 WHERE id = ?').run(Number(yCash.lastInsertRowid));
+const y2 = (await http('/insights', { token: Y.token })).body?.fi;
+ok((y2?.buckets || []).some((b) => b.bucket === 'CASH' && b.counted === false),
+   'FI: an emptied excluded pool is still listed, still unticked', JSON.stringify(y2?.buckets));
+ok(y2?.pot_source === 'custom' && near(y2?.liquid_net_worth, 1000000, 1), 'FI: the selection survives the pool emptying', String(y2?.liquid_net_worth));
+
+/* -------------------- FI: a target works with no transactions ------------- */
+// The real unlock. Someone who has recorded nothing but knows their number gets
+// a reading immediately — with no date, and told plainly why.
+const V = await makeUser(`fitarget${DOMAIN}`);
+await db.prepare("INSERT INTO cash_accounts (user_id,name,type,balance,currency,created_at,updated_at) VALUES (?,?,?,?,?,?,?)")
+  .run(V.id, 'Bank', 'BANK', 250000, 'INR', ts, ts);
+const v0 = (await http('/insights', { token: V.token })).body?.fi;
+ok(v0?.ready === false && typeof v0?.reason === 'string', 'FI: no spending, no target => honest empty state');
+await http('/insights/prefs', { method: 'PUT', token: V.token, body: { fi_target: 1000000 } });
+const v1 = (await http('/insights', { token: V.token })).body?.fi;
+ok(v1?.ready === true, 'FI: a set target needs no transactions', JSON.stringify(v1?.reason));
+ok(near(v1?.pct, 25, 0.05), 'FI: 2,50,000 / 10,00,000 = 25%', String(v1?.pct));
+ok(v1?.years_to_fi === null && typeof v1?.years_reason === 'string', 'FI: still no date without a measured surplus');
+ok(finite(v1?.coast_fi_number) && finite(v1?.pct) && finite(v1?.shortfall), 'FI: no NaN anywhere in the target-only payload');
+
 /* ---------------------------- allocation maths ---------------------------- */
 ok(allocation?.has_targets === false, 'allocation: no targets yet => honest empty state');
 ok((await http('/insights/targets', { method: 'PUT', token: U.token, body: { targets: [{ bucket: 'IN_STOCK', target_pct: 60 }, { bucket: 'CASH', target_pct: 30 }] } })).status === 400,

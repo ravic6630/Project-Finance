@@ -1,4 +1,5 @@
 import { todayIST } from '../recurring.js';
+import { KIND_LABELS } from '../../markets.js';
 
 // Financial Independence tracker.
 //
@@ -9,8 +10,9 @@ import { todayIST } from '../recurring.js';
 //   annual_spend: number,         // in user's base currency
 //   spend_source: 'measured'|'override',
 //   months_measured: number,      // how many months of real spending we used
-//   fi_number: number,            // annual_spend / (withdrawal_rate/100)
-//   liquid_net_worth: number,     // investments + cash (property can't fund retirement)
+//   fi_number: number,            // the target set directly, else annual_spend / (withdrawal_rate/100)
+//   target_source: 'custom'|'spending',
+//   liquid_net_worth: number,     // the counted pot (see fi_buckets below)
 //   pct: number,                  // 0..100+
 //   monthly_surplus: number,      // measured income - expense, per month
 //   years_to_fi: number|null,     // null when surplus <= 0 and not already FI
@@ -24,13 +26,18 @@ import { todayIST } from '../recurring.js';
 // and "you save nothing" are very different statements to make about someone's
 // money, and the panel renders them differently. On top of the contract above,
 // for the panel's own use:
-//   reached: boolean                  // liquid already covers the FI number
-//   shortfall: number                 // fi_number - liquid, floored at 0
+//   reached: boolean                  // the pot already covers the FI number
+//   shortfall: number                 // fi_number - pot, floored at 0
 //   years_reason: string|null         // why no date, when years_to_fi is null
 //   coast_horizon_years: number       // the horizon the coast figure assumes
 //   coast_horizon_assumed: boolean    // true when no date could be projected,
 //                                     // so the horizon is ours, not the user's
-//   breakdown: { investments, cash, excluded_assets }
+//   implied_annual_spend: number|null // what a custom target funds at the
+//                                     // withdrawal rate — the sanity check on
+//                                     // a number the user picked out of the air
+//   pot_source: 'default'|'custom'
+//   buckets: [{ bucket, label, value, counted }]   // every pot, ticked or not
+//   breakdown: { investments, cash, excluded_assets, counted_total, excluded_total }
 //   measured: { annual_spend, monthly_spend, monthly_income, months, from, to,
 //               includes_current_month }   // always present, even under an
 //                                          // override, so the UI can show the
@@ -121,6 +128,67 @@ function measureCashflow(summary) {
   };
 }
 
+/* ---------------------------------- the pot ------------------------------- */
+// What counts toward the target. By default: everything except property and
+// other assets — a house you live in cannot fund your retirement, since selling
+// it means buying or renting another one.
+//
+// But that is a default, not a law. Someone tracking "my stocks and mutual funds
+// only, ignore the cash I'm about to spend on a car" is asking a perfectly
+// sensible question, and someone who genuinely intends to sell a second flat to
+// fund retirement is right to count it. So the set is theirs to choose, and
+// whatever is left out is still reported by name — never silently dropped.
+const BUCKET_LABELS = { ...KIND_LABELS, CASH: 'Cash & Bank', ASSETS: 'Assets' };
+const DEFAULT_EXCLUDED = new Set(['ASSETS']);
+
+function buildPot(summary, chosen) {
+  const rows = new Map();
+  const add = (bucket, label, value) => {
+    const key = String(bucket || '').trim().toUpperCase();
+    if (!key) return;
+    const row = rows.get(key);
+    if (row) row.value += numOr(value);
+    else rows.set(key, { bucket: key, label: label || BUCKET_LABELS[key] || key, value: numOr(value) });
+  };
+
+  // Built from the summary's own totals, NOT from summary.allocation: that array
+  // drops every non-positive row, so an overdrawn bank account would vanish from
+  // the pot entirely and quietly flatter the progress figure. The default pot
+  // must stay exactly investments + cash, negatives and all.
+  for (const k of Array.isArray(summary?.investments?.by_kind) ? summary.investments.by_kind : []) {
+    add(k?.key, k?.label, k?.value);
+  }
+  add('CASH', 'Cash & Bank', summary?.cash?.total);
+  add('ASSETS', 'Assets', summary?.assets?.total);
+  // A bucket the user picked but no longer holds anything in must still appear
+  // in the checklist, or unticking it would be the only way to see it again.
+  if (chosen) for (const bucket of chosen) add(bucket, null, 0);
+
+  const counts = (bucket) => (chosen ? chosen.includes(bucket) : !DEFAULT_EXCLUDED.has(bucket));
+  let counted_total = 0;
+  let excluded_total = 0;
+  for (const r of rows.values()) {
+    if (counts(r.bucket)) counted_total += r.value;
+    else excluded_total += r.value;
+  }
+
+  const buckets = [...rows.values()]
+    // An empty pool is not a choice worth offering — until the user has started
+    // choosing. Once they have, every pool stays on the list whatever it holds:
+    // one they deliberately LEFT OUT must not disappear the moment it empties,
+    // or their selection would read as "back to the default" and be lost.
+    .filter((r) => r.value !== 0 || chosen != null)
+    .map((r) => ({ bucket: r.bucket, label: r.label, value: round2(r.value), counted: counts(r.bucket) }))
+    // Counted first, then biggest — the pot reads top-down, and what was left
+    // out sits below it rather than being scattered through the list.
+    .sort(
+      (a, b) =>
+        Number(b.counted) - Number(a.counted) || b.value - a.value || a.label.localeCompare(b.label)
+    );
+
+  return { buckets, counted_total, excluded_total };
+}
+
 /* ------------------------------ the projection ---------------------------- */
 // Future value of a pot P growing at monthly rate r with a monthly contribution
 // c, solved for the number of months n that reaches target F:
@@ -171,14 +239,19 @@ export async function buildFI(user, { summary, prefs } = {}) {
     real_return: round2(realReturn),
   };
 
-  // Liquid only. A house you live in cannot fund your retirement — selling it
-  // means buying or renting another one — so assets are excluded from the pot
-  // and reported separately so the UI can explain the gap against the dashboard
-  // net worth the moment the user notices it.
+  // The pot: the buckets the user counts toward the target (default: everything
+  // that isn't property). Whatever is left out is reported separately, so the UI
+  // can explain the gap against the dashboard net worth the moment it's noticed.
+  const chosen = Array.isArray(prefs?.fi_buckets)
+    ? [...new Set(prefs.fi_buckets.map((b) => String(b || '').trim().toUpperCase()).filter(Boolean))]
+    : null;
+  const potSource = chosen && chosen.length ? 'custom' : 'default';
+  const pot = buildPot(summary, potSource === 'custom' ? chosen : null);
+  const liquid = pot.counted_total;
+
   const investments = numOr(summary?.investments?.value);
   const cash = numOr(summary?.cash?.total);
   const excludedAssets = numOr(summary?.assets?.total);
-  const liquid = investments + cash;
 
   const measured = measureCashflow(summary);
 
@@ -189,6 +262,15 @@ export async function buildFI(user, { summary, prefs } = {}) {
   const spendSource = overrideSpend != null ? 'override' : 'measured';
   const annualSpend = overrideSpend != null ? overrideSpend : measured.annual_spend;
 
+  // A target set directly wins over the derived one. Someone who already knows
+  // their number ("₹5 crore and I'm out") should not have to reverse-engineer a
+  // spending figure that produces it — and their answer is not a guess we made.
+  const targetOverride =
+    prefs?.fi_target == null || !Number.isFinite(Number(prefs.fi_target)) || Number(prefs.fi_target) <= 0
+      ? null
+      : Number(prefs.fi_target);
+  const targetSource = targetOverride != null ? 'custom' : 'spending';
+
   const base = {
     ready: false,
     reason: null,
@@ -196,6 +278,11 @@ export async function buildFI(user, { summary, prefs } = {}) {
     spend_source: spendSource,
     months_measured: measured.months,
     fi_number: null,
+    target_source: targetSource,
+    fi_target: round2(targetOverride),
+    implied_annual_spend: null,
+    pot_source: potSource,
+    buckets: pot.buckets,
     liquid_net_worth: round2(liquid),
     pct: null,
     monthly_surplus: round2(measured.monthly_surplus),
@@ -208,7 +295,13 @@ export async function buildFI(user, { summary, prefs } = {}) {
     coast_horizon_assumed: false,
     assumptions,
     // Extras the panel uses to stay honest about where each figure came from.
-    breakdown: { investments: round2(investments), cash: round2(cash), excluded_assets: round2(excludedAssets) },
+    breakdown: {
+      investments: round2(investments),
+      cash: round2(cash),
+      excluded_assets: round2(excludedAssets),
+      counted_total: round2(pot.counted_total),
+      excluded_total: round2(pot.excluded_total),
+    },
     measured: {
       annual_spend: round2(measured.annual_spend),
       monthly_spend: round2(measured.monthly_spend),
@@ -223,42 +316,52 @@ export async function buildFI(user, { summary, prefs } = {}) {
   };
 
   /* -- can we size the target at all? ------------------------------------- */
-  if (spendSource === 'measured') {
-    if (measured.months === 0) {
+  // None of this applies when the user has named their number: a target they
+  // set is a fact about their intent, and it needs no transactions to stand up.
+  if (targetSource === 'spending') {
+    if (spendSource === 'measured') {
+      if (measured.months === 0) {
+        return {
+          ...base,
+          reason:
+            "I haven't seen any spending yet, and financial independence is sized entirely by what a year of your life costs. Record a couple of months of expenses — or set your annual spending, or your target itself, directly below.",
+        };
+      }
+      if (measured.months < 2) {
+        return {
+          ...base,
+          reason:
+            'Only one month of spending has been recorded. A projection off a single month is a guess, not a plan — add another month of transactions, or set your annual spending or target directly below.',
+        };
+      }
+    }
+
+    if (!(annualSpend > 0)) {
       return {
         ...base,
         reason:
-          "I haven't seen any spending yet, and financial independence is sized entirely by what a year of your life costs. Record a couple of months of expenses — or set your annual spending directly below — and this fills in.",
+          spendSource === 'override'
+            ? 'Your annual spending is set to zero, so there is no target to reach. Set what a year of your life actually costs below — or name your target directly.'
+            : `The expenses recorded across ${measured.months} months total zero, so there's nothing to size financial independence against yet.`,
       };
     }
-    if (measured.months < 2) {
-      return {
-        ...base,
-        reason:
-          'Only one month of spending has been recorded. A projection off a single month is a guess, not a plan — add another month of transactions, or set your annual spending directly below.',
-      };
+
+    if (!(withdrawalRate > 0)) {
+      return { ...base, reason: 'A withdrawal rate above zero is needed to size the target.' };
     }
   }
 
-  if (!(annualSpend > 0)) {
-    return {
-      ...base,
-      reason:
-        spendSource === 'override'
-          ? 'Your annual spending is set to zero, so there is no target to reach. Set what a year of your life actually costs below.'
-          : `The expenses recorded across ${measured.months} months total zero, so there's nothing to size financial independence against yet.`,
-    };
-  }
-
-  if (!(withdrawalRate > 0)) {
-    return { ...base, reason: 'A withdrawal rate above zero is needed to size the target.' };
-  }
-
-  // The familiar 25× at the default 4%: spending ÷ withdrawal rate.
-  const fiNumber = annualSpend / (withdrawalRate / 100);
+  // Either the number the user named, or the familiar 25× at the default 4%:
+  // spending ÷ withdrawal rate.
+  const fiNumber = targetOverride != null ? targetOverride : annualSpend / (withdrawalRate / 100);
   if (!Number.isFinite(fiNumber) || fiNumber <= 0) {
     return { ...base, reason: 'These assumptions do not produce a usable target.' };
   }
+
+  // What a target picked out of the air would actually fund each year. It is the
+  // one honest check on a round number, and it's how someone finds out that the
+  // ₹1 crore they had in mind is ₹4 lakh a year, not the life they pictured.
+  const impliedSpend = withdrawalRate > 0 ? fiNumber * (withdrawalRate / 100) : null;
 
   const pct = (liquid / fiNumber) * 100;
   const reached = liquid >= fiNumber;
@@ -308,6 +411,7 @@ export async function buildFI(user, { summary, prefs } = {}) {
     ready: true,
     reason: null,
     fi_number: round2(fiNumber),
+    implied_annual_spend: round2(fin(impliedSpend)),
     pct: round2(pct),
     reached,
     shortfall: round2(Math.max(0, fiNumber - liquid)),
