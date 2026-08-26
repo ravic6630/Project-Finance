@@ -181,12 +181,33 @@ export function Counter({ value, format = (v) => Math.round(v).toLocaleString(),
   // travelled, so a larger portfolio would animate longer — backwards.
   const spring = useSpring(mv, { duration: 900, bounce: 0 });
 
+  // Has the count-up actually put a number on screen? Until it has, what the
+  // reader sees is the zero this renders with.
+  const painted = useRef(false);
+
   useEffect(() => {
     if (reduced) return;
     if (inView) mv.set(value);
   }, [inView, value, mv, reduced]);
 
+  // The safety net, and it is not about animation polish. In a background tab
+  // the browser hands out no animation frames AND the IntersectionObserver
+  // behind `inView` never reports, so neither branch above ever runs and this
+  // element keeps the zero it was rendered with. On a page made of money that
+  // isn't a missing flourish, it's a WRONG NUMBER — a ₹0.00 sitting where the
+  // figure is ₹18,875, until the reader happens to focus the tab. So: if
+  // nothing has painted shortly after mount, print the truth and stop waiting.
+  // Hidden tabs clamp timers to about a second, which this clears.
+  useEffect(() => {
+    painted.current = false;
+    const id = setTimeout(() => {
+      if (!painted.current && ref.current) ref.current.textContent = format(value);
+    }, 1500);
+    return () => clearTimeout(id);
+  }, [value, format]);
+
   useMotionValueEvent(spring, 'change', (v) => {
+    painted.current = true;
     if (ref.current) ref.current.textContent = format(v);
   });
 

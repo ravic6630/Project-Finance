@@ -90,8 +90,7 @@ export default function Insights() {
           Insights
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Four readings of the same portfolio: where it&apos;s taking you, how it&apos;s balanced,
-          what it pays you, and where it&apos;s exposed.
+          Four readings of the same portfolio.
         </p>
         <div className="rule-fade mt-5" />
       </div>

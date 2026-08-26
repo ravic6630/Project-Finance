@@ -210,6 +210,7 @@ export async function buildRisk(user, { summary } = {}) {
   if (largest > 0.25) {
     flags.push({
       level: 'high',
+      kind: 'size',
       title: `${top.name} is ${pct(largest)} of your investments`,
       detail:
         'A position this size largely sets the direction of the whole portfolio — a bad year for it is a bad year for you, however well everything else does.',
@@ -217,6 +218,7 @@ export async function buildRisk(user, { summary } = {}) {
   } else if (largest > 0.15) {
     flags.push({
       level: 'medium',
+      kind: 'size',
       title: `${top.name} is ${pct(largest)} of your investments`,
       detail:
         'Large enough that its moves show up clearly in your total. Worth watching if you keep adding to it.',
@@ -228,6 +230,7 @@ export async function buildRisk(user, { summary } = {}) {
   if (list.length > 3 && top3 > 0.6) {
     flags.push({
       level: top3 > 0.75 ? 'high' : 'medium',
+      kind: 'top3',
       title: `Your three largest holdings are ${pct(top3)} of your investments`,
       detail: `The other ${list.length - 3} ${list.length - 3 === 1 ? 'holding has' : 'holdings have'} little say in how the portfolio does.`,
     });
@@ -240,6 +243,7 @@ export async function buildRisk(user, { summary } = {}) {
     oneMarket = true;
     flags.push({
       level: 'medium',
+      kind: 'market',
       title: `Every investment is in ${byKind[0].label}`,
       detail: 'There is nothing in another market to steady things when this one has a poor stretch.',
     });
@@ -249,6 +253,7 @@ export async function buildRisk(user, { summary } = {}) {
       oneMarket = true;
       flags.push({
         level: 'low',
+        kind: 'market',
         title: `All of your investments are in ${[...regions][0]}`,
         detail:
           'You hold more than one kind of investment, but they all rise and fall with the same economy and the same currency.',
@@ -268,12 +273,14 @@ export async function buildRisk(user, { summary } = {}) {
     const biggestForeign = byCurrency.filter((c) => c.currency !== base).sort((a, b) => b.pct - a.pct)[0];
     flags.push({
       level: foreignPct > 90 ? 'high' : 'medium',
+      kind: 'currency',
       title: `${foreignPct.toFixed(1)}% of your investments are priced outside ${base}`,
       detail: `You track your wealth in ${base}, so the ${biggestForeign?.currency || 'foreign'}/${base} rate moves your total even on days the holdings themselves do not.`,
     });
   } else if (topCur && !oneMarket && topCur.currency === base && topCur.pct >= 95 && list.length >= 3) {
     flags.push({
       level: 'low',
+      kind: 'currency',
       title: `${topCur.pct.toFixed(0)}% of your investments are priced in ${base}`,
       detail:
         'That leaves you with almost no exchange-rate risk, which is a real advantage. It also means one economy carries your whole portfolio.',
@@ -283,6 +290,7 @@ export async function buildRisk(user, { summary } = {}) {
   if (list.length <= 4) {
     flags.push({
       level: 'low',
+      kind: 'count',
       title: `You hold ${list.length} positions`,
       detail:
         'A portfolio this small is concentrated by nature. That is normal early on and settles as you add to it.',
