@@ -1,17 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import {
-  AlertTriangle,
-  CalendarClock,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  Flag,
-  SlidersHorizontal,
-  Target,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, SlidersHorizontal, Target } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { money, percent, dateLabel } from '../../lib/format.js';
 import { Aurora, Counter } from '../fx.jsx';
@@ -54,7 +43,11 @@ function yearsText(y) {
 // shows both how far along you are and how much road is left in one read. The
 // champagne tick is Coast-FI — the point on the same road where you could stop
 // adding money and still arrive on time.
-function Gauge({ pct, coastPct, reached }) {
+//
+// The caption is passed in rather than derived from `reached`: a target the user
+// picked out of the air is not a claim about their life, so only a target sized
+// from real spending may say "financially independent".
+function Gauge({ pct, coastPct, caption }) {
   const reduced = useReducedMotion();
   const frac = clamp01((pct || 0) / 100);
   const coast = coastPct == null ? null : clamp01(coastPct / 100);
@@ -125,46 +118,69 @@ function Gauge({ pct, coastPct, reached }) {
           <Counter value={pct || 0} format={(v) => pctText(v)} />
         </p>
         <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">
-          {reached ? 'Financially independent' : 'of the way there'}
+          {caption}
         </p>
       </div>
     </div>
   );
 }
 
-/* ---------------------------------- stat ---------------------------------- */
-function Stat({ icon: Icon, label, value, hint, tone = 'plain', estimate = false }) {
+/* ---------------------------------- rows ---------------------------------- */
+// A stat is now a label and a figure on one line. No icon, no hint: the reason
+// a figure is what it is belongs in the drawer, not stacked under every number.
+function Row({ label, value, tone = 'plain' }) {
   return (
-    <div className="flex items-start gap-3 py-3">
-      <span
-        className={`mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-xl ${
-          tone === 'gold'
-            ? 'bg-gold-400/15 text-gold-200'
-            : tone === 'warn'
-              ? 'bg-rose-400/15 text-rose-200'
-              : 'bg-white/10 text-brand-100'
+    <div className="flex items-baseline justify-between gap-4 py-2.5">
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-200">{label}</dt>
+      <dd
+        className={`num text-sm font-bold tracking-tight ${
+          tone === 'gold' ? 'text-gold-200' : tone === 'warn' ? 'text-rose-200' : 'text-white'
         }`}
       >
-        <Icon size={15} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-x-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-200">
-          {label}
-          {estimate && (
-            <span className="chip bg-white/10 text-[10px] font-bold uppercase tracking-wider text-gold-200">
-              Projection
-            </span>
-          )}
-        </p>
-        <p
-          className={`num mt-1 text-lg font-bold tracking-tight ${
-            tone === 'gold' ? 'text-gold-200' : tone === 'warn' ? 'text-rose-200' : 'text-white'
-          }`}
-        >
-          {value}
-        </p>
-        {hint && <p className="mt-1 text-xs leading-relaxed text-brand-200/80">{hint}</p>}
-      </div>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+/* -------------------------------- the working ----------------------------- */
+// The white cards share Details.jsx; this panel can't — it sits on navy, and
+// slate text would disappear into it. Same gesture, same words, this surface's
+// palette, and deliberately built like the Assumptions disclosure below it so
+// the two read as a pair.
+function Working({ label = 'How this is worked out', children }) {
+  const [open, setOpen] = useState(false);
+  const reduced = useReducedMotion();
+
+  return (
+    <div className="mt-6 border-t border-white/10 pt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 rounded-xl px-1 py-1 text-left text-sm font-semibold text-brand-100 transition hover:text-white"
+      >
+        {label}
+        <ChevronDown
+          size={16}
+          className={`flex-none text-brand-200 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={reduced ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-4 px-1 pb-1 pt-3 text-xs leading-relaxed text-brand-200">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -402,7 +418,7 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
                   suffix="%"
                   value={form.expected_return}
                   onChange={set('expected_return')}
-                  hint="Nominal, before inflation."
+                  hint="Before inflation is taken off."
                 />
                 <NumField
                   label="Inflation"
@@ -550,26 +566,64 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   // Not enough real data to size the target. We say exactly what's missing and
   // offer the one shortcut that unblocks it — never a placeholder number.
   if (!data.ready) {
+    const held = (data.buckets || []).filter((b) => b.counted && b.value > 0);
+    // Why we're stuck, in the server's own order of checks — so the headline
+    // names the actual blocker rather than blaming missing data for a rate the
+    // user set to zero. The full server reason is one click down.
+    const blocked = (() => {
+      if (data.spend_source === 'measured') {
+        if (!data.months_measured) return "I don't know yet what a year of your life costs.";
+        if (data.months_measured < 2) return "One month of spending isn't enough to work this out.";
+      }
+      if (!(data.annual_spend > 0))
+        return data.spend_source === 'override'
+          ? "Your spending is set to zero, so there's no target to reach."
+          : 'The spending recorded so far adds up to nothing.';
+      if (!(data.assumptions?.withdrawal_rate > 0)) return 'Your withdrawal rate needs to be above zero.';
+      return "There isn't enough here yet to work out your number.";
+    })();
+
     return shell(
       <>
         {header}
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-brand-100">{data.reason}</p>
+
+        <p className="mt-4 text-[15px] font-semibold leading-snug text-white">{blocked}</p>
+
         {data.liquid_net_worth > 0 && (
-          <p className="mt-4 text-sm text-brand-200">
-            What&apos;s here so far:{' '}
-            <span className="num font-bold text-white">{money(data.liquid_net_worth, base)}</span> across{' '}
-            {(data.buckets || [])
-              .filter((b) => b.counted && b.value > 0)
-              .map((b) => b.label)
-              .join(', ') || 'your holdings'}
-            . That much is real — it&apos;s the target it has to be measured against that&apos;s missing.
-          </p>
+          <div className="mt-5">
+            <p className="num text-4xl font-bold leading-none tracking-tight text-white">
+              {money(data.liquid_net_worth, base)}
+            </p>
+            <p className="mt-1.5 text-sm text-brand-200">is saved so far — that much is real</p>
+          </div>
         )}
+
+        <p className="mt-5 text-sm text-brand-100">Set your target, or what you spend in a year, below.</p>
+
         {!open && (
-          <button type="button" className={`${quietBtn} mt-5`} onClick={() => setOpen(true)}>
+          <button type="button" className={`${quietBtn} mt-4`} onClick={() => setOpen(true)}>
             <SlidersHorizontal size={15} /> Set my target
           </button>
         )}
+
+        <Working label="Why there's no number yet">
+          <p>{data.reason}</p>
+          {held.length > 0 && (
+            <p>
+              What&apos;s counted so far:{' '}
+              <span className="font-semibold text-brand-100">{held.map((b) => b.label).join(', ')}</span> —{' '}
+              <span className="num font-semibold text-brand-100">{money(data.liquid_net_worth, base)}</span>. It&apos;s
+              the target to measure it against that&apos;s missing, not the money.
+            </p>
+          )}
+          {measured?.annual_spend != null && (
+            <p>
+              Your recorded spending so far works out at{' '}
+              <span className="num font-semibold text-brand-100">{money(measured.annual_spend, base)}</span> a year,
+              across {measured.months} month{measured.months === 1 ? '' : 's'} of transactions.
+            </p>
+          )}
+        </Working>
         <Assumptions
           open={open}
           onToggle={() => setOpen((v) => !v)}
@@ -583,6 +637,9 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   }
 
   const coastPct = data.fi_number > 0 && data.coast_fi_number != null ? (data.coast_fi_number / data.fi_number) * 100 : null;
+  // Past 100% the tick would be clamped onto the end of the arc, where it looks
+  // like a mark on the dial that nothing explains. Better no mark than a wrong one.
+  const coastMark = coastPct != null && coastPct <= 100 ? coastPct : null;
   const multiple = data.assumptions?.withdrawal_rate > 0 ? 100 / data.assumptions.withdrawal_rate : null;
   const surplusKnown = data.monthly_surplus != null;
   const custom = data.target_source === 'custom';
@@ -651,131 +708,176 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
           )} of property and other assets — a home you live in can't pay for your retirement, which is why this is smaller than your dashboard net worth.`
         : 'Investments and cash — the money that can actually fund a withdrawal.';
 
+  // The verdict. One sentence, derived: the reader came here to ask "when", and
+  // every branch maps onto one the server can actually return — you're there,
+  // here's the date, nothing measured, nothing going in, or no date worth giving.
+  const verdict = (() => {
+    if (data.reached) return "You've reached your number.";
+    if (data.fi_date) return `You should get there around ${dateLabel(data.fi_date)}.`;
+    if (!surplusKnown || data.months_measured < 2) return "There isn't enough recorded yet to put a date on this.";
+    if (data.monthly_surplus < 0) return "You're spending more than you earn, so there's no date yet.";
+    if (data.monthly_surplus === 0) return "Nothing is going into the pot, so there's no date yet.";
+    // Two payloads land here: returns never catch the target, and a date so far
+    // out the server refuses to print it. "No date is produced" is false of the
+    // second — it produced one and threw it away — so say neither.
+    return "There's no sensible date at these assumptions.";
+  })();
+
+  // The one supporting line, and only where there is something true to add.
+  // "Reached" against a target the user picked says nothing about whether it
+  // covers their life, so that case names what it actually funds.
+  const support = data.reached
+    ? custom
+      ? data.implied_annual_spend
+        ? `At ${data.assumptions.withdrawal_rate}% it funds about ${money(data.implied_annual_spend, base)} a year.`
+        : 'That covers the target you set for yourself.'
+      : 'What you have covers what you spend, at the rate you set.'
+    : data.fi_date
+      ? `About ${yearsText(data.years_to_fi)} away if you keep saving ${money(data.monthly_surplus, base)} a month.`
+      : null;
+
+  // Only when there is something to do about it.
+  const action = (() => {
+    if (data.reached || data.fi_date) return null;
+    if (!surplusKnown || data.months_measured < 2)
+      return 'Record a couple of months of income and spending to get a date.';
+    if (data.monthly_surplus <= 0) return 'Put something aside each month, and a date can appear here.';
+    return 'Adjust the assumptions below and see whether a date appears.';
+  })();
+
+  const projected = !data.reached && data.fi_date != null;
+  const beyond = data.liquid_net_worth - data.fi_number;
+
+  // Being past a target you picked yourself is not the same as being past one
+  // sized from your spending, and only the second one covers your life. So a
+  // custom target is never described as "what you need".
+  const gaugeCaption = !data.reached
+    ? 'of the way there'
+    : custom
+      ? 'of the target you set'
+      : 'Financially independent';
+  const gapLabel = !data.reached ? 'Still to go' : custom ? 'Past your target' : 'More than you need';
+
   return shell(
     <>
       {header}
 
+      {/* -------------------------------- verdict --------------------------- */}
+      <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-snug text-white">
+        {verdict}
+        {projected && (
+          <span className="chip bg-white/10 text-[10px] font-bold uppercase tracking-wider text-gold-200">
+            Projection
+          </span>
+        )}
+      </p>
+      {support && <p className="mt-1.5 text-sm leading-relaxed text-brand-200">{support}</p>}
+
+      {/* The dial IS this panel's one big figure — how far along you are. Every
+          other number here is a row beside it, none of them competing at its size. */}
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:gap-10">
         <div className="flex flex-col items-center">
-          <Gauge pct={data.pct} coastPct={coastPct} reached={data.reached} />
-          <div className="-mt-1 flex w-full max-w-[300px] items-start justify-between gap-4 px-1">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-200/80">Today</p>
-              <p className="num text-sm font-bold text-white">
-                {money(data.liquid_net_worth, base, { compact: true })}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-200/80">FI number</p>
-              <p className="num text-sm font-bold text-gold-200">{money(data.fi_number, base, { compact: true })}</p>
-            </div>
-          </div>
+          <Gauge pct={data.pct} coastPct={coastMark} caption={gaugeCaption} />
           {/* The tick on the arc means nothing without this line. */}
-          {coastPct != null && coastPct <= 100 && (
-            <p className="mt-4 flex items-center gap-2 text-[11px] text-brand-200">
+          {coastMark != null && (
+            <p className="mt-3 flex items-center gap-2 text-center text-[11px] text-brand-200">
               <span aria-hidden className="inline-block h-3.5 w-[2.5px] flex-none rounded bg-gold-100" />
-              Coast-FI sits at <span className="num font-semibold text-brand-100">{pctText(coastPct)}</span>
+              The mark is where you could stop adding money
             </p>
           )}
-
-          <div className="mt-5 w-full max-w-[300px] rounded-2xl bg-white/5 px-4 py-3 text-center ring-1 ring-inset ring-white/10">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-200/80">
-              {data.reached ? 'Beyond your FI number' : 'Still to go'}
-            </p>
-            <p className="num mt-1 text-xl font-bold text-white">
-              {money(
-                data.reached ? data.liquid_net_worth - data.fi_number : data.shortfall,
-                base
-              )}
-            </p>
-          </div>
         </div>
 
-        <div className="divide-y divide-white/10">
-          <Stat
-            icon={Flag}
-            tone="gold"
-            label="Your FI number"
-            value={money(data.fi_number, base)}
-            hint={targetHint}
-          />
-          <Stat
-            icon={Wallet}
-            label={data.pot_source === 'custom' ? "What you're counting" : 'Liquid net worth'}
+        <dl className="divide-y divide-white/10 border-t border-white/10 lg:self-center">
+          <Row label="Your number" tone="gold" value={money(data.fi_number, base)} />
+          <Row
+            label={data.pot_source === 'custom' ? "What you're counting" : 'What you have'}
             value={money(data.liquid_net_worth, base)}
-            hint={potHint}
           />
-          <Stat
-            icon={TrendingUp}
+          <Row label={gapLabel} value={money(data.reached ? beyond : data.shortfall, base)} />
+          <Row
+            label="Saving each month"
             // A deficit is the single most consequential fact on this panel —
             // it's why there's no date — so it doesn't get to look like a win.
             tone={surplusKnown && data.monthly_surplus < 0 ? 'warn' : 'plain'}
-            label="Monthly surplus"
             value={surplusKnown ? money(data.monthly_surplus, base) : 'Not measured yet'}
-            hint={
-              surplusKnown
-                ? `Income minus spending, averaged over ${data.months_measured} month${
-                    data.months_measured === 1 ? '' : 's'
-                  }${measured?.includes_current_month ? ', including this one, which is still in progress' : ''}.`
-                : 'Record income and expenses for a couple of months and this fills in.'
-            }
           />
-          <Stat
-            icon={CalendarClock}
-            // "Reached" is a fact about today, not a projection — no chip.
-            estimate={!data.reached && data.fi_date != null}
-            label="Projected FI date"
-            value={
-              data.reached
-                ? 'Reached'
-                : data.fi_date
-                  ? dateLabel(data.fi_date)
-                  : 'No date yet'
-            }
-            hint={
-              data.reached
-                ? reachedHint
-                : data.fi_date
-                  ? `About ${yearsText(data.years_to_fi)} away if you keep adding ${money(
-                      data.monthly_surplus,
-                      base
-                    )} a month and returns hold. An estimate, not a promise.`
-                  : data.years_reason
-            }
-          />
-          <Stat
-            icon={CheckCircle2}
-            estimate={!data.coast_reached && data.coast_fi_number != null}
-            label="Coast-FI"
-            value={data.coast_fi_number != null ? money(data.coast_fi_number, base) : '—'}
-            hint={
-              data.coast_fi_number == null
-                ? 'Not projectable at these assumptions.'
-                : data.coast_reached
-                  ? `You're past it. If you stopped adding money today, growth alone should carry you to your FI number${
-                      data.coast_horizon_assumed ? ` within ${yearsText(data.coast_horizon_years)}` : ''
-                    }.`
-                  : `Reach this and you could stop adding money — growth alone would cover the rest over ${yearsText(
-                      data.coast_horizon_years
-                    )}${data.coast_horizon_assumed ? ', an assumed horizon since no date could be projected' : ''}. ${money(
-                      Math.max(0, data.coast_fi_number - data.liquid_net_worth),
-                      base
-                    )} to go.`
-            }
-          />
-        </div>
+        </dl>
       </div>
 
-      <p className="mt-6 flex items-start gap-2 rounded-2xl bg-white/5 px-4 py-3 text-xs leading-relaxed text-brand-200 ring-1 ring-inset ring-white/10">
-        <AlertTriangle size={14} className="mt-0.5 flex-none text-gold-300" />
-        <span>
-          The date and Coast-FI figures are <strong className="font-semibold text-brand-100">projections</strong>, not
-          forecasts. They grow the pot in <strong className="font-semibold text-brand-100">real terms</strong> — a{' '}
-          <span className="num">{percent(data.assumptions?.real_return)}</span> return after{' '}
-          <span className="num">{data.assumptions?.inflation}%</span> inflation — so today&apos;s spending stays
-          comparable with tomorrow&apos;s pot. Change any assumption below and every figure here moves with it.
-        </span>
-      </p>
+      {action && <p className="mt-5 text-sm text-brand-100">{action}</p>}
+
+      {/* -------------------------------- working --------------------------- */}
+      <Working>
+        <div>
+          <p className="font-semibold text-brand-100">
+            Your number — <span className="num">{money(data.fi_number, base)}</span>
+          </p>
+          <p className="mt-1">{targetHint}</p>
+        </div>
+
+        <div>
+          <p className="font-semibold text-brand-100">
+            What&apos;s counted — <span className="num">{money(data.liquid_net_worth, base)}</span>
+          </p>
+          <p className="mt-1">{potHint}</p>
+        </div>
+
+        <div>
+          <p className="font-semibold text-brand-100">The date</p>
+          <p className="mt-1">
+            {data.reached
+              ? reachedHint
+              : data.fi_date
+                ? `About ${yearsText(data.years_to_fi)} away if you keep adding ${money(
+                    data.monthly_surplus,
+                    base
+                  )} a month and returns hold. An estimate, not a promise.`
+                : data.years_reason}
+          </p>
+          <p className="mt-1">
+            {surplusKnown
+              ? `What you save each month is your income minus your spending, averaged over ${
+                  data.months_measured
+                } month${data.months_measured === 1 ? '' : 's'}${
+                  measured?.includes_current_month ? ', including this one, which is still in progress' : ''
+                }.`
+              : 'Record income and expenses for a couple of months and the monthly figure fills in.'}
+          </p>
+        </div>
+
+        <div>
+          <p className="font-semibold text-brand-100">
+            Coast-FI — {data.coast_fi_number != null ? <span className="num">{money(data.coast_fi_number, base)}</span> : '—'}
+          </p>
+          <p className="mt-1">
+            {data.coast_fi_number == null
+              ? 'Not projectable at these assumptions.'
+              : data.coast_reached
+                ? `You're past it. If you stopped adding money today, growth alone should carry you to your number${
+                    data.coast_horizon_assumed ? ` within ${yearsText(data.coast_horizon_years)}` : ''
+                  }.`
+                : `Reach this and you could stop adding money — growth alone would cover the rest over ${yearsText(
+                    data.coast_horizon_years
+                  )}${data.coast_horizon_assumed ? ', an assumed horizon since no date could be projected' : ''}. ${money(
+                    Math.max(0, data.coast_fi_number - data.liquid_net_worth),
+                    base
+                  )} to go.`}
+            {coastMark != null && (
+              <> It is the champagne mark on the dial, at <span className="num">{pctText(coastMark)}</span>.</>
+            )}
+          </p>
+        </div>
+
+        <div>
+          <p className="font-semibold text-brand-100">Projections, not forecasts</p>
+          <p className="mt-1">
+            The date and the Coast-FI figure grow the pot in real terms — a{' '}
+            <span className="num">{percent(data.assumptions?.real_return)}</span> return after{' '}
+            <span className="num">{data.assumptions?.inflation}%</span> inflation — so today&apos;s spending stays
+            comparable with tomorrow&apos;s pot. Change any assumption below and every figure here moves with it.
+          </p>
+        </div>
+      </Working>
 
       <Assumptions
         open={open}

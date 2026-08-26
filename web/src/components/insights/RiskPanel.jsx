@@ -1,15 +1,18 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { CircleCheck, Coins, Gauge, Globe, Layers } from 'lucide-react';
+import { Gauge } from 'lucide-react';
 import { money } from '../../lib/format.js';
-import { Counter, Spotlight } from '../fx.jsx';
+import { Spotlight } from '../fx.jsx';
+import Details from './Details.jsx';
 
 /* Concentration & exposure.
 
-   The brief for this panel is a calm advisor, not a security scanner: a normal
-   portfolio must never light up red. So the strongest finding gets champagne,
-   not rose; severity is carried by a dot and a quiet word rather than by alarm
-   colour; and when there is nothing to say, the panel says so warmly and shows
-   the numbers that earned that verdict. */
+   Plain first. The reader wants one thing from this panel — "is any of this too
+   big?" — and they should get it in a sentence and a number, before anything
+   else asks for their attention. The score, the ratio behind it, and the splits
+   by currency and market are all real and all stay, one click down.
+
+   A normal portfolio must never light up red: severity is carried by a quiet
+   dot and a plain sentence, never by alarm colour. */
 
 const EASE = [0.16, 1, 0.3, 1];
 
@@ -25,11 +28,7 @@ const TONES = [
   'bg-slate-400',
 ];
 
-const FLAG = {
-  high: { box: 'border-gold-200 bg-gold-50', dot: 'bg-gold-500', word: 'Worth acting on' },
-  medium: { box: 'border-slate-200 bg-slate-50', dot: 'bg-brand-400', word: 'Worth knowing' },
-  low: { box: 'border-slate-100', dot: 'bg-slate-300', word: 'For context' },
-};
+const DOT = { high: 'bg-gold-500', medium: 'bg-brand-400', low: 'bg-slate-300' };
 
 function Bar({ pct, tone = 'bg-brand-500 dark:bg-brand-300', delay = 0 }) {
   const reduced = useReducedMotion();
@@ -82,16 +81,11 @@ function Split({ rows, labelOf, keyOf }) {
 function Shell({ children }) {
   return (
     <Spotlight className="card h-full p-5 sm:p-6">
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
           <Gauge size={18} strokeWidth={1.8} aria-hidden="true" />
         </span>
-        <div className="min-w-0">
-          <h2 className="font-display text-lg font-bold tracking-tight text-slate-900">Concentration</h2>
-          <p className="mt-0.5 text-sm text-slate-400">
-            The quiet risks: one position too large, one currency, one market.
-          </p>
-        </div>
+        <h2 className="font-display text-lg font-bold tracking-tight text-slate-900">Concentration</h2>
       </div>
       {children}
     </Spotlight>
@@ -99,7 +93,6 @@ function Shell({ children }) {
 }
 
 export default function RiskPanel({ data, base = 'INR' }) {
-  const reduced = useReducedMotion();
   if (!data) return null;
 
   if (data.error) {
@@ -132,8 +125,7 @@ export default function RiskPanel({ data, base = 'INR' }) {
   if (!measurable) {
     return (
       <Shell>
-        <div className="rule-fade my-5" />
-        <p className="text-sm leading-relaxed text-slate-500">{scoreNote}</p>
+        <p className="mt-5 text-sm leading-relaxed text-slate-500">{scoreNote}</p>
         {top.length === 1 && (
           <p className="mt-3 text-sm text-slate-500">
             <span className="font-medium text-slate-700">{top[0].name}</span> —{' '}
@@ -152,175 +144,155 @@ export default function RiskPanel({ data, base = 'INR' }) {
   const largest = top[0];
   const meter = Math.max(0, Math.min(100, (score / 10) * 100));
 
+  // The verdict, from the loudest finding. A flag about the biggest holding says
+  // its name and its share — which is exactly what the number below already
+  // says — so those become a judgement instead, and everything else keeps the
+  // flag's own words. Nothing here is a slogan: each line is only reachable on
+  // the data that earns it.
+  const loud = flags.find((f) => f.level === 'high') || flags.find((f) => f.level === 'medium') || null;
+  const verdict = !loud
+    ? 'Nothing here is too big.'
+    : loud.kind === 'size'
+      ? loud.level === 'high'
+        ? "That's a lot riding on one holding."
+        : 'One holding is on the large side.'
+      : loud.kind === 'top3'
+        ? 'Your three biggest holdings carry most of this.'
+        : loud.title;
+  const quiet = flags.filter((f) => f !== loud);
+
+  // As-if-equal holdings: 26 positions of different sizes behave like this many
+  // of the same size. Said in words, in the drawer, never as "Herfindahl".
+  const effective = hhi > 0 ? 1 / hhi : null;
+
   return (
     <Shell>
-      {/* -------------------------------- score ------------------------------ */}
-      <div className="mt-6">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="flex items-baseline gap-1">
-              <Counter
-                value={score}
-                format={(v) => v.toFixed(1)}
-                className="num text-4xl font-bold leading-none tracking-tight text-slate-900"
-              />
-              <span className="num text-base font-semibold text-slate-300">/10</span>
-            </div>
-            <p className="font-display mt-1.5 text-base font-bold tracking-tight text-slate-800">
-              {scoreLabel}
-            </p>
-          </div>
-          <span className="chip shrink-0 bg-gold-50 text-gold-700 ring-1 ring-gold-200">
-            A guide, not a measurement
-          </span>
-        </div>
+      {/* -------------------------------- verdict ---------------------------- */}
+      <p className="mt-4 text-[15px] font-semibold leading-snug text-slate-800">{verdict}</p>
+      {loud && <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{loud.detail}</p>}
 
-        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-brand-400 to-gold-400 dark:from-brand-300 dark:to-gold-300"
-            initial={reduced ? false : { width: 0 }}
-            animate={{ width: `${meter}%` }}
-            transition={{ duration: 0.45, ease: EASE }}
-            role="img"
-            aria-label={`Concentration ${score.toFixed(1)} out of 10 — ${scoreLabel}`}
-          />
-        </div>
-        <div className="mt-1.5 flex justify-between text-[11px] font-medium uppercase tracking-wide text-slate-500">
-          <span>Spread out</span>
-          <span>Concentrated</span>
-        </div>
-
-        <p className="mt-3 text-sm leading-relaxed text-slate-500">{scoreNote}</p>
-        <p className="mt-2 text-xs leading-relaxed text-slate-500">
-          It blends two things: how evenly your money is spread across positions — the standard
-          Herfindahl measure, <span className="num">{hhi.toFixed(3)}</span> here, where 1 would be
-          everything in one holding — and how big your single largest position is.
+      {/* ------------------------------ the number --------------------------- */}
+      <div className="mt-5">
+        <p className="num text-4xl font-bold leading-none tracking-tight text-slate-900">
+          {pct1(largest?.pct_of_investments)}
+        </p>
+        <p className="mt-1.5 text-sm text-slate-500">
+          is your biggest holding — <span className="text-slate-700">{largest?.name}</span>
         </p>
       </div>
 
-      <div className="rule-fade my-5" />
+      {/* --------------------------- largest positions ----------------------- */}
+      <ul className="mt-5 space-y-3">
+        {top.map((h, i) => (
+          <li key={`${h.name}-${i}`}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="truncate text-sm text-slate-700" title={h.name}>
+                {h.name}
+              </span>
+              <span className="num shrink-0 text-sm font-semibold text-slate-900">
+                {pct1(h.pct_of_investments)}
+              </span>
+            </div>
+            <div className="mt-1.5">
+              <Bar
+                pct={h.pct_of_investments}
+                tone={i === 0 ? 'bg-brand-600 dark:bg-brand-300' : 'bg-brand-300 dark:bg-brand-400'}
+                delay={0.04 * i}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-slate-500">
+        {positions} positions · <span className="num">{money(total, base, { compact: true })}</span> invested
+      </p>
 
-      {/* ---------------------------- largest positions ---------------------- */}
-      <div>
-        <div className="flex items-baseline justify-between gap-3">
-          <h3 className="label mb-0 flex items-center gap-1.5">
-            <Layers size={13} strokeWidth={2} aria-hidden="true" /> Largest positions
-          </h3>
-          <span className="text-xs text-slate-500">
-            of <span className="num">{money(total, base, { compact: true })}</span> invested
-          </span>
+      {/* -------------------------------- working ---------------------------- */}
+      <Details>
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-semibold text-slate-700">
+              Concentration score <span className="num">{score.toFixed(1)}</span>/10 — {scoreLabel}
+            </span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-brand-400 to-gold-400 dark:from-brand-300 dark:to-gold-300"
+              style={{ width: `${meter}%` }}
+              role="img"
+              aria-label={`Concentration ${score.toFixed(1)} out of 10 — ${scoreLabel}`}
+            />
+          </div>
+          <div className="mt-1.5 flex justify-between text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            <span>Spread out</span>
+            <span>Concentrated</span>
+          </div>
+          <p className="mt-2">
+            A guide, not a measurement. It weighs how evenly your money is spread against how big
+            the single largest position is.
+            {effective != null && (
+              <>
+                {' '}Your {positions} holdings are different sizes, so they behave like about{' '}
+                <span className="num font-semibold text-slate-600">{effective.toFixed(0)}</span>{' '}
+                equal ones.
+              </>
+            )}
+          </p>
         </div>
 
-        <ul className="mt-3 space-y-3">
-          {top.map((h, i) => (
-            <li key={`${h.name}-${i}`}>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate text-sm font-medium text-slate-700" title={h.name}>
-                  {h.name}
-                </span>
-                <span className="num shrink-0 text-sm font-semibold text-slate-900">
-                  {pct1(h.pct_of_investments)}
-                </span>
-              </div>
-              <div className="mt-1.5">
-                <Bar
-                  pct={h.pct_of_investments}
-                  tone={i === 0 ? 'bg-brand-600 dark:bg-brand-300' : 'bg-brand-300 dark:bg-brand-400'}
-                  delay={0.04 * i}
-                />
-              </div>
-              <div className="mt-1 flex items-baseline justify-between gap-3 text-xs text-slate-500">
-                <span className="num">{money(h.value, base, { compact: true })}</span>
-                {h.lots > 1 && <span>{h.lots} lots combined</span>}
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          Top three: <span className="num font-semibold text-slate-600">{pct1(top3)}</span> of
-          investments.
+        <p>
+          Your top three are <span className="num font-semibold text-slate-600">{pct1(top3)}</span> of
+          your investments
           {largest?.pct_of_net_worth != null ? (
             <>
-              {' '}Your largest is{' '}
+              , and your largest is{' '}
               <span className="num font-semibold text-slate-600">{pct1(largest.pct_of_net_worth)}</span>{' '}
               of everything you own.
             </>
           ) : (
-            <> Net worth isn&apos;t positive right now, so we can&apos;t place these against it.</>
+            <>. Net worth isn&apos;t positive right now, so we can&apos;t place these against it.</>
           )}
         </p>
-      </div>
 
-      <div className="rule-fade my-5" />
-
-      {/* --------------------------------- splits ---------------------------- */}
-      <div className="space-y-5">
         <div>
-          <div className="flex items-baseline justify-between gap-3">
-            <h3 className="label mb-0 flex items-center gap-1.5">
-              <Coins size={13} strokeWidth={2} aria-hidden="true" /> By currency
-            </h3>
-            <span className="text-xs text-slate-500">investments only</span>
-          </div>
-          <div className="mt-2.5">
+          <p className="font-semibold text-slate-700">By currency</p>
+          <div className="mt-2">
             <Split rows={byCurrency} keyOf={(r) => r.currency} labelOf={(r) => r.currency} />
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Cash and other assets aren&apos;t included here — we hold those already converted to{' '}
-            {base}, without the currency they sit in.
+          <p className="mt-2">
+            Investments only. Cash and other assets are held already converted to {base}, without
+            the currency they sit in.
           </p>
         </div>
 
         {byKind.length > 0 && (
           <div>
-            <h3 className="label mb-0 flex items-center gap-1.5">
-              <Globe size={13} strokeWidth={2} aria-hidden="true" /> By market
-            </h3>
-            <div className="mt-2.5">
+            <p className="font-semibold text-slate-700">By market</p>
+            <div className="mt-2">
               <Split rows={byKind} keyOf={(r) => r.kind} labelOf={(r) => r.label} />
             </div>
           </div>
         )}
-      </div>
 
-      <div className="rule-fade my-5" />
-
-      {/* --------------------------------- flags ----------------------------- */}
-      {flags.length > 0 ? (
-        <ul className="space-y-2.5">
-          {flags.map((f, i) => {
-            const s = FLAG[f.level] || FLAG.low;
-            return (
-              <li key={`${f.level}-${i}`} className={`rounded-xl border px-3.5 py-3 ${s.box}`}>
-                <div className="flex items-start gap-2.5">
-                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${s.dot}`} aria-hidden="true" />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <p className="text-sm font-semibold text-slate-800">{f.title}</p>
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        {s.word}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-500">{f.detail}</p>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3">
-          <CircleCheck size={16} className="mt-0.5 shrink-0 text-emerald-700" aria-hidden="true" />
-          <p className="text-sm leading-relaxed text-emerald-700">
-            Nothing stands out. Your largest position is{' '}
-            <span className="num font-semibold">{pct1(largest?.pct_of_investments)}</span> of your
-            investments, spread over <span className="num font-semibold">{positions}</span> positions
-            in <span className="num font-semibold">{byCurrency.length}</span>{' '}
-            {byCurrency.length === 1 ? 'currency' : 'currencies'}.
-          </p>
-        </div>
-      )}
+        {quiet.length > 0 && (
+          <div>
+            <p className="font-semibold text-slate-700">Also worth knowing</p>
+            <ul className="mt-2 space-y-2">
+              {quiet.map((f, i) => (
+                <li key={`${f.level}-${i}`} className="flex items-start gap-2">
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${DOT[f.level] || DOT.low}`}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    <span className="text-slate-600">{f.title}.</span> {f.detail}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Details>
     </Shell>
   );
 }
