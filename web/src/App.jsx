@@ -15,6 +15,7 @@ const Calculators = lazy(() => import('./pages/Calculators.jsx'));
 const Investments = lazy(() => import('./pages/Investments.jsx'));
 const Goals = lazy(() => import('./pages/Goals.jsx'));
 const Returns = lazy(() => import('./pages/Returns.jsx'));
+const Insights = lazy(() => import('./pages/Insights.jsx'));
 const Cash = lazy(() => import('./pages/Cash.jsx'));
 const Assets = lazy(() => import('./pages/Assets.jsx'));
 const Transactions = lazy(() => import('./pages/Transactions.jsx'));
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/investments" element={<Investments />} />
         <Route path="/goals" element={<Goals />} />
         <Route path="/returns" element={<Returns />} />
+        <Route path="/insights" element={<Insights />} />
         <Route path="/cash" element={<Cash />} />
         <Route path="/assets" element={<Assets />} />
         <Route path="/transactions" element={<Transactions />} />

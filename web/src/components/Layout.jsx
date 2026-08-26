@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { MotionConfig, motion, useReducedMotion } from 'framer-motion';
-import { ArrowLeftRight, Building2, LayoutDashboard, LogOut, Menu, Receipt, Settings, Shield, Sprout, Target, TrendingUp, Wallet, X, Search as SearchIcon } from 'lucide-react';
+import { ArrowLeftRight, Building2, Compass, LayoutDashboard, LogOut, Menu, Receipt, Settings, Shield, Sprout, Target, TrendingUp, Wallet, X, Search as SearchIcon } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import CurrencyMenu from './CurrencyMenu.jsx';
 import SupportChat from './SupportChat.jsx';
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/investments', label: 'Investments', icon: TrendingUp },
   { to: '/goals', label: 'Goals', icon: Target },
   { to: '/returns', label: 'Returns & tax', icon: Receipt },
+  { to: '/insights', label: 'Insights', icon: Compass },
   { to: '/cash', label: 'Cash & Bank', icon: Wallet },
   { to: '/assets', label: 'Assets', icon: Building2 },
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
@@ -26,6 +27,7 @@ const PAGE_TITLES = {
   '/investments': 'Investments',
   '/goals': 'Goals',
   '/returns': 'Returns & tax',
+  '/insights': 'Insights',
   '/cash': 'Cash & Bank',
   '/assets': 'Assets',
   '/transactions': 'Transactions',
