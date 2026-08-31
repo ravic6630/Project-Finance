@@ -27,13 +27,62 @@ export function priceKeyFor(holding) {
 }
 
 // ---- Upstream fetchers ----------------------------------------------------
+// Newest daily bar carrying a real close. Yahoo pads the series with nulls for
+// holidays, halts and the not-yet-traded part of today, so this walks backwards
+// rather than trusting the last element.
+function latestBar(result) {
+  const times = Array.isArray(result?.timestamp) ? result.timestamp : [];
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(closes)) return null;
+  for (let i = closes.length - 1; i >= 0; i -= 1) {
+    const close = Number(closes[i]);
+    const time = Number(times[i]);
+    if (Number.isFinite(close) && close > 0 && Number.isFinite(time)) return { close, time };
+  }
+  return null;
+}
+
+// Pick the price out of one Yahoo chart result.
+//
+// Yahoo classifies Indian REITs and InvITs as MUTUALFUND, and its realtime quote
+// pipeline stopped updating that whole class in July 2024. MINDSPACE.NS still
+// answers regularMarketPrice 345.06 stamped 2024-07-23 while its daily bars run
+// to today at ~492 — and EMBASSY, BIRET and INDIGRID are frozen the same day.
+// Taking the quote at face value understates those holdings by 15-30% and turns
+// a real gain into a reported loss.
+//
+// The bars stay correct, so the quote is used only when it is at least as fresh
+// as the newest bar. During a live session, after a close, and over a weekend it
+// always is — so nothing changes for an ordinary stock. When the quote is older
+// than the bar it is stale by definition, and the bar wins.
+export function pickPrice(result) {
+  const bar = latestBar(result);
+  const quote = Number(result?.meta?.regularMarketPrice);
+  const quoteTime = Number(result?.meta?.regularMarketTime);
+  const quoteUsable = Number.isFinite(quote) && quote > 0;
+  // No bar to compare against, or no timestamp to compare with: nothing has been
+  // shown to be wrong with the quote, so it stands.
+  const quoteIsCurrent = !bar || !Number.isFinite(quoteTime) || quoteTime >= bar.time;
+
+  if (quoteUsable && quoteIsCurrent) return { price: quote, source: 'yahoo' };
+  // Recorded as a distinct source so a stale-quote instrument is identifiable in
+  // the price cache without having to re-derive this from the feed.
+  if (bar) return { price: bar.close, source: 'yahoo-close' };
+  if (quoteUsable) return { price: quote, source: 'yahoo' };
+  return { price: null, source: 'yahoo' };
+}
+
 async function fetchStock(symbol) {
+  // 5 days of daily bars rather than 1: the realtime quote is still the primary
+  // source, but it needs something to be checked against.
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol
-  )}?interval=1d&range=1d`;
+  )}?interval=1d&range=5d`;
   const json = await fetchJson(url, { 'User-Agent': 'Mozilla/5.0' });
-  const meta = json?.chart?.result?.[0]?.meta;
-  let price = meta?.regularMarketPrice;
+  const result = json?.chart?.result?.[0];
+  const meta = result?.meta;
+
+  let { price, source } = pickPrice(result);
   if (!Number.isFinite(price)) throw new Error('No price in Yahoo response');
   // LSE and some other exchanges quote in pence (GBp / GBX) — normalise to the
   // major unit so currency formatting isn't 100x off.
@@ -51,7 +100,7 @@ async function fetchStock(symbol) {
   // with a comma so the importer can fall back to a tidied statement name.
   const candidate = meta.longName || meta.shortName || symbol;
   const name = /,/.test(candidate) ? symbol : candidate;
-  return { price, currency, name, source: 'yahoo' };
+  return { price, currency, name, source };
 }
 
 async function fetchMfNav(schemeCode) {
