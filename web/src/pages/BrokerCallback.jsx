@@ -52,7 +52,14 @@ export default function BrokerCallback() {
             </button>
           </div>
         ) : data ? (
+          // `sync` matters here: this IS a broker sync, just one that came in
+          // through a fresh login rather than the saved token. Without it the
+          // reconnect path imports but never prunes, so a position sold since
+          // the last import survives a reconnect — while "Sync now" removes it.
+          // Same source label and same full-snapshot payload as that path, so
+          // the prune is scoped identically.
           <ImportReview
+            sync
             data={data}
             source={`Imported from ${data.broker_label}`}
             onClose={() => navigate('/investments')}
