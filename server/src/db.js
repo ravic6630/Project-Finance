@@ -399,6 +399,8 @@ export async function initDb() {
   // everything except ASSETS.
   await addColumn('insight_prefs', 'fi_target', 'REAL');
   await addColumn('insight_prefs', 'fi_buckets', 'TEXT');
+  // How many years of living the FI target has to cover. NULL keeps the default.
+  await addColumn('insight_prefs', 'fi_years', 'REAL');
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;

@@ -8,7 +8,11 @@
 //   top3_pct: number,
 //   hhi: number,                  // Herfindahl index, 0..1
 //   by_currency: [{ currency, value, pct }],
-//   by_kind: [{ kind, label, value, pct }],
+//   by_kind: [{ kind, label, value, pct }],          // % of investments
+//   allocation: [{ bucket, label, value, pct }],     // % of NET WORTH, and the
+//                                                   // only figure here that
+//                                                   // counts cash and property
+//   net_worth: number,
 //   flags: [{ level: 'high'|'medium'|'low', title, detail }]
 // }
 //
@@ -59,6 +63,21 @@ export async function buildRisk(user, { summary } = {}) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
   const netWorth = Number.isFinite(summary?.net_worth) ? summary.net_worth : 0;
 
+  // Asset allocation across EVERYTHING owned — investments, cash and property —
+  // as a share of net worth. This is a wider scope than the concentration maths
+  // below, which is investments-only (see SCOPE above): the split answers "what
+  // is my money in", and cash and a house are unarguably part of that answer
+  // even though neither carries the single-holding risk the score measures.
+  const allocation = (Array.isArray(summary?.allocation) ? summary.allocation : [])
+    .map((a) => ({
+      bucket: String(a?.key || '').trim().toUpperCase(),
+      label: a?.label || a?.key || 'Other',
+      value: Number(a?.value) || 0,
+      pct: netWorth > 0 ? round(((Number(a?.value) || 0) / netWorth) * 100) : 0,
+    }))
+    .filter((a) => a.bucket && a.value > 0)
+    .sort((a, b) => b.value - a.value);
+
   const empty = {
     score: 0,
     top_holdings: [],
@@ -66,6 +85,8 @@ export async function buildRisk(user, { summary } = {}) {
     hhi: 0,
     by_currency: [],
     by_kind: [],
+    allocation,
+    net_worth: netWorth,
     flags: [],
     investments_total: 0,
     holdings_count: items.length,
@@ -183,6 +204,8 @@ export async function buildRisk(user, { summary } = {}) {
     hhi: round(hhi, 4),
     by_currency: byCurrency,
     by_kind: byKind,
+    allocation,
+    net_worth: netWorth,
     investments_total: total,
     holdings_count: items.length,
     positions_count: list.length,

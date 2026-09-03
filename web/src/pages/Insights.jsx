@@ -6,8 +6,6 @@ import { ErrorBanner } from '../components/ui.jsx';
 import { CardSkeleton, Reveal, Shimmer } from '../components/fx.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import FiPanel from '../components/insights/FiPanel.jsx';
-import AllocationPanel from '../components/insights/AllocationPanel.jsx';
-import DividendsPanel from '../components/insights/DividendsPanel.jsx';
 import RiskPanel from '../components/insights/RiskPanel.jsx';
 
 function InsightsSkeleton() {
@@ -90,7 +88,7 @@ export default function Insights() {
           Insights
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Four readings of the same portfolio.
+          Two readings of the same portfolio: where it&apos;s taking you, and where it&apos;s exposed.
         </p>
         <div className="rule-fade mt-5" />
       </div>
@@ -101,17 +99,8 @@ export default function Insights() {
         <FiPanel data={data?.fi} base={data?.base_currency || base} prefs={data?.prefs} onSaved={load} />
       </Reveal>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Reveal delay={0.05}>
-          <AllocationPanel data={data?.allocation} base={data?.base_currency || base} onSaved={load} />
-        </Reveal>
-        <Reveal delay={0.1}>
-          <RiskPanel data={data?.risk} base={data?.base_currency || base} />
-        </Reveal>
-      </div>
-
       <Reveal delay={0.05}>
-        <DividendsPanel data={data?.dividends} base={data?.base_currency || base} />
+        <RiskPanel data={data?.risk} base={data?.base_currency || base} />
       </Reveal>
     </div>
   );

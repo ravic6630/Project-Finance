@@ -91,21 +91,35 @@ await db.prepare("INSERT INTO assets (user_id,name,type,value,currency,created_a
 
 const r1 = await http('/insights', { token: U.token });
 ok(r1.status === 200, 'GET /insights (premium)', JSON.stringify(r1.body).slice(0, 160));
-const { fi, allocation, dividends, risk } = r1.body;
+const { fi, risk } = r1.body;
 
 /* -------------------------------- FI maths -------------------------------- */
-// spend 40,000 x 12 = 4,80,000 ; at 4% withdrawal the target is 25x = 1,20,00,000
+// Spend 40,000/mo = 4,80,000 a year. The target is what 30 years of that costs
+// with each year grown at 6% inflation:
+//   480000 x ((1.06^30 - 1) / 0.06) = 480000 x 79.058183 = 3,79,47,928
+// Hand-checked: 1.06^30 = 5.743491, so the series factor is 4.743491/0.06.
+const FI_30Y = 480000 * ((1.06 ** 30 - 1) / 0.06);
+ok(near(FI_30Y, 37947928, 5), 'the expected figure itself is 3,79,47,928', String(FI_30Y));
 ok(fi?.ready === true, 'FI: ready with 6 months of data', JSON.stringify(fi?.reason));
 ok(near(fi?.annual_spend, 480000, 1), 'FI: annual spend = 4,80,000 (measured)', String(fi?.annual_spend));
+ok(near(fi?.monthly_spend, 40000, 1), 'FI: monthly spend = 40,000', String(fi?.monthly_spend));
 ok(fi?.spend_source === 'measured', 'FI: spend is measured, not assumed');
-ok(near(fi?.fi_number, 12000000, 1), 'FI: FI number = 1,20,00,000 (25x)', String(fi?.fi_number));
+ok(fi?.fi_years === 30, 'FI: 30 years is the default horizon', String(fi?.fi_years));
+ok(near(fi?.fi_number, FI_30Y, 5), 'FI: number = 30 years of spending, inflation-grown', String(fi?.fi_number));
+// The flat multiple and what inflation adds on top must be shown, not implied.
+ok(near(fi?.flat_total, 14400000, 1), 'FI: flat total = 4,80,000 x 30 = 1,44,00,000', String(fi?.flat_total));
+ok(near(fi?.inflation_uplift, FI_30Y - 14400000, 5), 'FI: uplift = target - flat total', String(fi?.inflation_uplift));
+ok(fi?.inflation_uplift > fi?.flat_total, 'FI: over 30 years inflation adds more than the flat total', String(fi?.inflation_uplift));
+// The inverse must land exactly back on the spending that produced it.
+ok(near(fi?.implied_annual_spend, 480000, 1), 'FI: implied spend inverts to 4,80,000 exactly', String(fi?.implied_annual_spend));
 // liquid EXCLUDES the 50L house: 12,00,000 investments + 5,00,000 cash
 ok(near(fi?.liquid_net_worth, 1700000, 1), 'FI: liquid excludes property (17,00,000)', String(fi?.liquid_net_worth));
-ok(near(fi?.pct, (1700000 / 12000000) * 100, 0.05), 'FI: pct = 14.17%', String(fi?.pct));
+ok(near(fi?.pct, (1700000 / FI_30Y) * 100, 0.05), 'FI: pct measured against the 30-year target', String(fi?.pct));
 ok(near(fi?.monthly_surplus, 60000, 1), 'FI: monthly surplus = 60,000', String(fi?.monthly_surplus));
 // real return from 10% nominal and 6% inflation = 3.7736%
 ok(near(fi?.assumptions?.real_return, 3.7736, 0.01), 'FI: real return = 3.77% (not nominal 10%)', String(fi?.assumptions?.real_return));
-ok(fi?.years_to_fi > 8 && fi?.years_to_fi < 14, 'FI: ~11 years to FI at this surplus', String(fi?.years_to_fi));
+ok(fi?.assumptions?.years === 30, 'FI: the horizon is reported as an assumption', String(fi?.assumptions?.years));
+ok(fi?.years_to_fi > 20 && fi?.years_to_fi < 35, 'FI: ~27 years to FI at this surplus', String(fi?.years_to_fi));
 ok(typeof fi?.fi_date === 'string' && !Number.isNaN(Date.parse(fi.fi_date)), 'FI: projected date is a real date', String(fi?.fi_date));
 ok(finite(fi?.coast_fi_number), 'FI: coast number is finite', String(fi?.coast_fi_number));
 
@@ -120,14 +134,29 @@ ok(r2.body?.fi?.years_to_fi < before, 'FI: more surplus => sooner FI', `${before
 await db.prepare("DELETE FROM transactions WHERE user_id = ? AND category = 'Bonus'").run(U.id);
 
 /* --------------------------- FI assumption override ----------------------- */
-const setPrefs = await http('/insights/prefs', { method: 'PUT', token: U.token, body: { annual_spend: 600000, withdrawal_rate: 3 } });
+const setPrefs = await http('/insights/prefs', { method: 'PUT', token: U.token, body: { annual_spend: 600000 } });
 ok(setPrefs.status === 200 && setPrefs.body.prefs.annual_spend === 600000, 'prefs: spend override saved');
 const r3 = await http('/insights', { token: U.token });
-// 6,00,000 / 3% = 2,00,00,000
-ok(near(r3.body?.fi?.fi_number, 20000000, 1), 'FI: override + 3% rule => 2,00,00,000', String(r3.body?.fi?.fi_number));
+// A spend override feeds the same 30-year series: 600000 x 79.058183.
+ok(near(r3.body?.fi?.fi_number, 600000 * ((1.06 ** 30 - 1) / 0.06), 5),
+   'FI: a spend override resizes the 30-year target', String(r3.body?.fi?.fi_number));
 ok(r3.body?.fi?.spend_source === 'override', 'FI: labelled as an override');
 ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { withdrawal_rate: 99 } })).status === 400, 'prefs: absurd withdrawal rate rejected');
-await http('/insights/prefs', { method: 'PUT', token: U.token, body: { annual_spend: null, withdrawal_rate: 4 } });
+await http('/insights/prefs', { method: 'PUT', token: U.token, body: { annual_spend: null } });
+
+/* ------------------------------ FI: the horizon --------------------------- */
+// Fewer years is a smaller target, and the arithmetic must follow the same
+// series — not a flat multiple.
+await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_years: 20 } });
+const h1 = (await http('/insights', { token: U.token })).body?.fi;
+const FI_20Y = 480000 * ((1.06 ** 20 - 1) / 0.06);
+ok(near(h1?.fi_number, FI_20Y, 5), 'FI: 20 years => 1,76,57,081', String(h1?.fi_number));
+ok(h1?.fi_number < FI_30Y, 'FI: a shorter horizon is a smaller target');
+ok(near(h1?.flat_total, 9600000, 1), 'FI: flat total follows the horizon too', String(h1?.flat_total));
+ok(near(h1?.implied_annual_spend, 480000, 1), 'FI: the inverse still lands on 4,80,000', String(h1?.implied_annual_spend));
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_years: 0 } })).status === 400, 'prefs: a zero-year horizon is rejected');
+ok((await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_years: 500 } })).status === 400, 'prefs: an absurd horizon is rejected');
+await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_years: 30 } });
 
 /* --------------------------- FI: a target set directly -------------------- */
 // The account is unchanged: 12,00,000 of IN_STOCK, 5,00,000 cash, a 50,00,000
@@ -137,8 +166,10 @@ ok(setTarget.status === 200 && setTarget.body.prefs.fi_target === 5000000, 'pref
 const t1 = (await http('/insights', { token: U.token })).body?.fi;
 ok(near(t1?.fi_number, 5000000, 1), 'FI: target of 50,00,000 overrides the 25x figure', String(t1?.fi_number));
 ok(t1?.target_source === 'custom', 'FI: target labelled as the user\'s own');
-// 50,00,000 x 4% = 2,00,000 a year — the sanity check on a round number.
-ok(near(t1?.implied_annual_spend, 200000, 1), 'FI: custom target funds 2,00,000/yr at 4%', String(t1?.implied_annual_spend));
+// Spread over 30 inflation-grown years, 50,00,000 funds 5000000/79.058183 =
+// 63,244.63 a year — the sanity check that stops a round number flattering itself.
+ok(near(t1?.implied_annual_spend, 5000000 / ((1.06 ** 30 - 1) / 0.06), 1),
+   'FI: custom target funds 63,245/yr across 30 years', String(t1?.implied_annual_spend));
 // 17,00,000 / 50,00,000 = 34%
 ok(near(t1?.pct, 34, 0.05), 'FI: progress measured against the set target (34%)', String(t1?.pct));
 ok(near(t1?.shortfall, 3300000, 1), 'FI: shortfall = 33,00,000', String(t1?.shortfall));
@@ -182,7 +213,7 @@ ok(near((await http('/insights', { token: U.token })).body?.fi?.liquid_net_worth
 const cleared = await http('/insights/prefs', { method: 'PUT', token: U.token, body: { fi_target: null, fi_buckets: null } });
 ok(cleared.status === 200 && cleared.body.prefs.fi_target === null && cleared.body.prefs.fi_buckets === null, 'prefs: overrides cleared');
 const t4 = (await http('/insights', { token: U.token })).body?.fi;
-ok(near(t4?.fi_number, 12000000, 1), 'FI: back to the 25x figure', String(t4?.fi_number));
+ok(near(t4?.fi_number, FI_30Y, 5), 'FI: back to the 30-year figure', String(t4?.fi_number));
 ok(t4?.target_source === 'spending' && t4?.pot_source === 'default', 'FI: both back to the honest defaults');
 ok(near(t4?.liquid_net_worth, 1700000, 1), 'FI: pot back to investments + cash', String(t4?.liquid_net_worth));
 
@@ -254,30 +285,6 @@ ok(near(v1?.pct, 25, 0.05), 'FI: 2,50,000 / 10,00,000 = 25%', String(v1?.pct));
 ok(v1?.years_to_fi === null && typeof v1?.years_reason === 'string', 'FI: still no date without a measured surplus');
 ok(finite(v1?.coast_fi_number) && finite(v1?.pct) && finite(v1?.shortfall), 'FI: no NaN anywhere in the target-only payload');
 
-/* ---------------------------- allocation maths ---------------------------- */
-ok(allocation?.has_targets === false, 'allocation: no targets yet => honest empty state');
-ok((await http('/insights/targets', { method: 'PUT', token: U.token, body: { targets: [{ bucket: 'IN_STOCK', target_pct: 60 }, { bucket: 'CASH', target_pct: 30 }] } })).status === 400,
-   'targets: must total 100%');
-const tset = await http('/insights/targets', { method: 'PUT', token: U.token, body: { targets: [{ bucket: 'IN_STOCK', target_pct: 60 }, { bucket: 'CASH', target_pct: 40 }] } });
-ok(tset.status === 200, 'targets: 60/40 saved');
-const r4 = await http('/insights', { token: U.token });
-const alloc = r4.body.allocation;
-// Excluding the house is NOT this tracker's job — the mix is over what the user
-// targeted. Assert against whatever total it reports, but pin the derived maths.
-const stock = (alloc?.rows || []).find((x) => x.bucket === 'IN_STOCK');
-const cash = (alloc?.rows || []).find((x) => x.bucket === 'CASH');
-ok(alloc?.has_targets === true && stock && cash, 'allocation: both buckets returned');
-if (stock && cash) {
-  const total = alloc.total;
-  ok(near(stock.current_pct, (stock.current_value / total) * 100, 0.01), 'allocation: current % matches value/total');
-  ok(near(stock.drift_pct, stock.current_pct - stock.target_pct, 0.01), 'allocation: drift = current - target');
-  ok(near(stock.action_amount, (60 / 100) * total - stock.current_value, 1),
-     'allocation: action = target value - current value', String(stock.action_amount));
-  ok(Math.sign(stock.action_amount) !== Math.sign(cash.action_amount) || stock.action_amount === 0,
-     'allocation: an overweight is matched by an underweight');
-  ok(near(stock.action_amount + cash.action_amount, 0, 1), 'allocation: moves net to zero (no money invented)');
-}
-
 /* ------------------------------- risk maths ------------------------------- */
 // investments 12,00,000 = 10,00,000 + 2,00,000  ->  83.33% / 16.67%
 // HHI = (10/12)^2 + (2/12)^2 = 0.6944 + 0.0278 = 0.7222
@@ -289,18 +296,21 @@ ok(finite(risk?.score) && risk.score >= 0 && risk.score <= 10, 'risk: score with
 ok(risk?.top_holdings?.[0]?.pct_of_net_worth < risk?.top_holdings?.[0]?.pct_of_investments,
    'risk: share of net worth < share of investments (house counted)');
 
-/* ----------------------------- dividends shape ---------------------------- */
-// The estimate needs the network; the RECEIVED figure is ours and must be exact.
-await db.prepare("INSERT INTO transactions (user_id,type,amount,currency,category,date,created_at) VALUES (?,?,?,?,?,?,?)")
-  .run(U.id, 'INCOME', 5000, 'INR', 'Dividend', `${monthBack(1)}-10`, ts);
-await db.prepare("INSERT INTO transactions (user_id,type,amount,currency,category,date,created_at) VALUES (?,?,?,?,?,?,?)")
-  .run(U.id, 'INCOME', 2500, 'INR', 'Interest', `${monthBack(2)}-10`, ts);
-const r5 = await http('/insights', { token: U.token });
-const div = r5.body.dividends;
-ok(near(div?.received_12m, 7500, 1), 'dividends: received = 7,500 actual (dividend + interest)', String(div?.received_12m));
-ok(finite(div?.forward_income), 'dividends: forward estimate is finite', String(div?.forward_income));
-ok(div?.coverage && Number.isFinite(div.coverage.holdings), 'dividends: reports coverage honestly', JSON.stringify(div?.coverage));
-ok(Array.isArray(div?.by_holding), 'dividends: per-holding list present');
+/* --------------------------- asset allocation ----------------------------- */
+// Net worth 67,00,000 = 12,00,000 stocks + 5,00,000 cash + 50,00,000 house.
+// Unlike the concentration maths above, this is measured over EVERYTHING owned.
+const allocRows = risk?.allocation || [];
+const byBucket = Object.fromEntries(allocRows.map((a) => [a.bucket, a]));
+ok(near(risk?.net_worth, 6700000, 1), 'allocation: net worth = 67,00,000', String(risk?.net_worth));
+ok(allocRows.length === 3, 'allocation: three buckets (stocks, cash, property)', JSON.stringify(allocRows.map((a) => a.bucket)));
+ok(near(byBucket.IN_STOCK?.pct, (1200000 / 6700000) * 100, 0.02), 'allocation: stocks = 17.91% of net worth', String(byBucket.IN_STOCK?.pct));
+ok(near(byBucket.CASH?.pct, (500000 / 6700000) * 100, 0.02), 'allocation: cash = 7.46%', String(byBucket.CASH?.pct));
+ok(near(byBucket.ASSETS?.pct, (5000000 / 6700000) * 100, 0.02), 'allocation: property = 74.63%', String(byBucket.ASSETS?.pct));
+ok(near(allocRows.reduce((s2, a) => s2 + a.pct, 0), 100, 0.1), 'allocation: the percentages total 100', String(allocRows.reduce((s2, a) => s2 + a.pct, 0)));
+ok(near(allocRows.reduce((s2, a) => s2 + a.value, 0), 6700000, 1), 'allocation: the values total net worth');
+// Sorted biggest-first, so the panel never has to re-sort what it renders.
+ok(allocRows.every((a, i) => i === 0 || allocRows[i - 1].value >= a.value), 'allocation: sorted largest first');
+ok(allocRows.every((a) => a.label && a.label !== a.bucket.toLowerCase()), 'allocation: every bucket carries a human label');
 
 /* ------------------------- empty account: no NaN -------------------------- */
 const E = await makeUser(`empty${DOMAIN}`);
@@ -308,9 +318,9 @@ const r6 = await http('/insights', { token: E.token });
 ok(r6.status === 200, 'empty account: still 200');
 const e = r6.body;
 ok(e.fi?.ready === false && typeof e.fi?.reason === 'string', 'empty: FI says why it cannot project', JSON.stringify(e.fi?.reason));
-ok(e.allocation?.has_targets === false, 'empty: allocation invites setting targets');
 ok(finite(e.risk?.score), 'empty: risk score finite');
-ok(finite(e.dividends?.forward_income), 'empty: dividend income finite');
+ok(Array.isArray(e.risk?.allocation) && e.risk.allocation.length === 0, 'empty: allocation is an empty list, not a crash');
+ok(e.allocation === undefined && e.dividends === undefined, 'empty: the removed trackers are gone from the payload');
 const blob = JSON.stringify(e);
 ok(!blob.includes('null,"pct":null') || true, 'empty: payload serialises');
 ok(!/NaN|Infinity/.test(blob), 'empty: payload contains NO NaN or Infinity', blob.slice(0, 200));

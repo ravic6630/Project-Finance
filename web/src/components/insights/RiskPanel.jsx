@@ -85,7 +85,9 @@ function Shell({ children }) {
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
           <Gauge size={18} strokeWidth={1.8} aria-hidden="true" />
         </span>
-        <h2 className="font-display text-lg font-bold tracking-tight text-slate-900">Concentration</h2>
+        <h2 className="font-display text-lg font-bold tracking-tight text-slate-900">
+          Concentration &amp; allocation
+        </h2>
       </div>
       {children}
     </Spotlight>
@@ -115,7 +117,42 @@ export default function RiskPanel({ data, base = 'INR' }) {
     flags = [],
     positions_count: positions = 0,
     investments_total: total = 0,
+    allocation = [],
+    net_worth: netWorth = 0,
   } = data;
+
+  // Where the money sits across EVERYTHING owned, not just the investments the
+  // concentration maths runs over. Cash and a house carry none of the
+  // single-holding risk scored below, but they are unarguably part of "what is
+  // my money in" — so this is measured against net worth and says so.
+  const allocationBlock = allocation.length > 0 && (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="font-display text-sm font-bold tracking-tight text-slate-900">Asset allocation</h3>
+        <span className="text-xs text-slate-500">
+          share of <span className="num">{money(netWorth, base, { compact: true })}</span> net worth
+        </span>
+      </div>
+      <ul className="mt-4 space-y-3">
+        {allocation.map((a, i) => (
+          <li key={a.bucket}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="truncate text-sm text-slate-700" title={a.label}>
+                {a.label}
+              </span>
+              <span className="flex shrink-0 items-baseline gap-2">
+                <span className="num text-xs text-slate-500">{money(a.value, base, { compact: true })}</span>
+                <span className="num text-sm font-semibold text-slate-900">{pct1(a.pct)}</span>
+              </span>
+            </div>
+            <div className="mt-1.5">
+              <Bar pct={a.pct} tone={TONES[i % TONES.length]} delay={0.04 * i} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 
   // Fewer than two priced positions: there is no spread to measure. The server
   // says so in score_note; we print that instead of a score that would be
@@ -137,6 +174,7 @@ export default function RiskPanel({ data, base = 'INR' }) {
             )}
           </p>
         )}
+        {allocationBlock && <div className="mt-6">{allocationBlock}</div>}
       </Shell>
     );
   }
@@ -171,8 +209,13 @@ export default function RiskPanel({ data, base = 'INR' }) {
       <p className="mt-4 text-[15px] font-semibold leading-snug text-slate-800">{verdict}</p>
       {loud && <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{loud.detail}</p>}
 
+      {/* The panel runs full width now, so the two readings sit side by side:
+          what is too big, and where the money is. On a narrow screen they stack
+          in that same order. */}
+      <div className="mt-5 grid gap-8 lg:grid-cols-2 lg:gap-10">
+        <div>
       {/* ------------------------------ the number --------------------------- */}
-      <div className="mt-5">
+      <div>
         <p className="num text-4xl font-bold leading-none tracking-tight text-slate-900">
           {pct1(largest?.pct_of_investments)}
         </p>
@@ -206,6 +249,10 @@ export default function RiskPanel({ data, base = 'INR' }) {
       <p className="mt-3 text-xs text-slate-500">
         {positions} positions · <span className="num">{money(total, base, { compact: true })}</span> invested
       </p>
+        </div>
+
+        {allocationBlock}
+      </div>
 
       {/* -------------------------------- working ---------------------------- */}
       <Details>

@@ -10,7 +10,9 @@ import { KIND_LABELS } from '../../markets.js';
 //   annual_spend: number,         // in user's base currency
 //   spend_source: 'measured'|'override',
 //   months_measured: number,      // how many months of real spending we used
-//   fi_number: number,            // the target set directly, else annual_spend / (withdrawal_rate/100)
+//   fi_number: number,            // the target set directly, else the cost of
+//                                 // `years` of living at today's spending, each
+//                                 // year grown at inflation
 //   target_source: 'custom'|'spending',
 //   liquid_net_worth: number,     // the counted pot (see fi_buckets below)
 //   pct: number,                  // 0..100+
@@ -19,7 +21,7 @@ import { KIND_LABELS } from '../../markets.js';
 //   fi_date: string|null,         // ISO date
 //   coast_fi_number: number|null, // amount that compounds to fi_number by fi horizon
 //   coast_reached: boolean,
-//   assumptions: { withdrawal_rate, expected_return, inflation, real_return }
+//   assumptions: { years, expected_return, inflation, real_return }
 // }
 //
 // Anything unknown is null rather than 0 — "we haven't measured your surplus"
@@ -32,9 +34,14 @@ import { KIND_LABELS } from '../../markets.js';
 //   coast_horizon_years: number       // the horizon the coast figure assumes
 //   coast_horizon_assumed: boolean    // true when no date could be projected,
 //                                     // so the horizon is ours, not the user's
-//   implied_annual_spend: number|null // what a custom target funds at the
-//                                     // withdrawal rate — the sanity check on
-//                                     // a number the user picked out of the air
+//   implied_annual_spend: number|null // the yearly spending the target funds
+//                                     // across the horizon — the sanity check
+//                                     // on a number picked out of the air, and
+//                                     // the exact inverse of the sizing above
+//   fi_years: number                  // the horizon the target covers
+//   flat_total: number|null           // annual_spend x years, no inflation
+//   inflation_uplift: number|null     // fi_number - flat_total
+//   monthly_spend: number|null        // annual_spend / 12
 //   pot_source: 'default'|'custom'
 //   buckets: [{ bucket, label, value, counted }]   // every pot, ticked or not
 //   breakdown: { investments, cash, excluded_assets, counted_total, excluded_total }
@@ -189,6 +196,44 @@ function buildPot(summary, chosen) {
   return { buckets, counted_total, excluded_total };
 }
 
+/* --------------------------------- the target ----------------------------- */
+// How many years of living the pot has to cover. Thirty is the conventional
+// planning horizon for a retirement that starts around sixty.
+const DEFAULT_YEARS = 30;
+
+// The target: what N years of your life actually costs, with each year's
+// spending grown at inflation.
+//
+//   Σ(t=0..N-1) A·(1+i)^t  =  A · ((1+i)^N − 1) / i        (= A·N when i = 0)
+//
+// So ₹40,000 a month is ₹4,80,000 a year; thirty years of that at 6% inflation
+// is ₹3.79 crore, not the ₹1.44 crore a flat 30× would suggest — the last year
+// of those thirty costs ₹27.5 lakh, not ₹4.8 lakh, and the target has to cover
+// that year too.
+//
+// Note what this deliberately does NOT assume: that the pot keeps earning while
+// it is being spent. It is the whole bill, up front. That makes it a
+// conservative target — a pot still invested through retirement would not need
+// to be this large — and the panel says so rather than quietly implying that
+// this is the smallest number that works.
+export function costOfYears(annualSpend, years, inflationPct) {
+  if (!(annualSpend > 0) || !(years > 0)) return null;
+  const i = numOr(inflationPct) / 100;
+  // Below this the geometric series is numerically indistinguishable from flat
+  // multiplication, and dividing by i would amplify float error.
+  const total = Math.abs(i) < 1e-9 ? annualSpend * years : annualSpend * (((1 + i) ** years - 1) / i);
+  return Number.isFinite(total) && total > 0 ? total : null;
+}
+
+// The same relationship read backwards: what yearly spending does a target the
+// user named actually fund, over the same horizon and inflation?
+export function spendForTarget(target, years, inflationPct) {
+  if (!(target > 0) || !(years > 0)) return null;
+  const i = numOr(inflationPct) / 100;
+  const spend = Math.abs(i) < 1e-9 ? target / years : (target * i) / ((1 + i) ** years - 1);
+  return Number.isFinite(spend) && spend > 0 ? spend : null;
+}
+
 /* ------------------------------ the projection ---------------------------- */
 // Future value of a pot P growing at monthly rate r with a monthly contribution
 // c, solved for the number of months n that reaches target F:
@@ -222,18 +267,18 @@ function monthsToTarget(P, F, c, r) {
 /* ---------------------------------- build --------------------------------- */
 
 export async function buildFI(user, { summary, prefs } = {}) {
-  const withdrawalRate = numOr(prefs?.withdrawal_rate, 4);
+  const years = numOr(prefs?.fi_years, DEFAULT_YEARS);
   const expectedReturn = numOr(prefs?.expected_return, 10);
   const inflation = numOr(prefs?.inflation, 6);
 
-  // Project in REAL terms: strip inflation out of the return so the target
-  // (today's spending × 25) and the pot are measured in the same money. A
-  // nominal projection compared against a today's-rupees target would flatter
-  // the date by years.
+  // Project in REAL terms: strip inflation out of the return so the pot and the
+  // target are measured in the same money. The target already carries the
+  // inflation of the retirement years, so growing the pot at the NOMINAL return
+  // as well would count the same inflation twice and flatter the date by years.
   const realReturn = ((1 + expectedReturn / 100) / (1 + inflation / 100) - 1) * 100;
 
   const assumptions = {
-    withdrawal_rate: withdrawalRate,
+    years,
     expected_return: expectedReturn,
     inflation,
     real_return: round2(realReturn),
@@ -281,6 +326,13 @@ export async function buildFI(user, { summary, prefs } = {}) {
     target_source: targetSource,
     fi_target: round2(targetOverride),
     implied_annual_spend: null,
+    fi_years: years,
+    // The same horizon without the inflation adjustment, and the gap between
+    // them — so the panel can SHOW what inflation is doing to the target rather
+    // than asserting a total the user has to take on trust.
+    flat_total: null,
+    inflation_uplift: null,
+    monthly_spend: round2(annualSpend > 0 ? annualSpend / 12 : null),
     pot_source: potSource,
     buckets: pot.buckets,
     liquid_net_worth: round2(liquid),
@@ -346,22 +398,28 @@ export async function buildFI(user, { summary, prefs } = {}) {
       };
     }
 
-    if (!(withdrawalRate > 0)) {
-      return { ...base, reason: 'A withdrawal rate above zero is needed to size the target.' };
+    if (!(years > 0)) {
+      return { ...base, reason: 'A horizon of at least one year is needed to size the target.' };
     }
   }
 
-  // Either the number the user named, or the familiar 25× at the default 4%:
-  // spending ÷ withdrawal rate.
-  const fiNumber = targetOverride != null ? targetOverride : annualSpend / (withdrawalRate / 100);
+  // Either the number the user named, or the cost of `years` of their life.
+  const fiNumber = targetOverride != null ? targetOverride : costOfYears(annualSpend, years, inflation);
   if (!Number.isFinite(fiNumber) || fiNumber <= 0) {
     return { ...base, reason: 'These assumptions do not produce a usable target.' };
   }
 
-  // What a target picked out of the air would actually fund each year. It is the
-  // one honest check on a round number, and it's how someone finds out that the
-  // ₹1 crore they had in mind is ₹4 lakh a year, not the life they pictured.
-  const impliedSpend = withdrawalRate > 0 ? fiNumber * (withdrawalRate / 100) : null;
+  // What a target picked out of the air would actually fund each year, over the
+  // same horizon. It is the one honest check on a round number, and it's how
+  // someone finds out that the ₹1 crore they had in mind is ₹1.27 lakh a year
+  // across thirty years, not the life they pictured.
+  // Read straight back off the target, so it is the true inverse: for a target
+  // we derived from spending it lands exactly on that spending again.
+  const impliedSpend = spendForTarget(fiNumber, years, inflation);
+
+  // The same thirty years without the inflation adjustment, so the panel can
+  // show what the uplift is actually doing rather than asserting a total.
+  const flatTotal = annualSpend > 0 && years > 0 ? annualSpend * years : null;
 
   const pct = (liquid / fiNumber) * 100;
   const reached = liquid >= fiNumber;
@@ -412,6 +470,8 @@ export async function buildFI(user, { summary, prefs } = {}) {
     reason: null,
     fi_number: round2(fiNumber),
     implied_annual_spend: round2(fin(impliedSpend)),
+    flat_total: round2(fin(flatTotal)),
+    inflation_uplift: round2(flatTotal != null ? fiNumber - flatTotal : null),
     pct: round2(pct),
     reached,
     shortfall: round2(Math.max(0, fiNumber - liquid)),
