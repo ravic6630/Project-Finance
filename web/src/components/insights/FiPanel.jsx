@@ -193,7 +193,7 @@ const seedBuckets = (fi) =>
   (Array.isArray(fi?.buckets) ? fi.buckets : []).filter((b) => b.counted).map((b) => b.bucket);
 
 const seed = (prefs, fi) => ({
-  withdrawal_rate: String(prefs?.withdrawal_rate ?? 4),
+  fi_years: String(prefs?.fi_years ?? 30),
   expected_return: String(prefs?.expected_return ?? 10),
   inflation: String(prefs?.inflation ?? 6),
   annual_spend: prefs?.annual_spend == null ? '' : String(prefs.annual_spend),
@@ -301,6 +301,18 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
   // first US stock) would sit outside a set that was frozen today.
   const defaultBuckets = available.filter((b) => b.bucket !== 'ASSETS').map((b) => b.bucket);
 
+  // What a target typed into the box would actually fund each year, live as it
+  // is typed — the inverse of the sizing formula the server uses:
+  //   A = T·i / ((1+i)^N − 1),  and T/N when inflation is zero.
+  const fundsPerYear = (() => {
+    const t = Number(form.fi_target);
+    const n = Number(form.fi_years);
+    const i = Number(form.inflation) / 100;
+    if (!(t > 0) || !(n > 0) || !Number.isFinite(i)) return null;
+    const a = Math.abs(i) < 1e-9 ? t / n : (t * i) / ((1 + i) ** n - 1);
+    return Number.isFinite(a) && a > 0 ? a : null;
+  })();
+
   // What to send for fi_buckets. null means "no selection — count everything but
   // property", and it must be sent ONLY when that is genuinely what the user is
   // on. Inferring it from "the ticked set happens to match the default" is not
@@ -315,11 +327,15 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
   };
 
   const save = async ({ clearSpend = false, clearTarget = false, resetBuckets = false } = {}) => {
-    const w = Number(form.withdrawal_rate);
+    const y = Number(form.fi_years);
     const r = Number(form.expected_return);
     const i = Number(form.inflation);
-    if (![w, r, i].every(Number.isFinite)) {
-      setErr('Enter a number for the withdrawal rate, expected return and inflation.');
+    if (![y, r, i].every(Number.isFinite)) {
+      setErr('Enter a number for the years to cover, expected return and inflation.');
+      return;
+    }
+    if (y < 1 || y > 100) {
+      setErr('Years to cover must be between 1 and 100.');
       return;
     }
     const raw = String(form.annual_spend).trim();
@@ -342,7 +358,7 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
     }
     // Refuse an empty selection only when there was something to select. Someone
     // whose only holding is property has nothing ticked by default, and must
-    // still be able to save a withdrawal rate or a target.
+    // still be able to save a horizon or a target.
     if (!resetBuckets && defaultBuckets.length && !form.buckets.length) {
       setErr('Tick at least one thing to count toward your target.');
       return;
@@ -351,12 +367,12 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
     setErr('');
     try {
       // null clears an override: spending goes back to what the transactions
-      // say, the target to spending × the withdrawal rate, and the pot to
+      // say, the target to the cost of those years of living, and the pot to
       // everything but property. Those are the honest defaults.
       await api('/insights/prefs', {
         method: 'PUT',
         body: {
-          withdrawal_rate: w,
+          fi_years: y,
           expected_return: r,
           inflation: i,
           annual_spend: spend,
@@ -388,7 +404,7 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
         </span>
         <span className="flex items-center gap-2 text-xs text-brand-200">
           <span className="num hidden sm:inline">
-            {fi?.assumptions?.withdrawal_rate ?? '—'}% withdrawal · {fi?.assumptions?.expected_return ?? '—'}% return ·{' '}
+            {fi?.assumptions?.years ?? '—'} years · {fi?.assumptions?.expected_return ?? '—'}% return ·{' '}
             {fi?.assumptions?.inflation ?? '—'}% inflation
           </span>
           <ChevronDown size={16} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
@@ -407,11 +423,11 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
             <div className="mt-4 rounded-2xl bg-white/5 p-4 ring-1 ring-inset ring-white/10">
               <div className="grid gap-4 sm:grid-cols-3">
                 <NumField
-                  label="Withdrawal rate"
-                  suffix="%"
-                  value={form.withdrawal_rate}
-                  onChange={set('withdrawal_rate')}
-                  hint="4% is the conventional study figure — a 25× target."
+                  label="Years to cover"
+                  suffix="yrs"
+                  value={form.fi_years}
+                  onChange={set('fi_years')}
+                  hint="How long the pot has to last. 30 is the usual planning horizon."
                 />
                 <NumField
                   label="Expected return"
@@ -447,11 +463,10 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
                   onChange={set('fi_target')}
                   placeholder="Leave blank to size it from spending"
                   hint={
-                    form.fi_target && Number(form.fi_target) > 0 && Number(form.withdrawal_rate) > 0
-                      ? `At ${form.withdrawal_rate}% that funds about ${money(
-                          Number(form.fi_target) * (Number(form.withdrawal_rate) / 100),
-                          base
-                        )} a year.`
+                    // The live inverse of the sizing formula, so a round number
+                    // typed here immediately shows what it actually buys per year.
+                    fundsPerYear != null
+                      ? `Spread over ${form.fi_years} years that funds about ${money(fundsPerYear, base)} a year.`
                       : 'Already know your number? Set it here and it overrides the spending-based one.'
                   }
                 />
@@ -579,7 +594,7 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
         return data.spend_source === 'override'
           ? "Your spending is set to zero, so there's no target to reach."
           : 'The spending recorded so far adds up to nothing.';
-      if (!(data.assumptions?.withdrawal_rate > 0)) return 'Your withdrawal rate needs to be above zero.';
+      if (!(data.assumptions?.years > 0)) return 'Your horizon needs to be at least a year.';
       return "There isn't enough here yet to work out your number.";
     })();
 
@@ -640,7 +655,7 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   // Past 100% the tick would be clamped onto the end of the arc, where it looks
   // like a mark on the dial that nothing explains. Better no mark than a wrong one.
   const coastMark = coastPct != null && coastPct <= 100 ? coastPct : null;
-  const multiple = data.assumptions?.withdrawal_rate > 0 ? 100 / data.assumptions.withdrawal_rate : null;
+  const years = data.fi_years ?? data.assumptions?.years ?? 30;
   const surplusKnown = data.monthly_surplus != null;
   const custom = data.target_source === 'custom';
   const counted = (data.buckets || []).filter((b) => b.counted);
@@ -651,7 +666,7 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   const targetHint = custom
     ? `The target you set.${
         data.implied_annual_spend
-          ? ` At a ${data.assumptions.withdrawal_rate}% withdrawal rate it funds about ${money(
+          ? ` Spread over ${years} years it funds about ${money(
               data.implied_annual_spend,
               base
             )} a year${
@@ -663,12 +678,11 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
             }.`
           : ''
       }`
-    : `${multiple ? `${multiple.toFixed(multiple % 1 ? 1 : 0)}× ` : ''}your annual spending of ${money(
-        data.annual_spend,
-        base
-      )} — ${
+    : `${money(data.monthly_spend, base)} a month × 12 × ${years} years, with each year grown at ${
+        data.assumptions?.inflation
+      }% inflation — spending ${
         data.spend_source === 'override'
-          ? 'the figure you set'
+          ? 'you set yourself'
           : `measured across ${data.months_measured} month${data.months_measured === 1 ? '' : 's'} of your own transactions`
       }.`;
 
@@ -678,16 +692,16 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   // ₹4 lakh. Only the spending-derived target earns that sentence.
   const reachedHint =
     custom && data.implied_annual_spend
-      ? `Your pot covers the ${money(data.fi_number, base)} target you set. At ${
-          data.assumptions.withdrawal_rate
-        }% that funds about ${money(data.implied_annual_spend, base)} a year${
+      ? `Your pot covers the ${money(data.fi_number, base)} target you set. Spread over ${
+          years
+        } years that funds about ${money(data.implied_annual_spend, base)} a year${
           data.annual_spend > 0
             ? ` — ${
                 data.implied_annual_spend >= data.annual_spend ? 'comfortably above' : 'short of'
               } the ${money(data.annual_spend, base)} a year you spend`
             : ''
         }.`
-      : 'Your liquid net worth already covers your spending at this withdrawal rate.';
+      : `Your pot already covers ${years} years of your spending, inflation included.`;
 
   // What's in the pot, and — just as importantly — what isn't. Anything left out
   // is named with its value, so the gap against the dashboard's net worth is
@@ -706,7 +720,7 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
             data.breakdown.excluded_assets,
             base
           )} of property and other assets — a home you live in can't pay for your retirement, which is why this is smaller than your dashboard net worth.`
-        : 'Investments and cash — the money that can actually fund a withdrawal.';
+        : 'Investments and cash — the money that can actually fund your retirement.';
 
   // The verdict. One sentence, derived: the reader came here to ask "when", and
   // every branch maps onto one the server can actually return — you're there,
@@ -729,9 +743,9 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
   const support = data.reached
     ? custom
       ? data.implied_annual_spend
-        ? `At ${data.assumptions.withdrawal_rate}% it funds about ${money(data.implied_annual_spend, base)} a year.`
+        ? `Spread over ${years} years it funds about ${money(data.implied_annual_spend, base)} a year.`
         : 'That covers the target you set for yourself.'
-      : 'What you have covers what you spend, at the rate you set.'
+      : `What you have covers ${years} years of your spending, inflation included.`
     : data.fi_date
       ? `About ${yearsText(data.years_to_fi)} away if you keep saving ${money(data.monthly_surplus, base)} a month.`
       : null;
@@ -813,6 +827,27 @@ export default function FiPanel({ data, base, prefs, onSaved }) {
             Your number — <span className="num">{money(data.fi_number, base)}</span>
           </p>
           <p className="mt-1">{targetHint}</p>
+          {/* The arithmetic itself, spelled out. The inflation line is the one
+              people query — thirty flat years reads like the whole answer until
+              you see that the thirtieth year costs five times the first. */}
+          {!custom && data.flat_total != null && (
+            <p className="mt-1.5">
+              {years} years at today&apos;s prices would be{' '}
+              <span className="num">{money(data.flat_total, base)}</span>
+              {data.inflation_uplift > 0 && (
+                <>
+                  ; inflation at <span className="num">{data.assumptions?.inflation}%</span> adds{' '}
+                  <span className="num">{money(data.inflation_uplift, base)}</span> on top, because the last of
+                  those years costs far more than the first.
+                </>
+              )}
+            </p>
+          )}
+          <p className="mt-1.5 text-brand-200/80">
+            This is the whole bill up front: it does not assume the pot keeps earning while you spend it. A pot
+            left invested through retirement would not need to be this large, so treat this as the safe end of
+            the range rather than the smallest number that works.
+          </p>
         </div>
 
         <div>
