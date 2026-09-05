@@ -693,7 +693,12 @@ export default function Dashboard() {
               sub={<span className="text-slate-400">{counts.accounts} account(s)</span>}
             />
           </motion.div>
-          <motion.div variants={cardRise}>
+          {/* Assets shares the bottom-right cell with the cashflow tile. When
+              that tile is hidden it would otherwise sit in half a cell with
+              dead space beside it, so it takes the whole row instead — leaving
+              a clean 2x2: investments tall on the left, cash over assets on
+              the right. */}
+          <motion.div variants={cardRise} className={hasCashflow ? '' : 'sm:col-span-2 lg:col-span-2'}>
             <StatCard
               icon={Building2}
               tone="brand"
