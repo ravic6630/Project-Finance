@@ -6,6 +6,7 @@ import { premiumState } from '../services/billing.js';
 import { recordSnapshot, getHistory } from '../services/networth.js';
 import { materializeRecurring } from '../services/recurring.js';
 import { buildFamilySummary, buildMemberView, linkedMembers, mergeHistorySeries } from '../services/family.js';
+import { buildBriefing } from '../services/briefing.js';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(authRequired);
@@ -51,6 +52,12 @@ dashboardRouter.get(
     }
 
     summary.premium = premium;
+    // What changed since the visit before this one. Only for the user's own
+    // money: a linked member's view is someone else's account, and "since you
+    // were last here" would be measuring the wrong person's visits against it.
+    summary.since_last_visit = /^u:\d+$/.test(raw)
+      ? null
+      : await buildBriefing(req.user, { netWorth: summary.net_worth, base }).catch(() => null);
     res.json(summary);
   })
 );

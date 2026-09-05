@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken } from './api.js';
+import { clearDashboardCache } from './dashboardCache.js';
 
 const AuthContext = createContext(null);
 
@@ -52,7 +53,10 @@ export function AuthProvider({ children }) {
 
   // Any 401 anywhere in the app drops us back to the sign-in screen.
   useEffect(() => {
-    const onLogout = () => setUser(null);
+    const onLogout = () => {
+      clearDashboardCache();
+      setUser(null);
+    };
     window.addEventListener('sampada:logout', onLogout);
     return () => window.removeEventListener('sampada:logout', onLogout);
   }, []);
@@ -101,6 +105,8 @@ export function AuthProvider({ children }) {
 
   function logout() {
     clearToken();
+    // Someone's net worth must not sit in a browser they might share.
+    clearDashboardCache();
     setUser(null);
   }
 
