@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken } from './api.js';
+import { clearDashboardCache } from './dashboardCache.js';
 
 const AuthContext = createContext(null);
 
@@ -52,16 +53,21 @@ export function AuthProvider({ children }) {
 
   // Any 401 anywhere in the app drops us back to the sign-in screen.
   useEffect(() => {
-    const onLogout = () => setUser(null);
+    const onLogout = () => {
+      clearDashboardCache();
+      setUser(null);
+    };
     window.addEventListener('sampada:logout', onLogout);
     return () => window.removeEventListener('sampada:logout', onLogout);
   }, []);
 
-  // Resolves to { requires_2fa, ticket } when the account has 2FA — the caller
-  // then collects the 6-digit code and finishes with complete2fa().
+  // Two ways this stops short of a session, both handled by the caller:
+  //   { requires_2fa }          — the account has an authenticator (complete2fa)
+  //   { requires_verification } — a run of wrong passwords earned an emailed
+  //                               code (completeLoginVerification)
   async function login(email, password) {
     const d = await api('/auth/login', { method: 'POST', body: { email, password } });
-    if (d.requires_2fa) return d;
+    if (d.requires_2fa || d.requires_verification) return d;
     setToken(d.token);
     setUser(d.user);
     return d;
@@ -69,6 +75,13 @@ export function AuthProvider({ children }) {
 
   async function complete2fa(ticket, code) {
     const d = await api('/auth/login/2fa', { method: 'POST', body: { ticket, code } });
+    setToken(d.token);
+    setUser(d.user);
+    return d;
+  }
+
+  async function completeLoginVerification(ticket, code) {
+    const d = await api('/auth/login/verify', { method: 'POST', body: { ticket, code } });
     setToken(d.token);
     setUser(d.user);
     return d;
@@ -92,6 +105,8 @@ export function AuthProvider({ children }) {
 
   function logout() {
     clearToken();
+    // Someone's net worth must not sit in a browser they might share.
+    clearDashboardCache();
     setUser(null);
   }
 
@@ -103,7 +118,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, waking, login, complete2fa, startSignup, verifySignup, resendSignup, logout, updateProfile }}
+      value={{ user, loading, waking, login, complete2fa, completeLoginVerification, startSignup, verifySignup, resendSignup, logout, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

@@ -63,6 +63,13 @@ export async function createSession(userId, token, req) {
     null;
   const ts = nowISO();
   await insertSession.run(userId, tokenHash(token), ua, ip, ts, ts);
+  // Roll the visit clock one step. COALESCE keeps a first-ever sign-in honest:
+  // previous stays NULL, and the dashboard shows no "since last time" at all
+  // rather than comparing against a zero.
+  await db
+    .prepare('UPDATE users SET previous_login_at = last_login_at, last_login_at = ? WHERE id = ?')
+    .run(ts, userId)
+    .catch(() => {});
   // Housekeeping: drop this user's long-dead sessions (tokens expire at 30d,
   // so anything untouched for 35d is just clutter in the devices list).
   const cutoff = new Date(Date.now() - 35 * 86400000).toISOString();

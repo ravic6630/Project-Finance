@@ -169,6 +169,41 @@ authRouter.post(
   })
 );
 
+/* ---------------------- step-up after repeated failures -------------------- */
+// A run of wrong passwords is what a guessing attack looks like from here. So
+// once an account has collected FAILED_LOGIN_LIMIT of them, the next CORRECT
+// password is no longer enough on its own: we email a one-time code and ask for
+// it too. Whoever eventually guesses the password still needs the inbox.
+//
+// The check deliberately fires on SUCCESS, not on the third failure. Announcing
+// "we've emailed you a code" the moment someone mistypes a password would tell
+// an attacker which addresses have accounts; a wrong password keeps returning
+// the same flat "Incorrect email or password" it always did, however many times
+// it is tried.
+const FAILED_LOGIN_LIMIT = 3;
+const LOGIN_OTP_TTL_MS = 10 * 60 * 1000;
+const MAX_LOGIN_OTP_ATTEMPTS = 5;
+
+const bumpFailedLogins = db.prepare('UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ?');
+const clearLoginGuard = db.prepare(
+  'UPDATE users SET failed_logins = 0, login_otp_hash = NULL, login_otp_expires = NULL, login_otp_attempts = 0 WHERE id = ?'
+);
+const setLoginOtp = db.prepare(
+  'UPDATE users SET login_otp_hash = ?, login_otp_expires = ?, login_otp_attempts = 0 WHERE id = ?'
+);
+const bumpLoginOtpAttempts = db.prepare('UPDATE users SET login_otp_attempts = login_otp_attempts + 1 WHERE id = ?');
+
+function loginOtpEmailHtml(name, code, tries) {
+  const who = escapeHtml(name || 'there');
+  return `
+    <h2 style="font-family:Georgia,serif;color:#1f3a66">One more step to sign in</h2>
+    <p>Hi ${who}, there ${tries === 1 ? 'was 1 failed sign-in attempt' : `were ${tries} failed sign-in attempts`} on your Sampada account before this one, so we're checking it's really you:</p>
+    <p style="font-size:34px;font-weight:800;letter-spacing:10px;color:#1f3a66;background:#f4f2ec;border:1px solid #e8e2d4;border-radius:12px;padding:16px 0;text-align:center;margin:18px 0">${code}</p>
+    <p style="color:#64748b;font-size:13px">This code expires in 10 minutes.</p>
+    <p style="color:#64748b;font-size:13px"><strong>If this wasn't you</strong>, someone knows your password. Don't enter the code — change your password straight away.</p>
+  `;
+}
+
 authRouter.post(
   '/login',
   asyncHandler(async (req, res) => {
@@ -176,15 +211,89 @@ authRouter.post(
     const password = String(req.body.password || '');
     const user = await findByEmail.get(email);
     if (!user || !verifyPassword(password, user.password_hash)) {
+      // Count it against the account when there is one, but say the same thing
+      // either way — the message must not become an account-existence oracle.
+      if (user) await bumpFailedLogins.run(user.id);
       throw new HttpError(401, 'Incorrect email or password');
     }
     applyEffectiveRole(user);
     if (user.totp_enabled) {
       // Password OK, but a 6-digit authenticator code is still needed. The
       // ticket only proves "password already checked" and dies in 5 minutes.
+      // An authenticator IS the second factor, so it replaces the email code
+      // rather than stacking a second one on top of it.
       const ticket = jwt.sign({ id: user.id, pre2fa: true }, JWT_SECRET, { expiresIn: '5m' });
       return res.json({ requires_2fa: true, ticket });
     }
+
+    const failures = Number(user.failed_logins) || 0;
+    if (failures >= FAILED_LOGIN_LIMIT) {
+      // Without mail there is no way to deliver a code, and refusing the login
+      // would lock someone out of their own money over a config gap. Let them
+      // in, and record loudly that the check could not be run.
+      if (!emailConfigured()) {
+        console.warn(`[login-otp] email not configured — step-up skipped for user ${user.id} after ${failures} failures`);
+      } else {
+        const code = genOtp();
+        await setLoginOtp.run(sha256(code), new Date(Date.now() + LOGIN_OTP_TTL_MS).toISOString(), user.id);
+        try {
+          await sendMail({
+            to: user.email,
+            subject: 'Your Sampada sign-in code',
+            html: loginOtpEmailHtml(user.name, code, failures),
+          });
+        } catch (err) {
+          // Transient, not a lockout: the password was right and they can try
+          // again. Failing closed here beats handing out a session we said we
+          // would gate.
+          console.error('[login-otp] send failed:', err?.message);
+          throw new HttpError(503, "We couldn't send your sign-in code just now. Please try again in a moment.");
+        }
+        const ticket = jwt.sign({ id: user.id, preotp: true }, JWT_SECRET, { expiresIn: '10m' });
+        return res.json({ requires_verification: true, ticket, failed_attempts: failures });
+      }
+    }
+
+    await clearLoginGuard.run(user.id);
+    const token = signToken(user);
+    await createSession(user.id, token, req);
+    res.json({ token, user: publicUser(user) });
+  })
+);
+
+// Step 2 after a run of failures: ticket (from /login) + emailed code → token.
+authRouter.post(
+  '/login/verify',
+  asyncHandler(async (req, res) => {
+    let payload;
+    try {
+      payload = jwt.verify(String(req.body.ticket || ''), JWT_SECRET);
+    } catch {
+      throw new HttpError(401, 'That sign-in attempt expired — enter your password again.');
+    }
+    if (!payload.preotp) throw new HttpError(401, 'Invalid sign-in ticket');
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
+    if (!user) throw new HttpError(401, 'Account no longer exists');
+    if (!user.login_otp_hash || !user.login_otp_expires) {
+      throw new HttpError(401, 'That code has already been used — enter your password again.');
+    }
+    if (Date.parse(user.login_otp_expires) < Date.now()) {
+      await setLoginOtp.run(null, null, user.id);
+      throw new HttpError(401, 'That code has expired — enter your password again for a new one.');
+    }
+    // A six-digit code is only 10^6 wide, so the attempt cap is what makes it
+    // safe. Burn the code at the cap rather than letting it be ground down.
+    if ((Number(user.login_otp_attempts) || 0) >= MAX_LOGIN_OTP_ATTEMPTS) {
+      await setLoginOtp.run(null, null, user.id);
+      throw new HttpError(401, 'Too many incorrect codes — enter your password again for a new one.');
+    }
+    if (sha256(String(req.body.code || '').trim()) !== user.login_otp_hash) {
+      await bumpLoginOtpAttempts.run(user.id);
+      throw new HttpError(401, 'That code is incorrect. Check the email we just sent you.');
+    }
+
+    applyEffectiveRole(user);
+    await clearLoginGuard.run(user.id);
     const token = signToken(user);
     await createSession(user.id, token, req);
     res.json({ token, user: publicUser(user) });
@@ -208,6 +317,7 @@ authRouter.post(
       throw new HttpError(401, 'That code is incorrect. Check your authenticator app.');
     }
     applyEffectiveRole(user);
+    await clearLoginGuard.run(user.id);
     const token = signToken(user);
     await createSession(user.id, token, req);
     res.json({ token, user: publicUser(user) });
@@ -306,6 +416,10 @@ authRouter.post(
     }
     await setPasswordHash.run(hashPassword(password), user.id);
     await delResetCode.run(user.id);
+    // Proving control of the inbox is a stronger check than the step-up code
+    // would be, so the failure run that earned it is settled. Leaving it would
+    // demand an email code on the very next sign-in, straight after one.
+    await clearLoginGuard.run(user.id);
     res.json({ ok: true });
   })
 );

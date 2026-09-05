@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Crown,
   LineChart as LineChartIcon,
+  Loader2,
   PieChart as PieIcon,
   Sparkles,
   TrendingUp,
@@ -35,8 +36,10 @@ import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner } from '../components/ui.jsx';
 import { Aurora, CardSkeleton, Shimmer, Sparkline, Spotlight } from '../components/fx.jsx';
 import { cardRise, gridStagger } from '../lib/motion.js';
+import { cacheSignature, readDashboardCache, writeDashboardCache } from '../lib/dashboardCache.js';
 import WealthHero from '../components/WealthHero.jsx';
 import GettingStarted from '../components/GettingStarted.jsx';
+import WelcomeBack from '../components/WelcomeBack.jsx';
 import { FamilyInviteBanner, FamilyScopeNote } from '../components/FamilyBits.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 
@@ -500,15 +503,35 @@ function DashboardSkeleton() {
   );
 }
 
+// Shown only while the numbers on screen came from the local cache. It is the
+// whole reason caching money is acceptable: the figures are never presented as
+// current, and the line says exactly when they were true.
+function StaleNote({ at }) {
+  const when = new Date(at);
+  const mins = Math.max(0, Math.round((Date.now() - when.getTime()) / 60000));
+  const ago =
+    mins < 1 ? 'a moment ago' : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)}h ago` : 'yesterday';
+  return (
+    <p className="flex items-center gap-2 rounded-xl bg-slate-100 px-3.5 py-2 text-xs font-medium text-slate-500 dark:bg-[#16233c]">
+      <Loader2 size={13} className="animate-spin text-brand-500" aria-hidden="true" />
+      Showing your last saved figures from {ago} — fetching today&apos;s now.
+    </p>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { active: activeProfile, dashboardQuery, activeLabel } = useProfile();
   const base = user.base_currency;
+  const signature = cacheSignature(user.id, base, activeProfile);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Non-null while what's on screen came from the cache rather than the server.
+  // Every figure below is then rendered under an explicit "as of" marker.
+  const [staleAt, setStaleAt] = useState(null);
 
   const load = useCallback(async (refresh = false) => {
     try {
@@ -518,22 +541,37 @@ export default function Dashboard() {
         .join('&');
       const d = await api(`/dashboard${params ? `?${params}` : ''}`);
       setData(d);
+      setStaleAt(null);
+      writeDashboardCache(signature, d);
     } catch (err) {
+      // A cached dashboard already on screen is more useful than an error page
+      // replacing it — keep it, keep its marker, and say what went wrong above.
       setError(err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeProfile]);
+  }, [activeProfile, signature]);
 
   useEffect(() => {
-    setLoading(true);
+    // Paint the last known numbers first, if there are any for exactly this
+    // user + currency + profile, then let the real request replace them.
+    const cached = readDashboardCache(signature);
+    if (cached) {
+      setData(cached.data);
+      setStaleAt(cached.at);
+      setLoading(false);
+    } else {
+      setData(null);
+      setStaleAt(null);
+      setLoading(true);
+    }
     load();
 
-  }, [load, base, activeProfile]);
+  }, [load, base, activeProfile, signature]);
 
   if (loading) return <DashboardSkeleton />;
-  if (error) return <ErrorBanner message={error} />;
+  if (error && !data) return <ErrorBanner message={error} />;
   if (!data) return null;
 
   const { net_worth, investments, cash, assets, allocation, cashflow, counts } = data;
@@ -566,9 +604,13 @@ export default function Dashboard() {
           }}
         />
 
+        {staleAt && <StaleNote at={staleAt} />}
+        {error && <ErrorBanner message={error} />}
+
         <FamilyInviteBanner />
         <FamilyScopeNote data={data} active={activeProfile} />
 
+        <WelcomeBack data={data.since_last_visit} base={base} name={user.name} />
         <GettingStarted data={data} />
 
         <SectionRule label="Your holdings" />
