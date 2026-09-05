@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { ChevronLeft, PieChart as PieIcon } from 'lucide-react';
 import { money } from '../lib/format.js';
 
@@ -144,7 +145,7 @@ function ArcLabel({ arc }) {
   );
 }
 
-export default function AllocationSunburst({ tree, base = 'INR' }) {
+export default function AllocationSunburst({ tree, base = 'INR', byKind = [] }) {
   const reduced = useReducedMotion();
   // The path from the root to what's currently in the middle. Index 0 is always
   // the root, so the trail doubles as the breadcrumb.
@@ -178,6 +179,13 @@ export default function AllocationSunburst({ tree, base = 'INR' }) {
     setHover(null);
     setTrail([...trail, ...arc.path]);
   };
+
+  // Only classes with money in them, biggest first — the same order the ring
+  // uses, so the two readings of the same portfolio line up.
+  const classRows = (byKind || [])
+    .filter((k) => Number(k.value) > 0)
+    .slice()
+    .sort((a, b) => b.value - a.value);
 
   const shown = hover?.node || focus;
   const shownPct = hover ? hover.pct : 100;
@@ -304,6 +312,47 @@ export default function AllocationSunburst({ tree, base = 'INR' }) {
             </li>
           ))}
       </ul>
+
+      {/* The one thing the retired "Investments by class" card said that this
+          chart does not: what each class has MADE. Composition and performance
+          are different questions, and the ring only answers the first — so the
+          second lives here rather than in a card of its own repeating the
+          split a third time. */}
+      {classRows.length > 0 && (
+        <div className="mt-5 border-t border-slate-100 pt-4 dark:border-[#223250]">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            What each class has made
+          </p>
+          <ul className="divide-y divide-slate-100 dark:divide-[#1c2c49]">
+            {classRows.map((k) => {
+              const gain = k.value - k.cost;
+              const up = gain >= 0;
+              return (
+                <li key={k.key}>
+                  <Link
+                    to="/investments"
+                    className="group flex items-center justify-between gap-3 py-2 transition hover:text-brand-700"
+                  >
+                    <span className="truncate text-sm text-slate-600 group-hover:text-brand-700">{k.label}</span>
+                    <span className="flex shrink-0 items-baseline gap-3">
+                      <span className="num text-sm font-semibold text-slate-800">
+                        {money(k.value, base, { compact: true })}
+                      </span>
+                      <span
+                        className={`num w-24 text-right text-xs font-medium ${
+                          up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                        }`}
+                      >
+                        {up ? '▲' : '▼'} {money(Math.abs(gain), base, { compact: true })}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <p className="mt-3 text-center text-[11px] text-slate-400">
         {focus.children?.some((c) => c.children?.length)
