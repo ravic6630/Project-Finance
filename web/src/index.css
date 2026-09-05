@@ -330,6 +330,16 @@ body {
 .dark .hover\:border-slate-300:hover { border-color: #3a5175; }
 .dark .hover\:border-brand-200:hover { border-color: #2e4a75; }
 
+/* group-hover: has exactly the same problem as hover: above and was missed —
+   it bakes in the light palette too, so hovering a row inside a `group` turned
+   its label near-black on a dark card and the text simply vanished. Kept as a
+   separate list because the variant has to be written out literally; each value
+   matches the base override for the same colour, so a row reads on hover the
+   way it reads at rest, only brighter. */
+.dark .group:hover .group-hover\:text-brand-700 { color: #a9bcdd; }
+.dark .group:hover .group-hover\:text-brand-500 { color: #6d8ab0; }
+.dark .group:hover .group-hover\:text-slate-600 { color: #9db0c9; }
+
 /* Native builds flag connectivity on <body>; the banner is CSS-only so it can
    never fail to render because of a JS error. */
 body.is-offline::before {
