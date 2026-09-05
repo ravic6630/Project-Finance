@@ -55,6 +55,9 @@ body {
 
 @layer components {
   .card {
+    /* The gap between sunburst arcs has to be the surface behind them, not a
+       fixed white — on a dark card a white hairline reads as a drawn border. */
+    --sunburst-gap: #ffffff;
     @apply rounded-2xl bg-white;
     border: 1px solid #e8e2d4;
     /* Layered and navy-tinted: a neutral grey shadow reads as "unfinished",
@@ -137,6 +140,7 @@ body {
 
 /* @apply bakes values into these, so re-declare them for dark. */
 .dark .card {
+  --sunburst-gap: #101d33;
   background-color: #101d33;
   border-color: #223250;
   /* Dark surfaces read as "lit from above" rather than "floating": a deeper

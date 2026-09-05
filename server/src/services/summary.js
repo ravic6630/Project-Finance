@@ -2,6 +2,7 @@ import { db } from '../db.js';
 import { enrichHoldings, KIND_LABELS } from './portfolio.js';
 import { getFxRate } from './prices.js';
 import { todayIST } from './recurring.js';
+import { buildAllocationTree } from './allocationTree.js';
 
 // The 6 cashflow buckets, oldest → newest, anchored on the IST day like every
 // other date in the app. Deriving them from the SERVER's local month instead
@@ -23,7 +24,7 @@ export function cashflowMonths() {
 //                (statements) don't price the same portfolio a second time.
 //   skipCashflow — skip the transaction scan entirely for callers that discard
 //                cashflow anyway (linked family members).
-export async function buildSummary(user, { refresh = false, scope = null, withItems = false, skipCashflow = false } = {}) {
+export async function buildSummary(user, { refresh = false, scope = null, withItems = false, withTree = false, skipCashflow = false } = {}) {
   // scope: null/'all' = whole family, 'me' = owner only, <id> = one member.
   const scSql = scope === 'me' ? ' AND profile_id IS NULL' : Number.isInteger(scope) ? ' AND profile_id = ?' : '';
   const scArgs = Number.isInteger(scope) ? [scope] : [];
@@ -162,5 +163,9 @@ export async function buildSummary(user, { refresh = false, scope = null, withIt
     },
     rates,
     ...(withItems ? { items } : {}),
+    // The hierarchy behind `allocation`. Off by default: only the dashboard
+    // draws it, and every other caller (digest, statements) would be paying to
+    // serialise a tree it never reads.
+    ...(withTree ? { allocation_tree: buildAllocationTree({ items, accounts, assets, toBase }) } : {}),
   };
 }

@@ -38,7 +38,7 @@ async function memberSummary(viewer, member, { refresh = false } = {}) {
   // cashflow/goals are overwritten below, so don't pay to compute them.
   const s = await buildSummary(
     { ...member, base_currency: viewer.base_currency },
-    { refresh, scope: null, skipCashflow: true }
+    { refresh, scope: null, skipCashflow: true, withTree: true }
   );
   s.cashflow = emptyCashflow();
   s.counts = { ...s.counts, transactions: 0, goals: 0 };
@@ -115,6 +115,31 @@ export async function buildFamilySummary(viewer, own, members, { refresh = false
     ...(merged.cash.total > 0 ? [{ key: 'CASH', label: 'Cash & Bank', value: merged.cash.total }] : []),
     ...(merged.assets.total > 0 ? [{ key: 'ASSETS', label: 'Assets', value: merged.assets.total }] : []),
   ].filter((a) => a.value > 0);
+  // The owner's tree sitting under a household total would be a chart that
+  // disagrees with the number above it. With members in view the hierarchy
+  // gains a level instead — whose money, then what kind, then which one — which
+  // is the question a family actually has.
+  const people = [];
+  const addPerson = (name, tree) => {
+    if (tree && tree.value > 0) people.push({ key: `person:${name}`, name, value: tree.value, children: tree.children });
+  };
+  addPerson(viewer.name || 'Me', own.allocation_tree);
+  for (let i = 0; i < members.length; i += 1) {
+    addPerson(members[i].name || members[i].email, summaries[i].allocation_tree);
+  }
+  if (people.length) {
+    people.sort((a, b) => b.value - a.value);
+    const omitted = [own.allocation_tree, ...summaries.map((s) => s.allocation_tree)]
+      .filter((t) => t?.omitted)
+      .reduce((acc, t) => ({ value: acc.value + t.omitted.value, count: acc.count + t.omitted.count }), { value: 0, count: 0 });
+    merged.allocation_tree = {
+      name: 'Net worth',
+      value: Math.round(people.reduce((sum, p) => sum + p.value, 0) * 100) / 100,
+      children: people,
+      omitted: omitted.count ? omitted : null,
+      depth: 4,
+    };
+  }
   merged.family = { included };
   return merged;
 }
