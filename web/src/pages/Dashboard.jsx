@@ -40,6 +40,7 @@ import { cacheSignature, readDashboardCache, writeDashboardCache } from '../lib/
 import WealthHero from '../components/WealthHero.jsx';
 import GettingStarted from '../components/GettingStarted.jsx';
 import WelcomeBack from '../components/WelcomeBack.jsx';
+import AllocationSunburst from '../components/AllocationSunburst.jsx';
 import { FamilyInviteBanner, FamilyScopeNote } from '../components/FamilyBits.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 
@@ -742,7 +743,12 @@ export default function Dashboard() {
               <p className="py-16 text-center text-sm text-slate-400">
                 No assets yet — add investments or accounts.
               </p>
+            ) : data.allocation_tree?.children?.length ? (
+              <AllocationSunburst tree={data.allocation_tree} base={base} />
             ) : (
+              /* An older cached payload, or a linked member's view, may arrive
+                 without the tree. The flat ring still tells the truth, so it
+                 stays as the fallback rather than blanking the card. */
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie

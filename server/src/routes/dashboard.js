@@ -24,7 +24,7 @@ dashboardRouter.get(
     if (raw === 'me' || (Number.isInteger(Number(raw)) && Number(raw) > 0)) {
       // My own money, or one managed profile — unchanged behavior.
       const scope = raw === 'me' ? 'me' : Number(raw);
-      summary = await buildSummary(req.user, { refresh, scope });
+      summary = await buildSummary(req.user, { refresh, scope, withTree: true });
       summary.net_worth_history = premium ? await getHistory(req.user.id, base) : null;
     } else if (/^u:\d+$/.test(raw)) {
       // A linked member's account, read-only. 404s the moment a link is severed.
@@ -33,7 +33,7 @@ dashboardRouter.get(
       summary.net_worth_history = premium ? await getHistory(memberId, base) : null;
     } else {
       // Everyone: my whole account, plus each linked member's.
-      const own = await buildSummary(req.user, { refresh, scope: null });
+      const own = await buildSummary(req.user, { refresh, scope: null, withTree: true });
       // Record today's net worth for everyone, so history accrues even on the
       // free plan. Always MY OWN total — linked members record their own when
       // they visit, and the family chart sums the series at read time.
