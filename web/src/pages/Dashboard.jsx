@@ -587,6 +587,13 @@ export default function Dashboard() {
   // net cashflow. Investments/cash/assets have no history on the wire, so those
   // tiles get real structure instead of an invented trend line.
   const cashflowSeries = (cashflow.months || []).map((m) => m.income - m.expense);
+  // Both cashflow surfaces key off the same question: has anything actually been
+  // recorded in the window they cover? Neither was badly designed — they were
+  // just showing zero to someone who has never logged a transaction, and a panel
+  // with nothing in it still costs a scroll and a glance. They are hidden, not
+  // deleted: the day a transaction exists both come back on their own, and a
+  // genuine zero month then MEANS something, because you are someone who logs.
+  const hasCashflow = (cashflow.months || []).some((m) => m.income > 0 || m.expense > 0);
   const kinds = (investments.by_kind || []).filter((k) => k.value > 0);
   const kindsTotal = kinds.reduce((s, k) => s + k.value, 0);
 
@@ -696,6 +703,7 @@ export default function Dashboard() {
               sub={<span className="text-slate-400">{counts.assets ?? 0} asset(s)</span>}
             />
           </motion.div>
+          {hasCashflow && (
           <motion.div variants={cardRise}>
             <StatCard
               icon={cashflow.this_month_net >= 0 ? ArrowUpRight : ArrowDownRight}
@@ -719,6 +727,7 @@ export default function Dashboard() {
               }
             />
           </motion.div>
+          )}
         </motion.div>
 
         {!isEmpty && (
@@ -730,7 +739,7 @@ export default function Dashboard() {
 
         <SectionRule label="Breakdown" />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className={`grid grid-cols-1 gap-6 ${hasCashflow ? 'lg:grid-cols-2' : ''}`}>
           {/* Allocation */}
           <div className="card p-5">
             <div className="mb-2 flex items-center gap-3">
@@ -744,7 +753,7 @@ export default function Dashboard() {
                 No assets yet — add investments or accounts.
               </p>
             ) : data.allocation_tree?.children?.length ? (
-              <AllocationSunburst tree={data.allocation_tree} base={base} />
+              <AllocationSunburst tree={data.allocation_tree} base={base} byKind={investments.by_kind} />
             ) : (
               /* An older cached payload, or a linked member's view, may arrive
                  without the tree. The flat ring still tells the truth, so it
@@ -771,6 +780,7 @@ export default function Dashboard() {
           </div>
 
           {/* Cashflow */}
+          {hasCashflow && (
           <div className="card p-5">
             <div className="mb-2 flex items-center gap-3">
               <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.emerald}`}>
@@ -808,44 +818,8 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
         </div>
-
-        {/* Investments by class */}
-        {investments.by_kind.length > 0 && (
-          <div className="card p-5">
-            <h3 className="mb-4 font-display text-lg font-bold text-slate-900">Investments by class</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {investments.by_kind.map((k) => {
-                const gain = k.value - k.cost;
-                const up = gain >= 0;
-                return (
-                  <Spotlight
-                    as={Link}
-                    key={k.key}
-                    to="/investments"
-                    className="group block rounded-2xl border border-slate-200 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-gold-300 hover:bg-slate-50"
-                  >
-                    <p className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      {k.label}
-                      <ChevronRight
-                        size={14}
-                        className="text-slate-300 transition duration-200 group-hover:translate-x-0.5 group-hover:text-brand-500"
-                      />
-                    </p>
-                    <p className="num mt-2 text-xl font-bold text-slate-900">{money(k.value, base)}</p>
-                    <p
-                      className={`num mt-0.5 text-sm font-medium ${
-                        up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                      }`}
-                    >
-                      {up ? '▲' : '▼'} {money(Math.abs(gain), base)}
-                    </p>
-                  </Spotlight>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={() => load()} />
       </div>

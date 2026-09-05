@@ -38,6 +38,17 @@ export default function GettingStarted({ data }) {
       why: 'Cash and property are what make net worth true.',
     },
     {
+      // Third, not last: with the cashflow panels hidden until there is
+      // something in them, this is now the only thing on the dashboard that
+      // points at spending — and it is what the FI number in Insights is sized
+      // from, so it earns a place near the top.
+      label: 'Record income & spending',
+      done: (c.transactions || 0) > 0,
+      to: '/transactions',
+      cta: 'Add one',
+      why: 'Powers your FI number, budgets and monthly statements.',
+    },
+    {
       label: 'Import a CAS/CSV or connect your broker',
       done: !!setup.imported,
       to: '/investments',
