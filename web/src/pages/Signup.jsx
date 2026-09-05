@@ -4,6 +4,7 @@ import { Sprout, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { ErrorBanner } from '../components/ui.jsx';
 import AuthAside from '../components/AuthAside.jsx';
+import PasswordField from '../components/PasswordField.jsx';
 import { CURRENCIES, guessCurrency } from '../lib/markets.js';
 
 export default function Signup() {
@@ -121,26 +122,22 @@ export default function Signup() {
                   />
                 </div>
                 <div>
-                  <span className="label">Password</span>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
+                  <PasswordField
+                    label="Password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={setPassword}
+                    autoComplete="new-password"
                     placeholder="At least 6 characters"
                     minLength={6}
                     required
                   />
                 </div>
                 <div>
-                  <span className="label">Confirm password</span>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
+                  <PasswordField
+                    label="Confirm password"
                     value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
+                    onChange={setConfirm}
+                    autoComplete="new-password"
                     placeholder="Re-enter your password"
                     minLength={6}
                     required

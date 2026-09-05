@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, Sprout } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { ErrorBanner } from '../components/ui.jsx';
 import AuthAside from '../components/AuthAside.jsx';
+import PasswordField from '../components/PasswordField.jsx';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
@@ -163,26 +164,22 @@ export default function ForgotPassword() {
                   />
                 </div>
                 <div>
-                  <span className="label">New password</span>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
+                  <PasswordField
+                    label="New password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={setPassword}
+                    autoComplete="new-password"
                     placeholder="At least 6 characters"
                     minLength={6}
                     required
                   />
                 </div>
                 <div>
-                  <span className="label">Confirm new password</span>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
+                  <PasswordField
+                    label="Confirm new password"
                     value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
+                    onChange={setConfirm}
+                    autoComplete="new-password"
                     placeholder="Re-enter your password"
                     minLength={6}
                     required

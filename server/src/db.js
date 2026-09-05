@@ -393,6 +393,12 @@ export async function initDb() {
   await addColumn('cash_accounts', 'profile_id', 'INTEGER');
   await addColumn('assets', 'profile_id', 'INTEGER');
   await addColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
+  // Consecutive wrong passwords, and the one-time code that a run of them earns.
+  // Reset the moment a sign-in actually completes.
+  await addColumn('users', 'failed_logins', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumn('users', 'login_otp_hash', 'TEXT');
+  await addColumn('users', 'login_otp_expires', 'TEXT');
+  await addColumn('users', 'login_otp_attempts', 'INTEGER NOT NULL DEFAULT 0');
   // FI target set directly ("I want ₹5 crore"), instead of deriving it from
   // spending; NULL keeps the derived one. fi_buckets is a JSON array of the
   // allocation buckets that count toward it — NULL means the default, which is
