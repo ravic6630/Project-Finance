@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Banknote, Landmark, Lock, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { Banknote, Landmark, Lock, Minus, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
@@ -9,6 +9,7 @@ import { CardSkeleton, Magnetic, Spotlight } from '../components/fx.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { LinkedScopeNote } from '../components/FamilyBits.jsx';
+import AdjustBalance from '../components/AdjustBalance.jsx';
 import { cardRise, pageVisible } from '../lib/motion.js';
 
 // Cards rise in reading order, but the delay is capped so a long list of
@@ -191,6 +192,8 @@ export default function Cash() {
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  // { account, direction } while the quick add/spend dialog is open.
+  const [adjusting, setAdjusting] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -365,6 +368,25 @@ export default function Cash() {
                       </p>
                     </>
                   )}
+                  {/* Always visible, unlike edit/delete above: those hide until
+                      hover, which is fine for rare actions and useless on a
+                      phone — and these are the ones used every week. */}
+                  <div className="relative mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAdjusting({ account: a, direction: 'in' })}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-300"
+                    >
+                      <Plus size={14} aria-hidden="true" /> Add money
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjusting({ account: a, direction: 'out' })}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-500/10 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 dark:text-slate-200"
+                    >
+                      <Minus size={14} aria-hidden="true" /> Spend
+                    </button>
+                  </div>
                 </Spotlight>
               </motion.div>
             );
@@ -377,6 +399,14 @@ export default function Cash() {
         open={formOpen}
         editing={editing}
         onClose={() => setFormOpen(false)}
+        onSaved={load}
+      />
+
+      <AdjustBalance
+        open={!!adjusting}
+        account={adjusting?.account}
+        direction={adjusting?.direction}
+        onClose={() => setAdjusting(null)}
         onSaved={load}
       />
     </div>

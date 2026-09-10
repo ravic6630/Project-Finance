@@ -4,6 +4,7 @@ import { authRequired } from '../auth.js';
 import { scopeFromReq, normalizeProfileId } from './profiles.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
 import { CURRENCIES } from '../markets.js';
+import { todayIST } from '../services/recurring.js';
 
 export const cashRouter = Router();
 cashRouter.use(authRequired);
@@ -80,6 +81,90 @@ cashRouter.patch(
       now(), req.params.id, req.user.id
     );
     res.json({ account: await getOne.get(req.params.id, req.user.id) });
+  })
+);
+
+/* ------------------------------- quick adjust ------------------------------ */
+// "I got paid" / "I spent some" without reopening the whole account form and
+// retyping a balance. The amount moves the balance, and — unless the user says
+// this was just a correction — the same movement is logged as a transaction.
+//
+// That second half is the point. The dashboard's cashflow panels and the FI
+// number in Insights are both built from recorded spending, and almost nobody
+// opens a separate Transactions page to log it. A balance change is the moment
+// the information exists anyway; asking one extra question there is the
+// cheapest way it will ever get captured.
+//
+// Not every balance change is income or spending, though. Moving money between
+// your own accounts, or fixing a typo, is neither — and logging it as an
+// expense would inflate the spending the FI target is sized from. So `record`
+// is the user's call on every adjustment, defaulting to on.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_ADJUST = 1e12;
+
+const bumpBalance = `
+  UPDATE cash_accounts SET balance = balance + ?, updated_at = ?
+  WHERE id = ? AND user_id = ?
+`;
+const insertTxn = `
+  INSERT INTO transactions (user_id, type, amount, currency, category, account, date, note, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+cashRouter.post(
+  '/:id/adjust',
+  asyncHandler(async (req, res) => {
+    const account = await getOne.get(req.params.id, req.user.id);
+    if (!account) throw new HttpError(404, 'Account not found');
+
+    const direction = oneOf(String(req.body.direction || ''), ['in', 'out'], 'direction');
+    const amount = num(req.body.amount, 'amount');
+    // A zero or negative "add" is a direction the user didn't pick; the sign
+    // comes from `direction` alone, so the amount is always a magnitude.
+    if (!(amount > 0)) throw bad('Enter an amount greater than zero');
+    if (amount > MAX_ADJUST) throw bad('That amount is too large');
+
+    const record = req.body.record !== false;
+    const date = req.body.date == null || req.body.date === '' ? todayIST() : String(req.body.date);
+    if (!DATE_RE.test(date)) throw bad('date must be YYYY-MM-DD');
+    const category = str(req.body.category)?.slice(0, 60) || 'Other';
+    const note = str(req.body.note)?.slice(0, 280) || null;
+
+    const delta = direction === 'in' ? amount : -amount;
+    const ts = now();
+
+    // One batch, so the balance and its transaction land together or not at
+    // all — a balance that moved with no record of why is exactly the drift
+    // this feature exists to stop. And `balance = balance + ?` rather than
+    // read-then-write: two quick taps must add up, not overwrite each other.
+    const stmts = [{ sql: bumpBalance, args: [delta, ts, account.id, req.user.id] }];
+    if (record) {
+      stmts.push({
+        sql: insertTxn,
+        args: [
+          req.user.id,
+          direction === 'in' ? 'INCOME' : 'EXPENSE',
+          amount,
+          // The account's own currency: $50 spent from a USD account is $50,
+          // not ₹50, whatever the user's base currency is.
+          account.currency,
+          category,
+          account.name,
+          date,
+          note,
+          ts,
+        ],
+      });
+    }
+    const results = await db.batch(stmts);
+
+    const txnId = record ? Number(results[1]?.lastInsertRowid) || null : null;
+    res.json({
+      account: await getOne.get(account.id, req.user.id),
+      transaction: txnId
+        ? await db.prepare('SELECT * FROM transactions WHERE id = ? AND user_id = ?').get(txnId, req.user.id)
+        : null,
+    });
   })
 );
 
