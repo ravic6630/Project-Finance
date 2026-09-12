@@ -12,7 +12,7 @@ const Signup = lazy(() => import('./pages/Signup.jsx'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
 const Privacy = lazy(() => import('./pages/Privacy.jsx'));
 const Calculators = lazy(() => import('./pages/Calculators.jsx'));
-const { '/': Dashboard, '/investments': Investments, '/goals': Goals, '/returns': Returns, '/cash': Cash, '/assets': Assets, '/transactions': Transactions, '/settings': Settings, '/admin': Admin } = pages;
+const { '/': Dashboard, '/investments': Investments, '/goals': Goals, '/returns': Returns, '/cash': Cash, '/assets': Assets, '/transactions': Transactions, '/settings': Settings, '/legacy': Legacy, '/admin': Admin } = pages;
 const BrokerCallback = lazy(() => import('./pages/BrokerCallback.jsx'));
 
 function Splash({ waking = false }) {
@@ -70,6 +70,10 @@ export default function App() {
         <Route path="/assets" element={<Assets />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/settings" element={<Settings />} />
+        {/* Legacy: your own switch and nominees, or — with an id — the Money Map
+            of someone who named you, readable only once their switch has fired. */}
+        <Route path="/legacy" element={<Legacy />} />
+        <Route path="/legacy/view/:userId" element={<Legacy />} />
         <Route path="/broker/:broker/callback" element={<BrokerCallback />} />
         <Route path="/admin" element={<Admin />} />
       </Route>

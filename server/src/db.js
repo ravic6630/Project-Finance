@@ -404,6 +404,21 @@ export async function initDb() {
   // "now" would always be zero seconds ago and tell nobody anything.
   await addColumn('users', 'last_login_at', 'TEXT');
   await addColumn('users', 'previous_login_at', 'TEXT');
+  // Legacy: a linked family member who is shown the full Money Map if the owner
+  // goes quiet for legacy_inactivity_days. warned_at / released_at are the two
+  // steps of that switch, and both clear the moment the owner signs in again.
+  await addColumn('users', 'legacy_enabled', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumn('users', 'legacy_contact_user_id', 'INTEGER');
+  await addColumn('users', 'legacy_inactivity_days', 'INTEGER NOT NULL DEFAULT 90');
+  await addColumn('users', 'legacy_warned_at', 'TEXT');
+  await addColumn('users', 'legacy_released_at', 'TEXT');
+  await addColumn('users', 'legacy_note', 'TEXT');
+  // Nominee per account/holding/asset. NULL = never recorded (not the same as
+  // "none": one is a gap in our knowledge, the other a gap in their paperwork).
+  for (const t of ['holdings', 'cash_accounts', 'assets']) {
+    await addColumn(t, 'nominee_status', 'TEXT');
+    await addColumn(t, 'nominee_name', 'TEXT');
+  }
   // FI target set directly ("I want ₹5 crore"), instead of deriving it from
   // spending; NULL keeps the derived one. fi_buckets is a JSON array of the
   // allocation buckets that count toward it — NULL means the default, which is

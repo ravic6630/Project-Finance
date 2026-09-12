@@ -70,6 +70,12 @@ export async function createSession(userId, token, req) {
     .prepare('UPDATE users SET previous_login_at = last_login_at, last_login_at = ? WHERE id = ?')
     .run(ts, userId)
     .catch(() => {});
+  // Signing in is proof of life: a pending legacy warning is forgotten and a
+  // released Money Map closes again, immediately and without being asked.
+  await db
+    .prepare('UPDATE users SET legacy_warned_at = NULL, legacy_released_at = NULL WHERE id = ? AND (legacy_warned_at IS NOT NULL OR legacy_released_at IS NOT NULL)')
+    .run(userId)
+    .catch(() => {});
   // Housekeeping: drop this user's long-dead sessions (tokens expire at 30d,
   // so anything untouched for 35d is just clutter in the devices list).
   const cutoff = new Date(Date.now() - 35 * 86400000).toISOString();

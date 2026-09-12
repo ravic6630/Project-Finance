@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Crown, Globe2, LogOut, Users, Download } from 'lucide-react';
+import { Check, Crown, Globe2, LogOut, Users, Download, HeartHandshake, ChevronRight } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { api, apiUrl, getToken } from '../lib/api.js';
 import { dateLabel } from '../lib/format.js';
@@ -12,6 +12,7 @@ import PriceAlertsCard from '../components/PriceAlertsCard.jsx';
 import ReferralCard from '../components/ReferralCard.jsx';
 import StatementsCard from '../components/StatementsCard.jsx';
 import { AppLockCard } from '../components/AppLock.jsx';
+import { Link } from 'react-router-dom';
 
 export default function Settings() {
   const { user, updateProfile, logout } = useAuth();
@@ -152,6 +153,24 @@ export default function Settings() {
           </p>
         </div>
       </div>
+
+      {/* Legacy sits beside Family: it is the reason to link a family member
+          that has nothing to do with looking at each other's dashboards. */}
+      <Link to="/legacy" className="card-interactive group flex items-start gap-4 p-6">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold-100 text-gold-700">
+          <HeartHandshake size={20} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="flex items-center justify-between gap-2 font-bold text-slate-900">
+            Legacy
+            <ChevronRight size={16} className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Record which accounts have a nominee, keep a printable Money Map of everything you own,
+            and name one linked family member who is shown it if you ever stop signing in.
+          </p>
+        </div>
+      </Link>
 
       <AppLockCard />
 
