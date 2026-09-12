@@ -63,6 +63,20 @@ const namedBy = db.prepare(
   `SELECT id, name, email, legacy_inactivity_days, legacy_warned_at, legacy_released_at
      FROM users WHERE legacy_enabled = 1 AND legacy_contact_user_id = ?`
 );
+// The rest of the linking journey, so the page can carry someone from "the
+// dropdown is empty" all the way to a nameable contact without leaving:
+// invites I've sent that nobody has accepted yet, invites waiting on ME, and
+// how many name-only profiles I have (they're the thing people mistake for
+// linkable family — a profile has no login, so there is no one to email).
+const sentInvites = db.prepare(
+  `SELECT id, invitee_email AS email, created_at FROM family_links WHERE inviter_id = ? AND status = 'invited' ORDER BY created_at DESC`
+);
+const receivedInvites = db.prepare(
+  `SELECT l.id, l.created_at, u.name AS inviter_name, u.email AS inviter_email
+     FROM family_links l JOIN users u ON u.id = l.inviter_id
+    WHERE l.status = 'invited' AND l.invitee_email = ? ORDER BY l.created_at DESC`
+);
+const profileCount = db.prepare('SELECT COUNT(*) AS n FROM profiles WHERE user_id = ?');
 
 // When was this account last used? The sign-in clock is rolled by every login;
 // sessions carry a throttled heartbeat for people who stay signed in for weeks
@@ -104,6 +118,14 @@ export async function legacySettings(userId, { at = new Date() } = {}) {
     last_active_at: lastActive,
     inactive_days: inactiveDays,
     members: members.map((m) => ({ user_id: m.id, name: m.name || m.email, email: m.email })),
+    pending_invites: await sentInvites.all(userId),
+    received_invites: (await receivedInvites.all(String(u.email).toLowerCase())).map((r) => ({
+      id: r.id,
+      inviter_name: r.inviter_name || r.inviter_email,
+      inviter_email: r.inviter_email,
+      created_at: r.created_at,
+    })),
+    profile_count: Number((await profileCount.get(userId))?.n || 0),
     // Owners who have named ME, so the contact side of the feature is visible
     // from the same page.
     named_by: (await namedBy.all(userId)).map((o) => ({

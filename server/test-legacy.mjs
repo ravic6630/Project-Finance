@@ -193,6 +193,33 @@ ok(r.skipped_unlinked === 1 && r.released === 0 && r.warned === 0, 'a switch who
 ok((await http('/legacy/settings', { token: owner.token })).body.contact_unlinked === true, 'and the owner is told their contact is no longer linked');
 ok((await http(`/legacy/map/${owner.id}`, { token: spouse.token })).status === 404, 'an unlinked ex-contact gets a 404');
 
+/* ------------------ from empty dropdown to nameable contact --------------- */
+// The situation the page must carry someone out of: "family" that is only a
+// name-only profile, and no linked account at all.
+const parent = await makeUser(`parent${DOMAIN}`, 'Parent P');
+const kid = await makeUser(`kid${DOMAIN}`, 'Kid Q');
+await db.prepare('INSERT INTO profiles (user_id, name, relation, created_at) VALUES (?,?,?,?)').run(parent.id, 'Amma', 'Mother', now());
+
+const p0 = (await http('/legacy/settings', { token: parent.token })).body;
+ok(p0.members.length === 0 && p0.profile_count === 1, 'journey: a name-only profile is counted but NOT nameable', JSON.stringify({ m: p0.members.length, p: p0.profile_count }));
+ok(p0.pending_invites.length === 0 && p0.received_invites.length === 0, 'journey: nothing pending yet');
+ok((await http('/legacy/settings', { method: 'PUT', token: parent.token, body: { enabled: true, contact_user_id: kid.id, inactivity_days: 90 } })).status === 400,
+   'journey: an unlinked account still cannot be named directly');
+
+const inv = await http('/family/invite', { method: 'POST', token: parent.token, body: { email: kid.email } });
+ok(inv.status === 201 && inv.body.account_exists === true, 'journey: invite sent from the flow the page uses', JSON.stringify(inv.body));
+const p1 = (await http('/legacy/settings', { token: parent.token })).body;
+ok(p1.pending_invites.length === 1 && p1.pending_invites[0].email === kid.email, 'journey: the sender sees it pending', JSON.stringify(p1.pending_invites));
+const k1 = (await http('/legacy/settings', { token: kid.token })).body;
+ok(k1.received_invites.length === 1 && k1.received_invites[0].inviter_name === 'Parent P', 'journey: the invitee sees who invited them', JSON.stringify(k1.received_invites));
+
+ok((await http(`/family/${k1.received_invites[0].id}/accept`, { method: 'POST', token: kid.token })).status === 200, 'journey: accepted from the page');
+const p2 = (await http('/legacy/settings', { token: parent.token })).body;
+ok(p2.members.some((m) => m.user_id === kid.id) && p2.pending_invites.length === 0, 'journey: accepting moves them from pending to nameable', JSON.stringify(p2.members));
+ok((await http('/legacy/settings', { method: 'PUT', token: parent.token, body: { enabled: true, contact_user_id: kid.id, inactivity_days: 90 } })).status === 200,
+   'journey: and naming them now works');
+await db.prepare('DELETE FROM profiles WHERE user_id = ?').run(parent.id);
+
 /* --------------------------------- auth ----------------------------------- */
 ok((await http('/legacy/settings')).status === 401, 'no token => 401');
 ok((await http('/legacy/map/print', { raw: true })).status === 401, 'print with no token => 401');
