@@ -15,6 +15,7 @@ import {
   Target,
   TrendingUp,
   Wallet,
+  HeartHandshake,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
@@ -29,6 +30,7 @@ const PAGES = [
   { label: 'Assets', to: '/assets', icon: Building2, keywords: 'property land gold vehicle business' },
   { label: 'Transactions', to: '/transactions', icon: ArrowLeftRight, keywords: 'income expense cashflow' },
   { label: 'Settings', to: '/settings', icon: Settings, keywords: 'profile email digest password' },
+  { label: 'Legacy', to: '/legacy', icon: HeartHandshake, keywords: 'nominee family money map inheritance will estate' },
 ];
 
 // Cmd/Ctrl-K palette: jump to any page or holding, or flip the theme.

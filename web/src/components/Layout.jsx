@@ -31,6 +31,7 @@ const PAGE_TITLES = {
   '/assets': 'Assets',
   '/transactions': 'Transactions',
   '/settings': 'Settings',
+  '/legacy': 'Legacy',
   '/admin': 'Admin',
 };
 
@@ -150,7 +151,7 @@ export default function Layout() {
       document.removeEventListener('keydown', onKey);
     };
   }, [menuOpen]);
-  const title = PAGE_TITLES[location.pathname] || 'Sampada';
+  const title = PAGE_TITLES[location.pathname] || (location.pathname.startsWith('/legacy/') ? 'Legacy' : 'Sampada');
   const initial = (user.name || user.email)[0].toUpperCase();
 
   return (

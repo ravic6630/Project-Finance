@@ -47,7 +47,7 @@ export async function buildSummary(user, { refresh = false, scope = null, withIt
   ]);
 
   // Enrichment needs the holdings; the three lookups below don't, so they ride along.
-  const [{ items, rates }, txnCountRow, goalsRow, brokerRow, prefsRow] = await Promise.all([
+  const [{ items, rates }, txnCountRow, goalsRow, brokerRow, prefsRow, legacyRow] = await Promise.all([
     enrichHoldings(holdings, base, { force: refresh }),
     skipCashflow
       ? Promise.resolve({ n: 0 })
@@ -55,6 +55,7 @@ export async function buildSummary(user, { refresh = false, scope = null, withIt
     db.prepare('SELECT COUNT(*) AS n FROM goals WHERE user_id = ?').get(userId),
     db.prepare('SELECT COUNT(*) AS n FROM broker_connections WHERE user_id = ?').get(userId),
     db.prepare('SELECT daily FROM email_prefs WHERE user_id = ?').get(userId),
+    db.prepare('SELECT legacy_enabled FROM users WHERE id = ?').get(userId),
   ]);
 
   const extraCurrencies = new Set([
@@ -160,6 +161,7 @@ export async function buildSummary(user, { refresh = false, scope = null, withIt
     setup: {
       imported: Number(brokerRow?.n || 0) > 0 || holdings.some((h) => /^imported/i.test(h.notes || '')),
       daily_email: !!prefsRow?.daily,
+      legacy: !!legacyRow?.legacy_enabled,
     },
     rates,
     ...(withItems ? { items } : {}),

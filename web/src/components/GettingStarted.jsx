@@ -69,6 +69,13 @@ export default function GettingStarted({ data }) {
       cta: 'Turn it on',
       why: 'A morning email so you never have to remember to check.',
     },
+    {
+      label: 'Name a legacy contact',
+      done: !!setup.legacy,
+      to: '/legacy',
+      cta: 'Set it up',
+      why: 'So your family finds everything, if they ever have to.',
+    },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   // The first thing left to do. Everything else stays visible but recedes —

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler, HttpError } from '../util.js';
 import { runDigests, runMonthlyStatements } from '../services/scheduler.js';
+import { runLegacyChecks } from '../services/legacy.js';
 import { evaluateAlerts, refreshAllInstruments } from '../services/alerts.js';
 
 export const cronRouter = Router();
@@ -32,7 +33,11 @@ async function runAll() {
   const alerts = await evaluateAlerts();
   const digests = await runDigests();
   const statements = await runMonthlyStatements(); // idempotent per month
-  return { ok: !digests.error, refresh, alerts, digests, statements };
+  // Legacy switch: warn owners who have gone quiet, release the map for those
+  // who stayed quiet past their threshold. Wrapped so a bug here can never
+  // stop the digests — and vice versa.
+  const legacy = await runLegacyChecks().catch((e) => ({ error: e.message }));
+  return { ok: !digests.error, refresh, alerts, digests, statements, legacy };
 }
 function kickOff() {
   if (inFlight) return false;
@@ -65,3 +70,15 @@ cronRouter.get('/digests', handler);
 cronRouter.post('/digests', handler);
 cronRouter.get('/run', handler);
 cronRouter.post('/run', handler);
+
+// The legacy switch on its own, synchronously — `?at=YYYY-MM-DD` pretends it is
+// that day, which is how the ninety-day sequence is exercised in a test run
+// without waiting ninety days. Still behind the cron secret.
+const legacyHandler = asyncHandler(async (req, res) => {
+  assertSecret(req);
+  const at = req.query.at ? new Date(`${req.query.at}T12:00:00Z`) : new Date();
+  if (Number.isNaN(at.getTime())) throw new HttpError(400, 'at must be YYYY-MM-DD');
+  res.json(await runLegacyChecks({ at }));
+});
+cronRouter.get('/legacy', legacyHandler);
+cronRouter.post('/legacy', legacyHandler);

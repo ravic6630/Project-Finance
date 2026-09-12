@@ -21,6 +21,7 @@ const loaders = {
   '/assets': () => import('../pages/Assets.jsx'),
   '/transactions': () => import('../pages/Transactions.jsx'),
   '/settings': () => import('../pages/Settings.jsx'),
+  '/legacy': () => import('../pages/Legacy.jsx'),
   '/admin': () => import('../pages/Admin.jsx'),
 };
 
