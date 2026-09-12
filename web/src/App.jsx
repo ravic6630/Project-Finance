@@ -4,24 +4,16 @@ import { useAuth } from './lib/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx'; // eager: first paint for logged-out visitors
 import Landing from './pages/Landing.jsx'; // eager: the public front door (motion lib is already in the entry chunk)
+import { pages } from './lib/routes.js';
 
 // Everything else is code-split, so the initial bundle stays small and heavy
 // pages (charts, etc.) only download when they're actually opened.
 const Signup = lazy(() => import('./pages/Signup.jsx'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
 const Privacy = lazy(() => import('./pages/Privacy.jsx'));
-const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Calculators = lazy(() => import('./pages/Calculators.jsx'));
-const Investments = lazy(() => import('./pages/Investments.jsx'));
-const Goals = lazy(() => import('./pages/Goals.jsx'));
-const Returns = lazy(() => import('./pages/Returns.jsx'));
-const Insights = lazy(() => import('./pages/Insights.jsx'));
-const Cash = lazy(() => import('./pages/Cash.jsx'));
-const Assets = lazy(() => import('./pages/Assets.jsx'));
-const Transactions = lazy(() => import('./pages/Transactions.jsx'));
-const Settings = lazy(() => import('./pages/Settings.jsx'));
+const { '/': Dashboard, '/investments': Investments, '/goals': Goals, '/returns': Returns, '/cash': Cash, '/assets': Assets, '/transactions': Transactions, '/settings': Settings, '/admin': Admin } = pages;
 const BrokerCallback = lazy(() => import('./pages/BrokerCallback.jsx'));
-const Admin = lazy(() => import('./pages/Admin.jsx'));
 
 function Splash({ waking = false }) {
   return (
@@ -72,7 +64,8 @@ export default function App() {
         <Route path="/investments" element={<Investments />} />
         <Route path="/goals" element={<Goals />} />
         <Route path="/returns" element={<Returns />} />
-        <Route path="/insights" element={<Insights />} />
+        {/* Insights now lives as a tab of the Goals hub; old links still land. */}
+        <Route path="/insights" element={<Navigate to="/goals?tab=insights" replace />} />
         <Route path="/cash" element={<Cash />} />
         <Route path="/assets" element={<Assets />} />
         <Route path="/transactions" element={<Transactions />} />

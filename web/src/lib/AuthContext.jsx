@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken } from './api.js';
 import { clearDashboardCache } from './dashboardCache.js';
+import { clearApiCache } from './useApi.js';
 
 const AuthContext = createContext(null);
 
@@ -55,6 +56,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const onLogout = () => {
       clearDashboardCache();
+      clearApiCache();
       setUser(null);
     };
     window.addEventListener('sampada:logout', onLogout);
@@ -105,8 +107,10 @@ export function AuthProvider({ children }) {
 
   function logout() {
     clearToken();
-    // Someone's net worth must not sit in a browser they might share.
+    // Someone's net worth must not sit in a browser they might share — on disk
+    // or in memory.
     clearDashboardCache();
+    clearApiCache();
     setUser(null);
   }
 

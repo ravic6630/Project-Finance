@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Building2, Car, Coins, Home, Landmark, Pencil, Plus, Store, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { peekApi, primeApi } from '../lib/useApi.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
@@ -233,9 +234,10 @@ export default function Assets() {
   const { user } = useAuth();
   const { active: activeProfile, activeProfileId, profileQuery } = useProfile();
   const base = user.base_currency;
-  const [assets, setAssets] = useState([]);
-  const [totalBase, setTotalBase] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const seed = peekApi('/assets', [base, activeProfile]);
+  const [assets, setAssets] = useState(() => seed?.assets ?? []);
+  const [totalBase, setTotalBase] = useState(() => seed?.total_base ?? 0);
+  const [loading, setLoading] = useState(!seed);
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -247,6 +249,7 @@ export default function Assets() {
       const d = await api(`/assets${profileQuery()}`);
       setAssets(d.assets);
       setTotalBase(d.total_base ?? 0);
+      primeApi('/assets', d, [base, activeProfile]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -254,8 +257,15 @@ export default function Assets() {
     }
   }, [activeProfile]);
 
-  // Re-fetch (re-converts) when the base currency changes.
+  // Re-fetch (re-converts) when the base currency changes. A cached copy for
+  // the new scope paints first if there is one.
   useEffect(() => {
+    const cached = peekApi('/assets', [base, activeProfile]);
+    if (cached) {
+      setAssets(cached.assets);
+      setTotalBase(cached.total_base ?? 0);
+      setLoading(false);
+    }
     load();
   }, [load, base, activeProfile]);
 

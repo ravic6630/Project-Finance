@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Calculator,
+  Compass,
   Link2,
   Car,
   Crown,
@@ -21,6 +23,8 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
+import { useApi } from '../lib/useApi.js';
+import InsightsPanel from '../components/insights/InsightsPanel.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import CalculatorTool from '../components/CalculatorTool.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
@@ -378,75 +382,131 @@ function PremiumLock({ onUpgrade }) {
   );
 }
 
+/* ------------------------------------ hub ---------------------------------- */
+// Goals, the calculator and Insights are three answers to one question — "am I
+// going to get there?" — so they share a page. The tab lives in the URL (?tab=)
+// so a link to Insights is a real link and a refresh lands where you were.
+const TABS = [
+  { key: 'goals', label: 'Goals', icon: Target, blurb: 'Set a target, track progress, and see if you’re on pace.' },
+  { key: 'calculator', label: 'Calculator', icon: Calculator, blurb: 'SIP, lumpsum and goal maths, with step-up and inflation built in.' },
+  { key: 'insights', label: 'Insights', icon: Compass, blurb: 'Where your money is taking you, and where it’s exposed.' },
+];
+
+function TabBar({ active, onChange }) {
+  const refs = useRef({});
+  // Arrow keys move between tabs, as a tablist is expected to; Home/End jump.
+  const onKey = (e) => {
+    const i = TABS.findIndex((t) => t.key === active);
+    let next = null;
+    if (e.key === 'ArrowRight') next = TABS[(i + 1) % TABS.length];
+    if (e.key === 'ArrowLeft') next = TABS[(i - 1 + TABS.length) % TABS.length];
+    if (e.key === 'Home') next = TABS[0];
+    if (e.key === 'End') next = TABS[TABS.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    onChange(next.key);
+    refs.current[next.key]?.focus();
+  };
+  return (
+    <div
+      role="tablist"
+      aria-label="Goals sections"
+      onKeyDown={onKey}
+      className="inline-flex gap-1 rounded-2xl bg-slate-100 p-1 dark:bg-[#16233c]"
+    >
+      {TABS.map((t) => {
+        const on = t.key === active;
+        return (
+          <button
+            key={t.key}
+            ref={(el) => (refs.current[t.key] = el)}
+            role="tab"
+            id={`goals-tab-${t.key}`}
+            aria-selected={on}
+            aria-controls={`goals-panel-${t.key}`}
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(t.key)}
+            className={`relative flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:focus-visible:ring-gold-300 ${
+              on ? 'text-brand-800' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {on && (
+              // The same gliding highlight the sidebar uses, so a tab reads as
+              // navigation within the page rather than a second kind of button.
+              <motion.span
+                layoutId="goals-tab-pill"
+                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                className="absolute inset-0 rounded-xl bg-white shadow-sm ring-1 ring-gold-200 dark:bg-brand-700/50 dark:ring-[#2e4a75]"
+              />
+            )}
+            <t.icon size={15} className={`relative ${on ? 'text-gold-500 dark:text-gold-300' : ''}`} />
+            <span className="relative">{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Goals() {
   const { user } = useAuth();
-  const base = user.base_currency; // re-fetch (re-converts) when this changes
-  const [premium, setPremium] = useState(null); // null = loading
-  const [goals, setGoals] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const base = user.base_currency; // goals re-fetch (re-convert) when this changes
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab');
+  const tab = TABS.some((t) => t.key === requested) ? requested : 'goals';
+  const setTab = (key) => {
+    const next = new URLSearchParams(params);
+    if (key === 'goals') next.delete('tab');
+    else next.set('tab', key);
+    setParams(next, { replace: true });
+  };
+
+  // A panel stays mounted once it has been opened, just hidden. Switching tabs
+  // is then instant, and what you typed into the calculator is still there
+  // when you come back from checking Insights.
+  const [visited, setVisited] = useState(() => new Set([tab]));
+  useEffect(() => {
+    setVisited((v) => (v.has(tab) ? v : new Set([...v, tab])));
+  }, [tab]);
+
+  const billing = useApi('/billing/status');
+  // null while unknown; a failed check reads as "not premium" rather than
+  // leaving a paying member staring at a spinner over a network blip.
+  const premium = billing.data ? !!billing.data?.state?.premium : billing.error ? false : null;
+  const goalsQ = useApi('/goals', { vary: [base], enabled: premium === true });
+  const goals = goalsQ.data?.goals || [];
+
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [calcOpen, setCalcOpen] = useState(false);
+  const [error, setError] = useState('');
   const confirm = useConfirm();
 
-  const load = useCallback(async () => {
-    try {
-      setError('');
-      const status = await api('/billing/status');
-      const isPremium = !!status?.state?.premium;
-      setPremium(isPremium);
-      if (isPremium) {
-        const d = await api('/goals');
-        setGoals(d.goals);
-      }
-    } catch (err) {
-      // Don't leave `premium` at its loading value on a network blip — that
-      // renders the upgrade lock to paying members with nothing explaining why.
-      setPremium((cur) => (cur === null ? false : cur));
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load, base]);
+  const reloadAll = () => {
+    billing.reload();
+    goalsQ.reload();
+  };
 
   async function onDelete(g) {
     if (!(await confirm({ title: `Delete “${g.name}”?`, message: 'This permanently removes the goal.', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await api(`/goals/${g.id}`, { method: 'DELETE' });
-      load();
+      goalsQ.reload();
     } catch (err) {
       setError(err.message);
     }
   }
 
-  if (loading) return <Spinner label="Loading your goals…" />;
-
-  if (!premium) {
-    return (
-      <div className="space-y-6">
-        <PremiumLock onUpgrade={() => setUpgradeOpen(true)} />
-        <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={load} />
-      </div>
-    );
-  }
+  const current = TABS.find((t) => t.key === tab);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-brand-900">Goals &amp; projections</h1>
-          <p className="text-sm text-slate-500">Set a target, track progress, and see if you&apos;re on pace.</p>
+          <p className="text-sm text-slate-500">{current.blurb}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="btn-ghost" onClick={() => setCalcOpen(true)}>
-            <Calculator size={16} /> Calculator
-          </button>
+        {tab === 'goals' && premium && (
           <button
             className="btn-primary"
             onClick={() => {
@@ -456,58 +516,84 @@ export default function Goals() {
           >
             <Plus size={16} /> Add goal
           </button>
-        </div>
+        )}
       </div>
 
-      <ErrorBanner message={error} />
+      <TabBar active={tab} onChange={setTab} />
 
-      {goals.length === 0 ? (
-        <EmptyState
-          illo="goals"
-          icon={Target}
-          title="No goals yet"
-          hint="Add your first goal — retirement, a house, your child's education — and we'll project whether you're on track."
-          action={
-            <button
-              className="btn-primary"
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              <Plus size={16} /> Add a goal
-            </button>
-          }
-        />
-      ) : (
-        <motion.div
-          variants={gridStagger}
-          initial={pageVisible() ? 'hidden' : false}
-          animate="show"
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        >
-          {goals.map((g) => (
-            <GoalCard
-              key={g.id}
-              goal={g}
-              onEdit={(goal) => {
-                setEditing(goal);
-                setFormOpen(true);
-              }}
-              onDelete={onDelete}
-            />
-          ))}
-        </motion.div>
+      {/* ---------------------------------- goals -------------------------------- */}
+      <div role="tabpanel" id="goals-panel-goals" aria-labelledby="goals-tab-goals" hidden={tab !== 'goals'}>
+        {premium === null ? (
+          <Spinner label="Loading your goals…" />
+        ) : !premium ? (
+          <PremiumLock onUpgrade={() => setUpgradeOpen(true)} />
+        ) : (
+          <div className="space-y-6">
+            <ErrorBanner message={error || goalsQ.error} />
+            {goalsQ.loading ? (
+              <Spinner label="Loading your goals…" />
+            ) : goals.length === 0 ? (
+              <EmptyState
+                illo="goals"
+                icon={Target}
+                title="No goals yet"
+                hint="Add your first goal — retirement, a house, your child's education — and we'll project whether you're on track."
+                action={
+                  <button
+                    className="btn-primary"
+                    onClick={() => {
+                      setEditing(null);
+                      setFormOpen(true);
+                    }}
+                  >
+                    <Plus size={16} /> Add a goal
+                  </button>
+                }
+              />
+            ) : (
+              <motion.div
+                variants={gridStagger}
+                initial={pageVisible() ? 'hidden' : false}
+                animate="show"
+                className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+              >
+                {goals.map((g) => (
+                  <GoalCard
+                    key={g.id}
+                    goal={g}
+                    onEdit={(goal) => {
+                      setEditing(goal);
+                      setFormOpen(true);
+                    }}
+                    onDelete={onDelete}
+                  />
+                ))}
+              </motion.div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ------------------------------- calculator ------------------------------ */}
+      {/* Free for everyone — it is the same tool as the public page. A free
+          account can plan here even though goals and insights are Premium. */}
+      {visited.has('calculator') && (
+        <div role="tabpanel" id="goals-panel-calculator" aria-labelledby="goals-tab-calculator" hidden={tab !== 'calculator'}>
+          <div className="card p-5 sm:p-6">
+            <CalculatorTool currency={base} showCurrencyPicker={false} stickyTop="top-16" />
+          </div>
+        </div>
       )}
 
-      <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={load} />
+      {/* -------------------------------- insights ------------------------------- */}
+      {visited.has('insights') && (
+        <div role="tabpanel" id="goals-panel-insights" aria-labelledby="goals-tab-insights" hidden={tab !== 'insights'}>
+          <InsightsPanel />
+        </div>
+      )}
 
-      {/* Calculator opens over the page (Goals + "Add goal" return when you close
-          it with × or Escape). Uses your base currency and keeps the result pinned
-          at the top while you scroll. */}
-      <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="Calculator" wide>
-        <CalculatorTool currency={base} showCurrencyPicker={false} stickyTop="top-0" />
-      </Modal>
+      <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={goalsQ.reload} />
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={reloadAll} />
     </div>
   );
 }

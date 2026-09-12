@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { MotionConfig, motion, useReducedMotion } from 'framer-motion';
-import { ArrowLeftRight, Building2, Compass, LayoutDashboard, LogOut, Menu, Receipt, Settings, Shield, Sprout, Target, TrendingUp, Wallet, X, Search as SearchIcon } from 'lucide-react';
+import { ArrowLeftRight, Building2, LayoutDashboard, LogOut, Menu, Receipt, Settings, Shield, Sprout, Target, TrendingUp, Wallet, X, Search as SearchIcon } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext.jsx';
 import CurrencyMenu from './CurrencyMenu.jsx';
 import SupportChat from './SupportChat.jsx';
@@ -9,13 +9,13 @@ import ThemeToggle from './ThemeToggle.jsx';
 import CommandPalette from './CommandPalette.jsx';
 import ProfileSwitcher from './ProfileSwitcher.jsx';
 import { ProfileProvider } from '../lib/ProfileContext.jsx';
+import { prefetchAllRoutes, prefetchRoute } from '../lib/routes.js';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/investments', label: 'Investments', icon: TrendingUp },
   { to: '/goals', label: 'Goals', icon: Target },
   { to: '/returns', label: 'Returns & tax', icon: Receipt },
-  { to: '/insights', label: 'Insights', icon: Compass },
   { to: '/cash', label: 'Cash & Bank', icon: Wallet },
   { to: '/assets', label: 'Assets', icon: Building2 },
   { to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
@@ -27,7 +27,6 @@ const PAGE_TITLES = {
   '/investments': 'Investments',
   '/goals': 'Goals',
   '/returns': 'Returns & tax',
-  '/insights': 'Insights',
   '/cash': 'Cash & Bank',
   '/assets': 'Assets',
   '/transactions': 'Transactions',
@@ -72,6 +71,11 @@ function SidebarContent({ onNavigate, pillId }) {
             to={to}
             end={end}
             onClick={onNavigate}
+            // Start the page's chunk downloading the moment intent shows, so
+            // the click itself has nothing left to wait for.
+            onMouseEnter={() => prefetchRoute(to)}
+            onFocus={() => prefetchRoute(to)}
+            onTouchStart={() => prefetchRoute(to)}
             className={({ isActive }) =>
               `group relative flex items-center rounded-xl px-3 py-2.5 text-sm font-semibold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:focus-visible:ring-gold-300 ${
                 isActive
@@ -124,6 +128,9 @@ export default function Layout() {
   const firstRender = useRef(true);
   useEffect(() => {
     firstRender.current = false;
+    // Once the first page is up, quietly warm every other page's chunk in
+    // idle time — after this, no navigation waits on a download.
+    prefetchAllRoutes();
   }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);

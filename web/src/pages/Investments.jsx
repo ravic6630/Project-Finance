@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef} from 'react';
 import { motion } from 'framer-motion';
 import { ArrowDownRight, ArrowUpRight, Building2, Download, FileSpreadsheet, FileUp, Pencil, Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { peekApi, primeApi } from '../lib/useApi.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { LinkedScopeNote } from '../components/FamilyBits.jsx';
@@ -148,8 +149,11 @@ export default function Investments() {
   const { active: activeProfile, activeProfileId, profileQuery } = useProfile();
   const base = user.base_currency;
   const confirm = useConfirm();
-  const [holdings, setHoldings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Last good response for this scope, if the page has been here before —
+  // painted at once, then refreshed behind. First visit still waits.
+  const seed = peekApi('/holdings', [base, activeProfile]);
+  const [holdings, setHoldings] = useState(() => seed?.holdings ?? []);
+  const [loading, setLoading] = useState(!seed);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -174,6 +178,7 @@ export default function Investments() {
       const d = await api(`/holdings${parts ? `?${parts}` : ''}`);
       if (reqRef.current !== ticket) return;
       setHoldings(d.holdings);
+      primeApi('/holdings', d, [base, activeProfile]);
       setUpdatedAt(new Date().toISOString());
     } catch (err) {
       // A background poll failing shouldn't disrupt the page; only surface real loads.
@@ -187,7 +192,15 @@ export default function Investments() {
   }, [activeProfile]);
 
   useEffect(() => {
-    setLoading(true);
+    // Switching profile or currency: show that scope's cached list straight
+    // away if there is one, rather than a spinner over the old scope's numbers.
+    const cached = peekApi('/holdings', [base, activeProfile]);
+    if (cached) {
+      setHoldings(cached.holdings);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     load();
   }, [load, base, activeProfile]);
 

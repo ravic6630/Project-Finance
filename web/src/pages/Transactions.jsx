@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef} from 'react';
 import { motion } from 'framer-motion';
 import { ArrowDownCircle, ArrowUpCircle, Pencil, PiggyBank, Plus, Repeat, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { peekApi, primeApi } from '../lib/useApi.js';
 import { dateLabel, money, todayISO } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal } from '../components/ui.jsx';
@@ -200,10 +201,11 @@ function TxnForm({ open, onClose, onSaved, editing, categories }) {
 }
 
 export default function Transactions() {
-  const [txns, setTxns] = useState([]);
-  const [categories, setCategories] = useState(null);
   const [filter, setFilter] = useState('ALL');
-  const [loading, setLoading] = useState(true);
+  const seed = peekApi('/transactions', ['ALL']);
+  const [txns, setTxns] = useState(() => seed?.transactions ?? []);
+  const [categories, setCategories] = useState(() => seed?.categories ?? null);
+  const [loading, setLoading] = useState(!seed);
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -223,6 +225,7 @@ export default function Transactions() {
       if (reqRef.current !== ticket) return;
       setTxns(d.transactions);
       setCategories(d.categories);
+      primeApi('/transactions', d, [f || 'ALL']);
     } catch (err) {
       if (reqRef.current === ticket) setError(err.message);
     } finally {
@@ -231,7 +234,16 @@ export default function Transactions() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
+    // Each filter is its own cached list, so flipping Income → Expense → All
+    // is instant after the first pass.
+    const cached = peekApi('/transactions', [filter || 'ALL']);
+    if (cached) {
+      setTxns(cached.transactions);
+      setCategories(cached.categories);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     load(filter);
   }, [load, filter]);
 
