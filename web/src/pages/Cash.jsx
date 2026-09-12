@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Banknote, Landmark, Lock, Minus, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { peekApi, primeApi } from '../lib/useApi.js';
 import { dateLabel, money } from '../lib/format.js';
 import { CURRENCIES } from '../lib/markets.js';
 import { EmptyState, ErrorBanner, Field, Modal } from '../components/ui.jsx';
@@ -187,8 +188,9 @@ function CashForm({ open, onClose, onSaved, editing, profileId = null }) {
 
 export default function Cash() {
   const { active: activeProfile, activeProfileId, profileQuery } = useProfile();
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const seed = peekApi('/cash', [activeProfile]);
+  const [accounts, setAccounts] = useState(() => seed?.accounts ?? []);
+  const [loading, setLoading] = useState(!seed);
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -200,6 +202,7 @@ export default function Cash() {
       setError('');
       const d = await api(`/cash${profileQuery()}`);
       setAccounts(d.accounts);
+      primeApi('/cash', d, [activeProfile]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -210,6 +213,11 @@ export default function Cash() {
   const confirm = useConfirm();
 
   useEffect(() => {
+    const cached = peekApi('/cash', [activeProfile]);
+    if (cached) {
+      setAccounts(cached.accounts);
+      setLoading(false);
+    }
     load();
   }, [load, activeProfile]);
 

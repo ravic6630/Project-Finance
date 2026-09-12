@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Crown, Download, Loader2, Plus, Receipt, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { peekApi, primeApi } from '../lib/useApi.js';
 import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
@@ -21,7 +22,7 @@ function TxnModal({ holding, base, onClose, onChanged }) {
   }, [holding.id]);
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, base]);
 
   const set = (p) => setForm((f) => ({ ...f, ...p }));
 
@@ -150,9 +151,12 @@ function Stat({ label, value, cls }) {
 export default function Returns() {
   const { user } = useAuth();
   const base = user.base_currency;
-  const [premium, setPremium] = useState(null);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Two requests, both cached: the premium check and the returns themselves.
+  const seedStatus = peekApi('/billing/status');
+  const seedData = peekApi('/returns', [base]);
+  const [premium, setPremium] = useState(() => (seedStatus ? !!seedStatus?.state?.premium : null));
+  const [data, setData] = useState(() => seedData ?? null);
+  const [loading, setLoading] = useState(!(seedStatus && (seedData || !seedStatus?.state?.premium)));
   const [error, setError] = useState('');
   const [txnFor, setTxnFor] = useState(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -161,9 +165,14 @@ export default function Returns() {
     try {
       setError('');
       const status = await api('/billing/status');
+      primeApi('/billing/status', status);
       const isPremium = !!status?.state?.premium;
       setPremium(isPremium);
-      if (isPremium) setData(await api('/returns'));
+      if (isPremium) {
+        const d = await api('/returns');
+        primeApi('/returns', d, [base]);
+        setData(d);
+      }
     } catch (err) {
       setError(err.message);
     } finally {

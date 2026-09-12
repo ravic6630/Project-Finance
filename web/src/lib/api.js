@@ -41,7 +41,14 @@ export async function api(path, { method = 'GET', body } = {}) {
     err.status = res.status;
     throw err;
   }
+  // A successful write means every cached read may now be stale. useApi listens
+  // for this and drops its whole cache — coarse, but never wrong.
+  if (method !== 'GET') mutated();
   return data;
+}
+
+function mutated() {
+  window.dispatchEvent(new Event('sampada:mutated'));
 }
 
 // Multipart upload (FormData) — lets the browser set the multipart boundary.
@@ -64,5 +71,6 @@ export async function apiUpload(path, formData) {
     err.status = res.status;
     throw err;
   }
+  mutated();
   return data;
 }
