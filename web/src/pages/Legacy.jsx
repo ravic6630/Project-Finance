@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ExternalLink,
   FileText,
+  Send,
   HeartHandshake,
   ShieldCheck,
   Users,
@@ -57,13 +58,62 @@ function SwitchCard({ settings, onSaved }) {
   const [note, setNote] = useState(settings.note || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // The invite-from-here flow, so an empty dropdown is a step, not a dead end.
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState('');
+  const [inviteErr, setInviteErr] = useState('');
 
+  // Re-sync a field only when ITS server value changed. Settings also reload
+  // after an invite is sent or accepted — nothing about the switch changed on
+  // the server then, and wiping a half-filled form (the not-yet-saved "on"
+  // checkbox included) would hide the very panel the user is working in.
+  const prevRef = useRef(settings);
   useEffect(() => {
-    setEnabled(settings.enabled);
-    setContact(settings.contact?.user_id ?? '');
-    setDays(settings.inactivity_days);
-    setNote(settings.note || '');
+    const prev = prevRef.current;
+    prevRef.current = settings;
+    if (prev === settings) return;
+    if (settings.enabled !== prev.enabled) setEnabled(settings.enabled);
+    if (String(settings.contact?.user_id ?? '') !== String(prev.contact?.user_id ?? '')) {
+      setContact(settings.contact?.user_id ?? '');
+    }
+    if (settings.inactivity_days !== prev.inactivity_days) setDays(settings.inactivity_days);
+    if ((settings.note || '') !== (prev.note || '')) setNote(settings.note || '');
   }, [settings]);
+
+  async function sendInvite() {
+    setInviteBusy(true);
+    setInviteErr('');
+    setInviteMsg('');
+    try {
+      const d = await api('/family/invite', { method: 'POST', body: { email: inviteEmail.trim() } });
+      setInviteMsg(
+        d.account_exists
+          ? `Invite sent. ${inviteEmail.trim()} already has a Sampada account — they'll see it under Manage family, and the moment they accept you can pick them above.`
+          : `Invite sent to ${inviteEmail.trim()}. They'll need to create a free account with that email and accept — then you can pick them above.`
+      );
+      setInviteEmail('');
+      onSaved();
+    } catch (err) {
+      setInviteErr(err.message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function acceptInvite(id) {
+    setInviteBusy(true);
+    setInviteErr('');
+    try {
+      await api(`/family/${id}/accept`, { method: 'POST' });
+      setInviteMsg('Linked. You can now pick them above — and they can name you too.');
+      onSaved();
+    } catch (err) {
+      setInviteErr(err.message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
 
   const dirty =
     enabled !== settings.enabled ||
@@ -148,7 +198,14 @@ function SwitchCard({ settings, onSaved }) {
       </label>
 
       <div className={`grid gap-4 sm:grid-cols-2 ${enabled ? '' : 'opacity-50'}`}>
-        <Field label="Who to tell" hint={settings.members.length ? 'Only linked family members can be named — the link is their consent.' : 'Link a family member first, from the people menu in the header.'}>
+        <Field
+          label="Who to tell"
+          hint={
+            settings.members.length
+              ? 'Only linked family members can be named — the link is their consent.'
+              : 'No linked accounts yet — send an invite below and they appear here the moment they accept.'
+          }
+        >
           <select className="input" value={contact} onChange={(e) => setContact(e.target.value)} disabled={!enabled || !settings.members.length}>
             <option value="">Choose…</option>
             {settings.members.map((m) => (
@@ -168,6 +225,66 @@ function SwitchCard({ settings, onSaved }) {
           </select>
         </Field>
       </div>
+
+      {/* From "the dropdown is empty" to a nameable contact without leaving the
+          page: accept an invite that's waiting on you, see the ones you've sent,
+          send a new one. A name-only profile is the thing people expect to pick
+          here, so the difference is spelled out rather than implied. */}
+      {enabled && (
+        <div className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-[#223250]">
+          {settings.members.length === 0 && (
+            <p className="text-sm leading-relaxed text-slate-600">
+              {settings.profile_count > 0
+                ? `The ${settings.profile_count === 1 ? 'person' : `${settings.profile_count} people`} in Manage family ${settings.profile_count === 1 ? 'is a name-only profile' : 'are name-only profiles'} — profiles have no login or email of their own, so there's no one for Sampada to warn or show the map to. Naming someone needs a linked account: invite them to their own free login here.`
+                : 'Naming someone needs a linked account — a real Sampada login that accepted a link to yours. Invite a family member here; it takes them a minute.'}
+            </p>
+          )}
+
+          {settings.received_invites?.map((inv) => (
+            <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm dark:bg-[#16233c]">
+              <span className="text-slate-700">
+                <b>{inv.inviter_name}</b> has already invited you to link accounts.
+              </span>
+              <button type="button" className="btn-primary px-3 py-1.5 text-xs" disabled={inviteBusy} onClick={() => acceptInvite(inv.id)}>
+                Accept &amp; link
+              </button>
+            </div>
+          ))}
+
+          {settings.pending_invites?.map((inv) => (
+            <p key={inv.id} className="flex items-center gap-2 text-sm text-slate-500">
+              <Send size={14} className="shrink-0 text-gold-600" />
+              <span>
+                <b className="text-slate-700">{inv.email}</b> — invited, waiting for them to accept. They appear in the list above the moment they do.
+              </span>
+            </p>
+          ))}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input min-w-0 flex-1"
+              type="email"
+              placeholder="family-member@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (inviteEmail.trim()) sendInvite();
+                }
+              }}
+            />
+            <button type="button" className="btn-ghost" disabled={inviteBusy || !inviteEmail.trim()} onClick={sendInvite}>
+              <Send size={15} /> {inviteBusy ? 'Sending…' : 'Invite to link'}
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Linking is mutual and view-only — you each keep your own login, and either side can unlink at any time.
+          </p>
+          {inviteMsg && <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">{inviteMsg}</p>}
+          <ErrorBanner message={inviteErr} />
+        </div>
+      )}
 
       <Field label="A note for them (optional)" hint="Shown at the top of the Money Map. Where the papers are, who to call, anything they'd need.">
         <textarea
