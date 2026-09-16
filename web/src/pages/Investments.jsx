@@ -438,6 +438,7 @@ export default function Investments() {
 
       <HoldingForm
         profileId={activeProfileId}
+        holdings={holdings}
         open={formOpen}
         editing={editing}
         onClose={() => setFormOpen(false)}
