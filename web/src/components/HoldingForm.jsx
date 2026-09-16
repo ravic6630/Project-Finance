@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Layers, RefreshCw, Search } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { CURRENCIES, STOCK_MARKETS, currencyForKind } from '../lib/markets.js';
 import { ErrorBanner, Field, Modal } from './ui.jsx';
@@ -159,7 +159,7 @@ function StockSearch({ kind, onPick }) {
   );
 }
 
-export default function HoldingForm({ open, onClose, onSaved, editing, profileId = null }) {
+export default function HoldingForm({ open, onClose, onSaved, editing, profileId = null, holdings = [] }) {
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -228,10 +228,82 @@ export default function HoldingForm({ open, onClose, onSaved, editing, profileId
   const isMf = form.kind === 'IN_MF';
   const market = STOCK_MARKETS.find((m) => m.kind === form.kind);
 
+  // Does this instrument already exist in this profile? Saying so BEFORE the
+  // save is the difference between "it merged, as brokers do" and "where did
+  // my numbers go". Manual rows merge server-side; a broker-imported row stays
+  // the broker's mirror, so that case warns instead.
+  const match = useMemo(() => {
+    if (editing || !open) return null;
+    const sym = String(form.symbol || '').trim().toUpperCase();
+    const scheme = String(form.scheme_code || '').trim();
+    if (isMf ? !scheme : !sym) return null;
+    const rows = (holdings || []).filter(
+      (h) =>
+        h.kind === form.kind &&
+        (isMf
+          ? String(h.scheme_code || '') === scheme
+          : String(h.symbol || '').toUpperCase().replace(/\.(NS|BO|L|IR|AX|NZ|TO)$/, '') ===
+            sym.replace(/\.(NS|BO|L|IR|AX|NZ|TO)$/, '')) &&
+        (h.profile_id ?? null) === (profileId ?? null)
+    );
+    if (!rows.length) return null;
+    const manual = rows.filter((h) => !/^imported/i.test(h.notes || ''));
+    const pool = manual.length ? manual : rows;
+    const qty = pool.reduce((t, h) => t + (Number(h.quantity) || 0), 0);
+    const cost = pool.reduce((t, h) => t + (Number(h.quantity) || 0) * (Number(h.avg_cost) || 0), 0);
+    return {
+      willMerge: manual.length > 0,
+      name: pool[0].name,
+      source: (rows.find((h) => /^imported/i.test(h.notes || ''))?.notes || '').replace(/^imported from\s*/i, ''),
+      quantity: qty,
+      avg: qty > 0 ? cost / qty : 0,
+      currency: pool[0].currency,
+    };
+  }, [open, editing, form.kind, form.symbol, form.scheme_code, holdings, profileId, isMf]);
+
+  // The average the merged position lands on, live as the numbers are typed.
+  const addQty = Number(form.quantity);
+  const addAvg = Number(form.avg_cost);
+  const preview =
+    match?.willMerge && Number.isFinite(addQty) && addQty > 0 && Number.isFinite(addAvg)
+      ? {
+          quantity: match.quantity + addQty,
+          avg: (match.quantity * match.avg + addQty * addAvg) / (match.quantity + addQty),
+        }
+      : null;
+  const fmt = (v) => Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit holding' : 'Add holding'}>
       <form onSubmit={onSubmit} className="space-y-4">
         <ErrorBanner message={error} />
+
+        {match?.willMerge && (
+          <p className="flex items-start gap-2.5 rounded-xl bg-brand-50 px-4 py-3 text-sm leading-relaxed text-brand-800 dark:bg-[#16233c] dark:text-brand-100">
+            <Layers size={16} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-300" />
+            <span>
+              You already hold <b className="num">{fmt(match.quantity)}</b> of <b>{match.name}</b> at an average of{' '}
+              <b className="num">{fmt(match.avg)}</b>. Saving adds to that position
+              {preview ? (
+                <>
+                  {' '}— <b className="num">{fmt(preview.quantity)}</b> units at a new average of{' '}
+                  <b className="num">{fmt(preview.avg)}</b>.
+                </>
+              ) : (
+                ', averaging the cost like your broker would.'
+              )}
+            </span>
+          </p>
+        )}
+        {match && !match.willMerge && (
+          <p className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 px-4 py-3 text-sm leading-relaxed text-amber-800 dark:text-amber-200">
+            <RefreshCw size={16} className="mt-0.5 shrink-0" />
+            <span>
+              <b>{match.name}</b> is synced from {match.source || 'your broker'}. If you bought through them, use{' '}
+              <b>Sync now</b> instead and it updates by itself — saving here keeps a separate, manually-tracked lot.
+            </span>
+          </p>
+        )}
 
         <Field label="Type">
           <div className="grid grid-cols-2 gap-2">
@@ -391,7 +463,7 @@ export default function HoldingForm({ open, onClose, onSaved, editing, profileId
             Cancel
           </button>
           <button className="btn-primary" disabled={busy}>
-            {busy ? 'Saving…' : editing ? 'Save changes' : 'Add holding'}
+            {busy ? 'Saving…' : editing ? 'Save changes' : match?.willMerge ? 'Add to position' : 'Add holding'}
           </button>
         </div>
       </form>

@@ -7,6 +7,7 @@ import { enrichHoldings } from '../services/portfolio.js';
 import { assertHoldingsCapacity } from '../services/billing.js';
 import { LIVE_PRICE_TTL_MS, searchMutualFunds, searchStocks } from '../services/prices.js';
 import { ALL_KINDS, CURRENCIES, STOCK_MARKETS, currencyForKind, symbolForMarket } from '../markets.js';
+import { todayIST } from '../services/recurring.js';
 
 export const holdingsRouter = Router();
 holdingsRouter.use(authRequired);
@@ -95,16 +96,122 @@ holdingsRouter.get(
   })
 );
 
+// Broker-import rows are recognised by their notes label; the broker prune
+// keys off the same convention, so the two can never disagree about which
+// rows a sync owns.
+const IMPORTED_RE = /^imported/i;
+
+// One position per instrument. Buying more of a stock you already hold should
+// UPDATE that position with a weighted-average cost — the way every broker the
+// user knows behaves — not quietly grow a second row for the same company.
+//
+// The rules, and why each line is drawn where it is:
+// - Identity is kind + symbol (scheme code for funds), within the SAME profile.
+//   Your AMZN and your father's AMZN are different people's money.
+// - Only MANUAL rows merge. A broker-imported row is that broker's mirror: the
+//   next sync overwrites its quantity with the broker's truth, so anything
+//   folded into it would be silently erased. A manual lot alongside an
+//   imported row is two sources, and stays two rows.
+// - Pre-existing manual duplicates of the same instrument fold in too, with
+//   their goal links and buy/sell lots re-pointed first — this is exactly what
+//   the statement importer already does with strays.
+// - The buy is appended to the position's ledger ONLY if a ledger already
+//   exists. Returns/XIRR compute purely from lots, so a partial ledger would
+//   report confident, wrong figures; an absent one reports nothing.
 holdingsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const b = readBody(req.body);
-    await assertHoldingsCapacity(req.user, 1); // free plan caps tracked holdings
+    const profileId = await normalizeProfileId(req.user.id, req.body.profile_id);
     const ts = now();
+
+    const sameKind = await db
+      .prepare('SELECT * FROM holdings WHERE user_id = ? AND kind = ? ORDER BY id')
+      .all(req.user.id, b.kind);
+    const matches = sameKind.filter(
+      (h) =>
+        (b.kind === 'IN_MF'
+          ? String(h.scheme_code || '') === String(b.schemeCode || '')
+          : String(h.symbol || '').toUpperCase() === String(b.symbol || '').toUpperCase()) &&
+        (h.profile_id ?? null) === (profileId ?? null)
+    );
+    const manual = matches.filter((h) => !IMPORTED_RE.test(h.notes || ''));
+
+    if (manual.length) {
+      const target = manual[0];
+      const extras = manual.slice(1);
+
+      // Weighted-average across everything being combined, raw values first —
+      // summing already-rounded figures is how paise go missing.
+      let qty = 0;
+      let cost = 0;
+      for (const r of [target, ...extras]) {
+        const q = Number(r.quantity) || 0;
+        qty += q;
+        cost += q * (Number(r.avg_cost) || 0);
+      }
+      const prev = { quantity: qty, avg_cost: qty > 0 ? cost / qty : Number(target.avg_cost) || 0 };
+      qty += b.quantity;
+      cost += b.quantity * b.avgCost;
+      const newAvg = qty > 0 ? cost / qty : b.avgCost;
+
+      const ids = [target.id, ...extras.map((x) => x.id)];
+      const ledgerCount = Number(
+        (
+          await db
+            .prepare(
+              `SELECT COUNT(*) AS n FROM investment_txns WHERE user_id = ? AND holding_id IN (${ids.map(() => '?').join(',')})`
+            )
+            .get(req.user.id, ...ids)
+        )?.n || 0
+      );
+
+      const stmts = [];
+      for (const x of extras) {
+        stmts.push({
+          sql: 'UPDATE investment_txns SET holding_id = ? WHERE user_id = ? AND holding_id = ?',
+          args: [target.id, req.user.id, x.id],
+        });
+        // Goal links follow the money into the surviving row. OR IGNORE keeps
+        // the (goal, holding) uniqueness when a goal linked both duplicates;
+        // the DELETE clears the collided leftover.
+        stmts.push({
+          sql: "UPDATE OR IGNORE goal_links SET ref_id = ? WHERE user_id = ? AND kind = 'holding' AND ref_id = ?",
+          args: [target.id, req.user.id, x.id],
+        });
+        stmts.push({
+          sql: "DELETE FROM goal_links WHERE user_id = ? AND kind = 'holding' AND ref_id = ?",
+          args: [req.user.id, x.id],
+        });
+        stmts.push({ sql: 'DELETE FROM holdings WHERE id = ? AND user_id = ?', args: [x.id, req.user.id] });
+      }
+      stmts.push({
+        sql: 'UPDATE holdings SET quantity = ?, avg_cost = ?, manual_price = COALESCE(?, manual_price), updated_at = ? WHERE id = ? AND user_id = ?',
+        args: [qty, newAvg, b.manualPrice, ts, target.id, req.user.id],
+      });
+      if (ledgerCount > 0 && b.quantity > 0) {
+        stmts.push({
+          sql: 'INSERT INTO investment_txns (user_id, holding_id, type, trade_date, quantity, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          args: [req.user.id, target.id, 'BUY', todayIST(), b.quantity, b.avgCost, ts],
+        });
+      }
+      await db.batch(stmts);
+
+      const row = await getOne.get(target.id, req.user.id);
+      const { items } = await enrichHoldings([row], req.user.base_currency);
+      return res.json({
+        holding: items[0],
+        merged: true,
+        previous: { quantity: prev.quantity, avg_cost: prev.avg_cost },
+        consolidated: extras.length,
+        ledger_recorded: ledgerCount > 0 && b.quantity > 0,
+      });
+    }
+
+    await assertHoldingsCapacity(req.user, 1); // free plan caps tracked holdings
     const info = await insert.run(
       req.user.id, b.kind, b.symbol, b.schemeCode, b.name, b.quantity,
-      b.avgCost, b.currency, b.manualPrice, b.notes,
-      await normalizeProfileId(req.user.id, req.body.profile_id), ts, ts
+      b.avgCost, b.currency, b.manualPrice, b.notes, profileId, ts, ts
     );
     const row = await getOne.get(Number(info.lastInsertRowid), req.user.id);
     const { items } = await enrichHoldings([row], req.user.base_currency);
