@@ -47,19 +47,49 @@ export function shouldSendDigest(u, { force = false, at = new Date() } = {}) {
   return true;
 }
 
-// Send the daily digest to every opted-in premium user (once per IST day).
+// Send the daily digest to every opted-in premium user (once per user-local day).
+//
+// The report says WHY every non-send didn't happen. "I'm not receiving my
+// emails" is only debuggable from the outside — the owner reads this straight
+// off /api/cron/run?wait=1 — so a bare skipped-count is worthless: not-premium,
+// wrong-hour and already-sent-today call for three different fixes.
 export async function runDigests({ force = false } = {}) {
-  const report = { sent: 0, skipped: 0, failed: 0, recipients: [] };
+  const report = {
+    sent: 0,
+    skipped: 0,
+    failed: 0,
+    recipients: [],
+    opted_in: 0,
+    skip_reasons: { not_premium: 0, wrong_hour: 0, already_sent_today: 0 },
+    waiting: [],
+    failures: [],
+  };
   if (!emailConfigured()) return { ...report, error: 'email_not_configured' };
 
   for (const u of await eligible.all()) {
+    report.opted_in += 1;
     if (!(await premiumState(u)).premium) {
       report.skipped += 1;
+      report.skip_reasons.not_premium += 1;
       continue;
     }
-    if (!shouldSendDigest(u, { force })) {
-      report.skipped += 1;
-      continue;
+    if (!force) {
+      const clock = localClock(u.daily_tz);
+      if (clock.hour !== (u.daily_hour ?? 8)) {
+        report.skipped += 1;
+        report.skip_reasons.wrong_hour += 1;
+        // Enough to see at a glance that the ping simply isn't landing in
+        // anyone's chosen hour — the commonest cause of "no emails at all".
+        if (report.waiting.length < 5) {
+          report.waiting.push({ email: u.email, sends_at_hour: u.daily_hour ?? 8, their_hour_now: clock.hour, tz: clock.tz });
+        }
+        continue;
+      }
+      if (u.last_sent && localClock(u.daily_tz, new Date(u.last_sent)).date === clock.date) {
+        report.skipped += 1;
+        report.skip_reasons.already_sent_today += 1;
+        continue;
+      }
     }
     try {
       const { subject, html } = await buildDigest(u);
@@ -69,8 +99,19 @@ export async function runDigests({ force = false } = {}) {
       report.recipients.push(u.email);
     } catch (err) {
       report.failed += 1;
+      if (report.failures.length < 5) report.failures.push({ email: u.email, error: err.message });
       console.error(`Digest failed for ${u.email}:`, err.message);
     }
+  }
+  if (!report.sent && !report.failed) {
+    report.hint =
+      report.opted_in === 0
+        ? 'Nobody has the daily digest turned on (Settings → email).'
+        : report.skip_reasons.not_premium === report.opted_in
+          ? 'Everyone opted in has lapsed premium — digests are a premium feature.'
+          : report.skip_reasons.wrong_hour > 0
+            ? "No opted-in user is in their chosen hour right now. The cron ping must land DURING each user's selected hour — ping every ~10 minutes rather than once a day."
+            : 'Everyone due today has already been sent.';
   }
   return report;
 }
@@ -91,17 +132,29 @@ const markStatement = db.prepare('UPDATE email_prefs SET last_statement_month = 
 // Email last month's statement to every opted-in premium user, once per month.
 // Safe to ping repeatedly — the last_statement_month marker makes it idempotent.
 export async function runMonthlyStatements({ force = false } = {}) {
-  const report = { month: prevMonthYM(), sent: 0, skipped: 0, failed: 0, recipients: [] };
+  const report = {
+    month: prevMonthYM(),
+    sent: 0,
+    skipped: 0,
+    failed: 0,
+    recipients: [],
+    opted_in: 0,
+    skip_reasons: { not_premium: 0, already_sent_this_month: 0 },
+    failures: [],
+  };
   if (!emailConfigured()) return { ...report, error: 'email_not_configured' };
 
   const ym = report.month;
   for (const u of await statementEligible.all()) {
+    report.opted_in += 1;
     if (!(await premiumState(u)).premium) {
       report.skipped += 1;
+      report.skip_reasons.not_premium += 1;
       continue;
     }
     if (!force && u.last_statement_month === ym) {
       report.skipped += 1;
+      report.skip_reasons.already_sent_this_month += 1;
       continue;
     }
     try {
@@ -116,8 +169,17 @@ export async function runMonthlyStatements({ force = false } = {}) {
       report.recipients.push(u.email);
     } catch (err) {
       report.failed += 1;
+      if (report.failures.length < 5) report.failures.push({ email: u.email, error: err.message });
       console.error(`Statement failed for ${u.email}:`, err.message);
     }
+  }
+  if (!report.sent && !report.failed) {
+    report.hint =
+      report.opted_in === 0
+        ? 'Nobody has monthly statements turned on (Settings → email).'
+        : report.skip_reasons.not_premium === report.opted_in
+          ? 'Everyone opted in has lapsed premium — statements are a premium feature.'
+          : `Everyone due has already received the ${ym} statement.`;
   }
   return report;
 }
