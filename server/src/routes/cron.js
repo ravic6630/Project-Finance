@@ -28,20 +28,20 @@ function assertSecret(req) {
 // working (slow price feeds), a new ping just reports "already running"
 // instead of stacking a second run on top.
 let inFlight = null;
-async function runAll() {
+async function runAll({ force = false } = {}) {
   const refresh = await refreshAllInstruments();
   const alerts = await evaluateAlerts();
-  const digests = await runDigests();
-  const statements = await runMonthlyStatements(); // idempotent per month
+  const digests = await runDigests({ force });
+  const statements = await runMonthlyStatements({ force }); // idempotent per month
   // Legacy switch: warn owners who have gone quiet, release the map for those
   // who stayed quiet past their threshold. Wrapped so a bug here can never
   // stop the digests — and vice versa.
   const legacy = await runLegacyChecks().catch((e) => ({ error: e.message }));
   return { ok: !digests.error, refresh, alerts, digests, statements, legacy };
 }
-function kickOff() {
+function kickOff(opts) {
   if (inFlight) return false;
-  inFlight = runAll()
+  inFlight = runAll(opts)
     .then((r) => console.log('[cron] batch done:', JSON.stringify(r)))
     .catch((e) => console.error('[cron] batch failed:', e.message))
     .finally(() => {
@@ -54,13 +54,18 @@ function kickOff() {
 // services time out in ~30s, which a cold start plus price fetches can blow
 // through even though the batch itself completes fine. Add ?wait=1 to run
 // synchronously and get the full report (handy for debugging).
+// ?wait=1 runs synchronously and returns the full report — the self-diagnosis
+// for "why am I not getting emails". ?force=1 additionally ignores the
+// chosen-hour and already-sent guards, so a real send can be proven end to end
+// on demand. Both stay behind the cron secret.
 const handler = asyncHandler(async (req, res) => {
   assertSecret(req);
+  const force = req.query.force === '1';
   if (req.query.wait === '1') {
     if (inFlight) await inFlight;
-    return res.json(await runAll());
+    return res.json(await runAll({ force }));
   }
-  const started = kickOff();
+  const started = kickOff({ force });
   res.json({ ok: true, started, note: started ? 'jobs running in background' : 'a batch is already running' });
 });
 
