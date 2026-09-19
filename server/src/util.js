@@ -7,6 +7,11 @@ export class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+    // An HttpError's message is WRITTEN for a person — that's the point of
+    // throwing one instead of a bare Error. The central handler masks anonymous
+    // 5xx internals (SQL text, file paths, driver errors); a deliberate
+    // "email isn't set up on the server" must reach the screen even as a 503.
+    this.expose = true;
   }
 }
 
