@@ -108,10 +108,15 @@ if (existsSync(webDist)) {
 app.use((err, _req, res, _next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(err);
-  // 4xx messages are written for humans; 5xx ones are internals (SQL text,
-  // file paths, driver errors) and must not reach the client.
+  // 4xx messages are written for humans, and so is any HttpError whatever its
+  // status (err.expose) — "email isn't set up on the server" as a 503 must
+  // reach the screen. Only ANONYMOUS 5xx internals (SQL text, file paths,
+  // driver errors) get masked.
   res.status(status).json({
-    error: status >= 500 ? 'Something went wrong on our side — please try again.' : err.message || 'Request failed',
+    error:
+      status >= 500 && !err.expose
+        ? 'Something went wrong on our side — please try again.'
+        : err.message || 'Request failed',
   });
 });
 

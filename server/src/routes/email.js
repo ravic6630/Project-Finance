@@ -70,15 +70,53 @@ emailRouter.get(
   })
 );
 
-// Send a one-off test to the signed-in user's address (premium + SMTP required).
+// Turn a raw send failure into something a person can act on, without leaking
+// internals: the provider's HTTP status is safe and names the fix (401 = bad
+// key, 402 = credits, 429 = quota); a network code names the reachability
+// problem. The full error still goes to the server log for the deploy owner.
+export function sendFailure(err) {
+  const m = /^Brevo API (\d{3})/i.exec(err?.message || '');
+  if (m) {
+    const code = Number(m[1]);
+    const why =
+      code === 401
+        ? 'the API key was rejected — check BREVO_API_KEY on the server'
+        : code === 402
+          ? 'the Brevo account is out of email credits'
+          : code === 429
+            ? "Brevo's daily sending limit has been reached — it resets at midnight UTC"
+            : 'check the Brevo dashboard';
+    return new HttpError(502, `Our email provider refused the send (Brevo HTTP ${code}) — ${why}.`);
+  }
+  if (err?.code === 'EAUTH') return new HttpError(502, 'The email server rejected the SMTP username/password.');
+  if (err?.code === 'ECONNREFUSED' || err?.code === 'ETIMEDOUT' || err?.code === 'ESOCKET' || err?.code === 'ECONNECTION') {
+    return new HttpError(502, `Could not reach the email server (${err.code}) — check SMTP_HOST/SMTP_PORT.`);
+  }
+  return new HttpError(502, 'The email could not be sent — the server log has the exact provider error.');
+}
+
+// Send a one-off test to the signed-in user's address (premium + email required).
+// This button is ALSO the diagnostic for "I'm not receiving my emails", so its
+// failures must say what's wrong instead of collapsing into a generic 500.
 emailRouter.post(
   '/test',
   asyncHandler(async (req, res) => {
     if (!(await premiumState(req.user)).premium) {
       throw new HttpError(402, 'Daily summary emails are a premium feature. Upgrade to enable.');
     }
+    if (!emailConfigured()) {
+      throw new HttpError(
+        503,
+        "Email isn't set up on the server — add BREVO_API_KEY (or SMTP_HOST/SMTP_USER/SMTP_PASS) to the server environment and redeploy."
+      );
+    }
     const { subject, html } = await buildDigest(req.user);
-    await sendMail({ to: req.user.email, subject: `[Test] ${subject}`, html });
+    try {
+      await sendMail({ to: req.user.email, subject: `[Test] ${subject}`, html });
+    } catch (err) {
+      console.error(`[email-test] send to ${req.user.email} failed:`, err?.message);
+      throw sendFailure(err);
+    }
     res.json({ ok: true, to: req.user.email });
   })
 );

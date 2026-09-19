@@ -191,6 +191,54 @@ ok(r3.digests?.recipients?.includes(A.email) && r3.digests?.recipients?.includes
 ok(!r3.digests?.recipients?.includes(C.email), 'force still never mails a lapsed account');
 ok(mailsTo(B.email).length === 1, "B's mail really arrived on force");
 
+/* --------------------------- the Send test button -------------------------- */
+// The Settings button that reported "Something went wrong on our side". Both of
+// its worlds: with working email it must deliver, and with none configured it
+// must say what is missing instead of hiding behind the generic 500.
+const login = async (base, email) =>
+  (
+    await (
+      await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: 'secret123' }),
+      })
+    ).json()
+  ).token;
+
+const tokA = await login(API, A.email);
+const beforeTest = mailsTo(A.email).length;
+const t1 = await fetch(`${API}/email/test`, { method: 'POST', headers: { Authorization: `Bearer ${tokA}` } });
+const t1b = await t1.json();
+ok(t1.status === 200 && t1b.ok === true && t1b.to === A.email, 'Send test: 200 when email works', JSON.stringify(t1b));
+await new Promise((r) => setTimeout(r, 500));
+ok(mailsTo(A.email).length === beforeTest + 1, 'and the test mail really arrived on the socket');
+
+const DEV = 'http://127.0.0.1:4000/api';
+const devUp = await fetch(`${DEV}/health`).then((r) => r.ok).catch(() => false);
+if (devUp) {
+  const tokDev = await login(DEV, A.email);
+  const t2 = await fetch(`${DEV}/email/test`, { method: 'POST', headers: { Authorization: `Bearer ${tokDev}` } });
+  const t2b = await t2.json();
+  ok(
+    t2.status === 503 && /BREVO_API_KEY/.test(t2b.error || ''),
+    'Send test with no email configured: a 503 that NAMES the missing config',
+    `${t2.status} ${JSON.stringify(t2b)}`
+  );
+} else {
+  ok(false, 'dev API on 4000 must be running for the unconfigured-email check');
+}
+
+// The classifier itself: provider status and network code become the fix.
+const { sendFailure } = await import('./src/routes/email.js');
+ok(/Brevo HTTP 401.*BREVO_API_KEY/i.test(sendFailure(new Error('Brevo API 401: {"message":"Key not found"}')).message),
+   'a rejected key says: check BREVO_API_KEY');
+ok(/daily sending limit/i.test(sendFailure(new Error('Brevo API 429: too many')).message), 'a 429 says: quota');
+ok(/Could not reach the email server \(ECONNREFUSED\)/.test(sendFailure(Object.assign(new Error('x'), { code: 'ECONNREFUSED' })).message),
+   'a network failure names the code');
+ok(sendFailure(new Error('weird')).status === 502 && !/weird/.test(sendFailure(new Error('secret sauce')).message),
+   'anything unrecognised stays 502 and leaks nothing');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 child.kill();
 smtp.close();
