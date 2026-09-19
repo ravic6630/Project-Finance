@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import {
   motion,
   useInView,
@@ -221,8 +221,11 @@ export function Counter({ value, format = (v) => Math.round(v).toLocaleString(),
 /* -------------------------------- Sparkline ------------------------------- */
 // A trend line small enough to live inside a stat card. Draws itself in once,
 // which is the cheapest way to say "this is live data" without a legend.
-export function Sparkline({ points = [], className = '', stroke = 'currentColor', height = 28 }) {
+// `fill` (a colour) adds the landing hero's gradient wash under the line,
+// fading in only after the line has mostly drawn — line first, then glow.
+export function Sparkline({ points = [], className = '', stroke = 'currentColor', height = 28, fill }) {
   const reduced = useReducedMotion();
+  const gid = useId();
   if (!points.length || points.length < 2) return null;
 
   const w = 100;
@@ -248,6 +251,24 @@ export function Sparkline({ points = [], className = '', stroke = 'currentColor'
       style={{ height, width: '100%' }}
       aria-hidden="true"
     >
+      {fill && (
+        <>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={fill} stopOpacity="0.4" />
+              <stop offset="100%" stopColor={fill} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <motion.path
+            d={`${d} L${w},${height} L0,${height} Z`}
+            fill={`url(#${gid})`}
+            stroke="none"
+            initial={reduced ? false : { opacity: 0 }}
+            animate={reduced ? false : { opacity: 1 }}
+            transition={{ delay: 0.6, duration: 0.6 }}
+          />
+        </>
+      )}
       <motion.path
         d={d}
         fill="none"

@@ -34,7 +34,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { useProfile } from '../lib/ProfileContext.jsx';
 import { dateLabel, money, percent } from '../lib/format.js';
 import { ErrorBanner } from '../components/ui.jsx';
-import { Aurora, CardSkeleton, Shimmer, Sparkline, Spotlight } from '../components/fx.jsx';
+import { Aurora, CardSkeleton, Reveal, Shimmer, Sparkline, Spotlight } from '../components/fx.jsx';
 import { cardRise, gridStagger } from '../lib/motion.js';
 import { cacheSignature, readDashboardCache, writeDashboardCache } from '../lib/dashboardCache.js';
 import WealthHero from '../components/WealthHero.jsx';
@@ -621,7 +621,9 @@ export default function Dashboard() {
         <WelcomeBack data={data.since_last_visit} base={base} name={user.name} />
         <GettingStarted data={data} />
 
-        <SectionRule label="Your holdings" />
+        <Reveal y={12}>
+          <SectionRule label="Your holdings" />
+        </Reveal>
 
         {/* Bento: one tile carries the weight (investments, wide + tall), the
             rest step down in size. A uniform 4-across grid gave four things
@@ -735,18 +737,23 @@ export default function Dashboard() {
           )}
         </motion.div>
 
+        {/* Below-the-fold sections arrive the landing way: each rises into
+            place as you scroll to it, already settled by the time it's read. */}
         {!isEmpty && (
-          <>
+          <Reveal className="space-y-6">
             <SectionRule label="Performance" />
             <NetWorthHistory data={data} base={base} onUpgrade={() => setUpgradeOpen(true)} />
-          </>
+          </Reveal>
         )}
 
-        <SectionRule label="Breakdown" />
+        <Reveal>
+          <SectionRule label="Breakdown" />
+        </Reveal>
 
         <div className={`grid grid-cols-1 gap-6 ${hasCashflow ? 'lg:grid-cols-2' : ''}`}>
           {/* Allocation */}
-          <div className="card p-5">
+          <Reveal delay={0.05} className="h-full">
+          <div className="card h-full p-5">
             <div className="mb-2 flex items-center gap-3">
               <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.brand}`}>
                 <PieIcon size={18} />
@@ -783,10 +790,12 @@ export default function Dashboard() {
               </ResponsiveContainer>
             )}
           </div>
+          </Reveal>
 
           {/* Cashflow */}
           {hasCashflow && (
-          <div className="card p-5">
+          <Reveal delay={0.12} className="h-full">
+          <div className="card h-full p-5">
             <div className="mb-2 flex items-center gap-3">
               <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TONES.emerald}`}>
                 <ArrowUpRight size={18} />
@@ -823,6 +832,7 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          </Reveal>
           )}
         </div>
 
