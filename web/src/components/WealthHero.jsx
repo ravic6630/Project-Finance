@@ -5,7 +5,18 @@ import confetti from 'canvas-confetti';
 import { RefreshCw, Sprout, Trophy } from 'lucide-react';
 import { money, percent } from '../lib/format.js';
 import { isNewMilestone, reachedMilestone } from '../lib/milestones.js';
-import { Aurora, Counter, Sparkline } from './fx.jsx';
+import { pageVisible } from '../lib/motion.js';
+import { Aurora, Counter, Sparkline, Spotlight, settle } from './fx.jsx';
+
+// The landing hero's hand-sequenced entrance, at dashboard scale: each row
+// rises into place a beat after the one above it, so the card reads top-down
+// as one movement. Guarded like the landing — loaded in a background tab,
+// everything renders settled instead of waiting on frozen animation frames.
+const rise = (delay = 0) => ({
+  initial: pageVisible() ? { opacity: 0, y: 16 } : false,
+  animate: { opacity: 1, y: 0 },
+  transition: { ...settle, delay },
+});
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -79,7 +90,13 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
   }, [milestone]);
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 p-6 text-white shadow-xl sm:p-8">
+    <Spotlight
+      as={motion.div}
+      initial={pageVisible() ? { opacity: 0, y: 28, scale: 0.98 } : false}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 170, damping: 24 }}
+      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 p-6 text-white shadow-xl sm:p-8"
+    >
       <Aurora />
       {/* Hairline of light on the panel edge — the same trick .card uses, so the
           hero reads as a milled surface rather than a printed rectangle. */}
@@ -101,25 +118,45 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
 
       <div className="relative flex flex-wrap items-start justify-between gap-x-6 gap-y-5">
         <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-gold-300">
+          <motion.p
+            {...rise(0)}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-gold-300"
+          >
             <span className="flex items-center gap-1.5">
               <Sprout size={15} /> {greetingFor(new Date().getHours())}, {first}
             </span>
             {milestone && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2 py-0.5 text-[11px] font-bold text-gold-200 ring-1 ring-gold-400/30">
+              /* the "club" badge pops in last, like the landing card's floating
+                 chips — a reward that arrives after the number has landed. */
+              <motion.span
+                initial={pageVisible() ? { opacity: 0, scale: 0.8 } : false}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ ...settle, delay: 0.55 }}
+                className="inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2 py-0.5 text-[11px] font-bold text-gold-200 ring-1 ring-gold-400/30"
+              >
                 <Trophy size={11} /> {money(milestone, base, { compact: true })} club
-              </span>
+              </motion.span>
             )}
-          </p>
-          <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">
+          </motion.p>
+          <motion.p
+            {...rise(0.1)}
+            className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200"
+          >
             Total net worth
-          </p>
-          <p className="num mt-1 text-4xl font-extrabold tracking-tight sm:text-5xl">
+          </motion.p>
+          <motion.p {...rise(0.18)} className="num mt-1 text-4xl font-extrabold tracking-tight sm:text-5xl">
             <Counter value={data.net_worth || 0} format={(v) => money(v, base)} />
-          </p>
-          <div className="mt-3 h-0.5 w-14 rounded bg-gradient-to-r from-gold-400 to-gold-200" />
+          </motion.p>
+          {/* the champagne hairline draws left-to-right, like an underline
+              being ruled in — the landing card's gold-rule moment. */}
+          <motion.div
+            initial={pageVisible() ? { scaleX: 0 } : false}
+            animate={{ scaleX: 1 }}
+            transition={{ delay: 0.38, duration: 0.55, ease: 'easeOut' }}
+            className="mt-3 h-0.5 w-14 origin-left rounded bg-gradient-to-r from-gold-400 to-gold-200"
+          />
 
-          <p className="mt-3 text-sm">
+          <motion.p {...rise(0.42)} className="mt-3 text-sm">
             {isEmpty ? (
               <span className="text-brand-100">Plant your first holding and watch it grow 🌱</span>
             ) : chg ? (
@@ -134,10 +171,10 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
             ) : (
               <span className="text-brand-100">Your wealth story starts today — check back tomorrow to watch it grow 🌱</span>
             )}
-          </p>
+          </motion.p>
 
           {isEmpty && (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <motion.div {...rise(0.5)} className="mt-4 flex flex-wrap gap-2">
               <Link
                 to="/investments"
                 className="rounded-xl bg-gold-400 px-4 py-2 text-sm font-semibold text-brand-900 transition hover:bg-gold-300"
@@ -150,11 +187,11 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
               >
                 Add a bank account
               </Link>
-            </div>
+            </motion.div>
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-3">
+        <motion.div {...rise(0.3)} className="flex shrink-0 flex-col items-end gap-3">
           <button
             onClick={onRefresh}
             disabled={refreshing}
@@ -169,11 +206,11 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-200">
                 {spark.label}
               </p>
-              <Sparkline points={spark.points} stroke="#d8bb79" height={30} className="mt-2" />
+              <Sparkline points={spark.points} stroke="#d8bb79" fill="#c2a368" height={30} className="mt-2" />
             </div>
           )}
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </Spotlight>
   );
 }
