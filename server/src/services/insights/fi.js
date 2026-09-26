@@ -98,7 +98,7 @@ function isoPlusYears(iso, years) {
 // It is kept anyway — discarding the most recent month would ignore a raise, a
 // move or a big one-off precisely when it matters most — and flagged instead, so
 // the panel can say the latest month is only part-counted.
-function measureCashflow(summary) {
+export function measureCashflow(summary) {
   const months = Array.isArray(summary?.cashflow?.months) ? summary.cashflow.months : [];
   const thisMonthKey = todayIST().slice(0, 7);
 

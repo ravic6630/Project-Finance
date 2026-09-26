@@ -1,13 +1,15 @@
 const LOCALE = { INR: 'en-IN', USD: 'en-US', GBP: 'en-GB', EUR: 'en-IE', AUD: 'en-AU', NZD: 'en-NZ', CAD: 'en-CA' };
 const SYMBOL = { INR: '₹', USD: '$', GBP: '£', EUR: '€', AUD: 'A$', NZD: 'NZ$', CAD: 'C$' };
 
-export function money(amount, currency = 'INR', { compact = false } = {}) {
+// `whole` drops the paise/cents — for amounts read inside a sentence ("needs
+// ₹4,67,145 a month"), where ".85" is noise rather than information.
+export function money(amount, currency = 'INR', { compact = false, whole = false } = {}) {
   if (amount == null || Number.isNaN(Number(amount))) return '—';
   const opts = {
     style: 'currency',
     currency,
-    maximumFractionDigits: compact ? 1 : 2,
-    minimumFractionDigits: compact ? 0 : 2,
+    maximumFractionDigits: compact ? 1 : whole ? 0 : 2,
+    minimumFractionDigits: compact || whole ? 0 : 2,
     ...(compact ? { notation: 'compact' } : {}),
   };
   try {

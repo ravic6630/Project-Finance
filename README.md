@@ -43,9 +43,13 @@ native **iOS & Android** apps from the same codebase ([MOBILE.md](MOBILE.md)).
 - **Net-worth history** *(premium)* — 1D → 10Y ranges, with a **benchmark overlay**: NIFTY 50,
   S&P 500, FTSE 100, EURO STOXX 50, ASX 200, NZX 50 or S&P/TSX, scaled to your starting value.
 - **Goals hub** — three tabs on one page (`/goals?tab=…`):
-  - **Goals** *(premium)* — retirement, house, education… on-pace tracking and the exact monthly
-    amount needed. **Link a goal** to real holdings, accounts or assets and "saved so far" updates
-    itself.
+  - **Goals** *(premium)* — a **goal plan** that spreads what you actually own and what you
+    actually save across your goals, in priority order: an emergency fund first, then the soonest
+    date (or your own order). Each goal takes only what it needs today, so no rupee is counted
+    twice and progress rises and falls with your wealth. Your monthly surplus (income − spending,
+    or an amount you set) is shared the same way, and the plan shows what's left over — or how
+    far short it falls, with the extra a month or the later date each goal would need. Earmark
+    specific holdings, accounts or property for a goal if you want.
   - **Calculator** — SIP, Lumpsum and **SWP** (withdrawal plan) with step-up and inflation. Free,
     and also public with no login at `/calculators`.
   - **Insights** *(premium)* — **Financial independence**: your number is what N years of your
@@ -117,8 +121,8 @@ node --env-file-if-exists=.env test-sweep.mjs      # whole-app regression sweep,
 node --env-file-if-exists=.env test-insights.mjs   # or any focused suite
 ```
 
-Focused suites cover insights, legacy, statements, login security, digest timing, holding merges,
-cash adjustments, broker pruning, allocation, pricing and more. `test-email-pipeline.mjs` starts
+Focused suites cover the goal plan, insights, legacy, statements, login security, digest timing,
+holding merges, cash adjustments, broker pruning, allocation, pricing and more. `test-email-pipeline.mjs` starts
 its own API instance and a local SMTP server. The suites create throwaway users, so point them at
 a local database, never production. Lint with `npm run lint`.
 
@@ -226,7 +230,7 @@ Project Finance/
 │   │   │                   # import, broker, billing, email, family, profiles, legacy,
 │   │   │                   # support, export, admin, cron
 │   │   ├── services/       # prices/FX, portfolio, summary, allocationTree, networth, briefing,
-│   │   │                   # insights/ (fi, risk), goals, returns, recurring, statement, digest,
+│   │   │                   # insights/ (fi, risk), goalPlan, returns, recurring, statement, digest,
 │   │   │                   # email, scheduler, alerts, family, legacy, importer, brokers,
 │   │   │                   # billing, pricing, stripe, totp
 │   │   └── tools/cas/      # Python casparser bridge

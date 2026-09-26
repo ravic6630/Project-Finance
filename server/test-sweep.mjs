@@ -65,7 +65,7 @@ async function cleanup() {
   for (const { id } of rows) {
     for (const t of [
       'sessions', 'subscriptions', 'holdings', 'cash_accounts', 'assets', 'transactions', 'goals',
-      'goal_links', 'alerts', 'recurring_rules', 'budgets', 'profiles', 'net_worth_snapshots',
+      'goal_links', 'goal_prefs', 'alerts', 'recurring_rules', 'budgets', 'profiles', 'net_worth_snapshots',
       'investment_txns', 'email_prefs', 'support_messages', 'password_reset_codes', 'broker_connections',
     ]) {
       try {
@@ -195,6 +195,14 @@ ok((await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [{ kind: '
 const gl = await http('/goals');
 const goal = (gl.json.goals || []).find((g) => g.id === gid);
 ok(goal && goal.links_count === 1 && goal.current_amount_base > 0, 'goal progress uses linked value', JSON.stringify(goal?.current_amount_base));
+ok(gl.json.plan && Array.isArray(gl.json.plan.order) && gl.json.plan.pot.total >= 0 && goal?.plan?.status, 'goals come with a plan', JSON.stringify(gl.json.plan?.pot));
+const pb = await http('/goals/plan', { method: 'PUT', body: { monthly_budget: 12345 } });
+ok(pb.status === 200 && pb.json.plan.monthly.source === 'set' && near(pb.json.plan.monthly.amount, 12345, 0.01), 'monthly amount for goals can be set', JSON.stringify(pb.json.plan?.monthly));
+ok((await http('/goals/plan', { method: 'PUT', body: { monthly_budget: -5 } })).status === 400, 'a negative monthly amount is refused');
+ok((await http('/goals/plan', { method: 'PUT', body: { monthly_budget: null } })).json.plan.monthly.source !== 'set', 'the set amount can be cleared');
+ok((await http('/goals/order', { method: 'PUT', body: { ids: [gid] } })).json.plan.custom_order === true, 'goals can be put in your own order');
+ok((await http('/goals/order', { method: 'PUT', body: { ids: [999999999] } })).status === 400, "a goal that isn't yours can't be ordered");
+ok((await http('/goals/order', { method: 'PUT', body: { ids: null } })).json.plan.custom_order === false, 'the order goes back to automatic');
 ok((await http(`/goals/${gid}`, { method: 'PATCH', body: { name: 'Sweep Goal 2' } })).status === 200, 'goal renamed');
 ok((await http(`/goals/${gid}`, { method: 'DELETE' })).status === 200, 'goal deleted');
 ok(Number((await db.prepare('SELECT COUNT(*) AS n FROM goal_links WHERE user_id = ?').get(uid))?.n) === 0, 'goal links cleaned with goal');
