@@ -427,6 +427,28 @@ export async function initDb() {
   await addColumn('insight_prefs', 'fi_buckets', 'TEXT');
   // How many years of living the FI target has to cover. NULL keeps the default.
   await addColumn('insight_prefs', 'fi_years', 'REAL');
+  // The currency each money-valued FI preference was typed in, kept the way a
+  // goal keeps its own. Before these the amounts were bare numbers, read in
+  // whatever base currency was active — so ₹11,00,000 a year became
+  // $1,100,000 a year the moment someone switched to USD.
+  await addColumn('insight_prefs', 'annual_spend_currency', 'TEXT');
+  await addColumn('insight_prefs', 'fi_target_currency', 'TEXT');
+  // Amounts saved before then carry no currency. Tag each with the currency the
+  // user has kept their books in on the most days: spending and a target are
+  // the costs of a life, entered in the home currency, not in whatever a view
+  // was briefly switched to. With no history, their base currency. Matches only
+  // untagged rows, so after the first boot this touches nothing.
+  for (const col of ['annual_spend', 'fi_target']) {
+    await client.execute(`
+      UPDATE insight_prefs SET ${col}_currency = COALESCE(
+        (SELECT s.currency FROM net_worth_snapshots s
+          WHERE s.user_id = insight_prefs.user_id
+          GROUP BY s.currency ORDER BY COUNT(*) DESC, MAX(s.date) DESC LIMIT 1),
+        (SELECT u.base_currency FROM users u WHERE u.id = insight_prefs.user_id),
+        'INR')
+      WHERE ${col} IS NOT NULL AND ${col}_currency IS NULL
+    `);
+  }
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;

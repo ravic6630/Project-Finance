@@ -4,6 +4,7 @@ import { authRequired, requirePremium } from '../auth.js';
 import { asyncHandler, bad, num } from '../util.js';
 import { KIND_LABELS } from '../markets.js';
 import { buildSummary } from '../services/summary.js';
+import { getFxRate } from '../services/prices.js';
 import { buildFI } from '../services/insights/fi.js';
 import { buildRisk } from '../services/insights/risk.js';
 
@@ -27,18 +28,24 @@ const MAX_FI_TARGET = 1e15;
 
 const getPrefsRow = db.prepare('SELECT * FROM insight_prefs WHERE user_id = ?');
 const upsertPrefs = db.prepare(`
-  INSERT INTO insight_prefs (user_id, withdrawal_rate, expected_return, inflation, annual_spend, fi_target, fi_buckets, fi_years, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO insight_prefs (user_id, withdrawal_rate, expected_return, inflation, annual_spend, annual_spend_currency, fi_target, fi_target_currency, fi_buckets, fi_years, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(user_id) DO UPDATE SET
-    withdrawal_rate = excluded.withdrawal_rate,
-    expected_return = excluded.expected_return,
-    inflation       = excluded.inflation,
-    annual_spend    = excluded.annual_spend,
-    fi_target       = excluded.fi_target,
-    fi_buckets      = excluded.fi_buckets,
-    fi_years        = excluded.fi_years,
-    updated_at      = excluded.updated_at
+    withdrawal_rate       = excluded.withdrawal_rate,
+    expected_return       = excluded.expected_return,
+    inflation             = excluded.inflation,
+    annual_spend          = excluded.annual_spend,
+    annual_spend_currency = excluded.annual_spend_currency,
+    fi_target             = excluded.fi_target,
+    fi_target_currency    = excluded.fi_target_currency,
+    fi_buckets            = excluded.fi_buckets,
+    fi_years              = excluded.fi_years,
+    updated_at            = excluded.updated_at
 `);
+
+// The two prefs that are amounts of money rather than rates or years.
+const MONEY_PREFS = ['annual_spend', 'fi_target'];
+const round2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 
 // Stored as JSON text. A row written before this column existed — or one
 // corrupted by hand — must not take the whole page down, so anything that
@@ -62,23 +69,54 @@ export async function prefsFor(userId) {
     expected_return: row?.expected_return ?? DEFAULT_PREFS.expected_return,
     inflation: row?.inflation ?? DEFAULT_PREFS.inflation,
     annual_spend: row?.annual_spend ?? null,
+    annual_spend_currency: row?.annual_spend_currency ?? null,
     // null = derive the target from spending; null buckets = count everything
     // that isn't an asset. Both are the honest defaults, not stored settings.
     fi_target: row?.fi_target ?? null,
+    fi_target_currency: row?.fi_target_currency ?? null,
     fi_buckets: parseBuckets(row?.fi_buckets),
     fi_years: row?.fi_years ?? DEFAULT_PREFS.fi_years,
   };
 }
 
+// The amounts are stored in the currency they were typed in, but everything
+// the page measures them against — the pot, the measured spending — arrives in
+// the base currency being viewed. So they're converted here, before anything
+// reads them. What was actually typed rides along in `entered` whenever it's in
+// another currency, so the form can say where its odd-looking figure came from.
+async function prefsInBase(prefs, base) {
+  const out = { ...prefs, entered: {} };
+  for (const key of MONEY_PREFS) {
+    const currency = prefs[`${key}_currency`] || base;
+    delete out[`${key}_currency`];
+    if (prefs[key] == null || currency === base) continue;
+    out[key] = prefs[key] * (await getFxRate(currency, base));
+    out.entered[key] = { amount: prefs[key], currency };
+  }
+  return out;
+}
+
+// What the form is seeded with: the converted amounts, to the cent.
+const forClient = (prefs) => ({
+  ...prefs,
+  annual_spend: round2(prefs.annual_spend),
+  fi_target: round2(prefs.fi_target),
+});
+
 insightsRouter.get(
   '/prefs',
-  asyncHandler(async (req, res) => res.json({ prefs: await prefsFor(req.user.id) }))
+  asyncHandler(async (req, res) =>
+    res.json({ prefs: forClient(await prefsInBase(await prefsFor(req.user.id), req.user.base_currency)) })
+  )
 );
 
 insightsRouter.put(
   '/prefs',
   asyncHandler(async (req, res) => {
+    const base = req.user.base_currency;
     const cur = await prefsFor(req.user.id);
+    // What the form was seeded with — to recognise an amount sent back as-is.
+    const shown = forClient(await prefsInBase(cur, base));
     const pick = (key, min, max) => {
       if (req.body[key] === undefined || req.body[key] === null) return cur[key];
       const v = num(req.body[key], key);
@@ -91,21 +129,40 @@ insightsRouter.put(
     // A retirement shorter than a year isn't one, and past a century the
     // compounding stops describing anything a person is planning for.
     const fiYears = pick('fi_years', 1, 100);
+
+    // An amount keeps the currency it was typed in until it's changed. The form
+    // posts every field on every save, so a figure that comes back exactly as
+    // it was shown (converted, to the cent) is the stored one untouched, not a
+    // new amount in today's currency. Re-storing it as one would drift a rupee
+    // figure by paise each time the view was switched and something else was
+    // saved — and app builds already installed post the whole form, so this
+    // can't be left to the client alone.
+    const untouched = (key) =>
+      cur[key] != null &&
+      req.body[key] != null &&
+      req.body[key] !== '' &&
+      Math.abs(Number(req.body[key]) - shown[key]) < 0.005;
+
     // null clears the override and returns to spending measured from real
-    // transactions — which is the honest default.
+    // transactions — which is the honest default. A new amount is in the base
+    // currency the form is labelled with.
     let spend = cur.annual_spend;
-    if (req.body.annual_spend !== undefined) {
+    let spendCurrency = cur.annual_spend_currency ?? base;
+    if (req.body.annual_spend !== undefined && !untouched('annual_spend')) {
       spend = req.body.annual_spend === null || req.body.annual_spend === '' ? null : num(req.body.annual_spend, 'annual_spend');
       if (spend != null && spend < 0) throw bad('annual_spend cannot be negative');
+      spendCurrency = base;
     }
 
     // Same contract as annual_spend: null (or '') clears the override, so the
     // target goes back to being derived from what a year of your life costs.
     let target = cur.fi_target;
-    if (req.body.fi_target !== undefined) {
+    let targetCurrency = cur.fi_target_currency ?? base;
+    if (req.body.fi_target !== undefined && !untouched('fi_target')) {
       target = req.body.fi_target === null || req.body.fi_target === '' ? null : num(req.body.fi_target, 'fi_target');
       if (target != null && !(target > 0)) throw bad('Your target must be more than zero — or blank to size it from your spending');
       if (target != null && target > MAX_FI_TARGET) throw bad('That target is too large to project against');
+      targetCurrency = base;
     }
 
     // Which pots count toward the target. null resets to the default (anything
@@ -135,12 +192,14 @@ insightsRouter.put(
       ret,
       infl,
       spend,
+      spend == null ? null : spendCurrency,
       target,
+      target == null ? null : targetCurrency,
       buckets == null ? null : JSON.stringify(buckets),
       fiYears,
       now()
     );
-    res.json({ prefs: await prefsFor(req.user.id) });
+    res.json({ prefs: forClient(await prefsInBase(await prefsFor(req.user.id), base)) });
   })
 );
 
@@ -152,7 +211,8 @@ insightsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const summary = await buildSummary(req.user, { scope: null, withItems: true });
-    const prefs = await prefsFor(req.user.id);
+    // In the base currency, like the summary — the FI maths compares them.
+    const prefs = await prefsInBase(await prefsFor(req.user.id), req.user.base_currency);
 
     // Independent of one another, so they run together. Each is wrapped: one
     // tracker failing must not blank the whole page.
@@ -169,7 +229,7 @@ insightsRouter.get(
     res.json({
       base_currency: req.user.base_currency,
       net_worth: summary.net_worth,
-      prefs,
+      prefs: forClient(prefs),
       fi,
       risk,
     });
