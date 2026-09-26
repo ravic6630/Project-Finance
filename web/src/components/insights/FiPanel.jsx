@@ -292,6 +292,15 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
   useEffect(() => setForm(seed(prefs, fi)), [prefs, fi]);
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+  const seeded = seed(prefs, fi);
+  // An amount still exactly as it was seeded is the stored one, untouched.
+  const asSeeded = (key) => String(form[key]).trim() === seeded[key];
+  // An amount typed in another currency arrives here converted, as an odd
+  // figure like 11468.6. While it's untouched, say what was actually set.
+  const enteredNote = (key, per = '') => {
+    const e = prefs?.entered?.[key];
+    return e && asSeeded(key) ? `You set ${money(e.amount, e.currency)}${per} — shown in ${base} at today's rate.` : null;
+  };
   const measured = fi?.measured;
   const usingOverride = fi?.spend_source === 'override';
   const usingTarget = fi?.target_source === 'custom';
@@ -368,15 +377,17 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
     try {
       // null clears an override: spending goes back to what the transactions
       // say, the target to the cost of those years of living, and the pot to
-      // everything but property. Those are the honest defaults.
+      // everything but property. Those are the honest defaults. An amount left
+      // as it was isn't sent at all, so it stays in the currency it was typed
+      // in instead of being re-saved as today's converted figure.
       await api('/insights/prefs', {
         method: 'PUT',
         body: {
           fi_years: y,
           expected_return: r,
           inflation: i,
-          annual_spend: spend,
-          fi_target: target,
+          annual_spend: !clearSpend && asSeeded('annual_spend') ? undefined : spend,
+          fi_target: !clearTarget && asSeeded('fi_target') ? undefined : target,
           fi_buckets: bucketPayload(resetBuckets),
         },
       });
@@ -451,24 +462,30 @@ function Assumptions({ open, onToggle, prefs, fi, base, onSaved }) {
                   value={form.annual_spend}
                   onChange={set('annual_spend')}
                   placeholder="Leave blank to measure it"
-                  hint={
+                  hint={[
+                    enteredNote('annual_spend', ' a year'),
                     measured?.annual_spend != null
                       ? `Leave blank to use what you actually spent — ${money(measured.annual_spend, base)} a year, measured across ${measured.months} month${measured.months === 1 ? '' : 's'} of transactions.`
-                      : 'Leave blank once you have a couple of months of expenses recorded, and this is measured from them instead.'
-                  }
+                      : 'Leave blank once you have a couple of months of expenses recorded, and this is measured from them instead.',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                 />
                 <NumField
                   label={`My target (${base})`}
                   value={form.fi_target}
                   onChange={set('fi_target')}
                   placeholder="Leave blank to size it from spending"
-                  hint={
+                  hint={[
+                    enteredNote('fi_target'),
                     // The live inverse of the sizing formula, so a round number
                     // typed here immediately shows what it actually buys per year.
                     fundsPerYear != null
                       ? `Spread over ${form.fi_years} years that funds about ${money(fundsPerYear, base)} a year.`
-                      : 'Already know your number? Set it here and it overrides the spending-based one.'
-                  }
+                      : 'Already know your number? Set it here and it overrides the spending-based one.',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                 />
               </div>
 
