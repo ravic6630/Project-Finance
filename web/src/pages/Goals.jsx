@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  ArrowDown,
+  ArrowUp,
   Calculator,
   Compass,
   Link2,
@@ -27,6 +29,7 @@ import { useApi } from '../lib/useApi.js';
 import InsightsPanel from '../components/insights/InsightsPanel.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import CalculatorTool from '../components/CalculatorTool.jsx';
+import GoalPlanCard, { STATUS } from '../components/GoalPlan.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 
@@ -47,11 +50,30 @@ const blank = {
   type: 'RETIREMENT',
   target_amount: '',
   target_date: '',
-  current_amount: '',
-  monthly_contribution: '',
   expected_return: '12',
   currency: 'INR',
 };
+
+// Money needed soon shouldn't ride the stock market, so a near goal starts from
+// a safer return. The bands follow investor-education guidance (AMFI, SEBI):
+// debt for money needed within ~3 years, a hybrid mix up to ~10, equity only
+// beyond that. Only a starting point — the field stays the user's.
+const yearsTo = (date) => (Date.parse(`${date}T00:00:00`) - Date.now()) / (365.25 * 864e5);
+const suggestedReturn = (date) => {
+  const y = yearsTo(date);
+  if (!Number.isFinite(y)) return null;
+  return y < 3 ? 7 : y < 10 ? 10 : 12;
+};
+const returnHint = (date) => {
+  const y = yearsTo(date);
+  if (!Number.isFinite(y)) return 'What you expect this money to earn a year.';
+  if (y < 3) return 'Needed within 3 years — usually kept safe in FDs or debt funds, so expect less.';
+  if (y < 10) return 'A 3–10 year goal suits a mix of equity and debt.';
+  return 'Ten years or more can stay mostly in equity for higher growth.';
+};
+// A near goal planned at an equity-like return looks better covered than it is.
+const SAFE_RETURN = 7;
+const optimistic = (goal) => goal.plan.years_left > 0 && goal.plan.years_left < 3 && Number(goal.expected_return) > SAFE_RETURN + 1;
 
 function GoalForm({ open, onClose, onSaved, editing }) {
   const { user } = useAuth();
@@ -63,6 +85,8 @@ function GoalForm({ open, onClose, onSaved, editing }) {
   const [linksReady, setLinksReady] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linkables, setLinkables] = useState(null); // {holdings, accounts, assets}
+  // Once the user types their own return, picking a date stops suggesting one.
+  const [returnTouched, setReturnTouched] = useState(false);
 
   async function openPicker() {
     setPickerOpen((o) => !o);
@@ -107,6 +131,8 @@ function GoalForm({ open, onClose, onSaved, editing }) {
         })
         .catch(() => setError("Couldn't load this goal's linked investments — reopen it before saving."));
     }
+    // An existing goal's return is already a choice someone made.
+    setReturnTouched(!!editing);
     setForm(
       editing
         ? {
@@ -114,8 +140,6 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             type: editing.type || 'CUSTOM',
             target_amount: String(editing.target_amount ?? ''),
             target_date: editing.target_date || '',
-            current_amount: String(editing.current_amount ?? ''),
-            monthly_contribution: String(editing.monthly_contribution ?? ''),
             expected_return: String(editing.expected_return ?? '12'),
             currency: editing.currency || 'INR',
           }
@@ -125,28 +149,23 @@ function GoalForm({ open, onClose, onSaved, editing }) {
   }, [open, editing, user.base_currency]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-
-  async function prefillNetWorth() {
-    try {
-      const d = await api('/dashboard');
-      set({ current_amount: String(Math.round(d.net_worth || 0)) });
-    } catch {
-      /* ignore — keep manual entry */
-    }
-  }
+  const setDate = (target_date) => {
+    const r = returnTouched ? null : suggestedReturn(target_date);
+    set(r == null ? { target_date } : { target_date, expected_return: String(r) });
+  };
 
   async function onSubmit(e) {
     e.preventDefault();
     setError('');
     setBusy(true);
     try {
+      // No "saved so far" or monthly figure: the plan works both out from what
+      // you actually own and earn.
       const payload = {
         name: form.name,
         type: form.type,
         target_amount: Number(form.target_amount || 0),
         target_date: form.target_date || null,
-        current_amount: Number(form.current_amount || 0),
-        monthly_contribution: Number(form.monthly_contribution || 0),
         expected_return: Number(form.expected_return || 0),
         currency: form.currency,
       };
@@ -198,33 +217,29 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             <input className="input" type="number" step="any" value={form.target_amount} onChange={(e) => set({ target_amount: e.target.value })} placeholder="10000000" required />
           </Field>
           <Field label="Target date">
-            <input className="input" type="date" value={form.target_date} onChange={(e) => set({ target_date: e.target.value })} required />
+            <input className="input" type="date" value={form.target_date} onChange={(e) => setDate(e.target.value)} required />
           </Field>
         </div>
-        {links.length > 0 ? (
-          <Field label="Saved so far" hint="Tracked live from your linked items — no manual updates needed.">
-            <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 dark:border-emerald-900 dark:bg-emerald-900/30">
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                <Link2 size={14} /> Auto — {links.length} linked item{links.length === 1 ? '' : 's'}
-              </span>
-              <button type="button" className="text-sm font-semibold text-brand-600 hover:underline" onClick={openPicker}>
-                {pickerOpen ? 'Hide' : 'Change'}
-              </button>
-            </div>
-          </Field>
-        ) : (
-          <Field label={`Saved so far (${form.currency})`}>
-            <div className="flex gap-2">
-              <input className="input" type="number" step="any" value={form.current_amount} onChange={(e) => set({ current_amount: e.target.value })} placeholder="0" />
-              <button type="button" className="btn-ghost shrink-0 whitespace-nowrap" onClick={prefillNetWorth}>
-                Use net worth
-              </button>
-            </div>
-            <button type="button" onClick={openPicker} className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:underline">
-              <Link2 size={12} /> {pickerOpen ? 'Hide the picker' : 'Or link investments & accounts to track this automatically'}
+        <Field
+          label="How it's funded"
+          hint={
+            links.length > 0
+              ? 'These fund this goal first; anything more it needs comes from your other investments and cash, in priority order.'
+              : "Automatically — from your investments and cash, in priority order, so it moves with your wealth. You don't type a saved amount."
+          }
+        >
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-[#e8e2d4] bg-[#faf8f1] px-3.5 py-2.5">
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+              <Link2 size={14} className="text-brand-600" />
+              {links.length > 0
+                ? `${links.length} item${links.length === 1 ? '' : 's'} earmarked for this goal`
+                : 'From your whole portfolio'}
+            </span>
+            <button type="button" className="text-sm font-semibold text-brand-600 hover:underline" onClick={openPicker}>
+              {pickerOpen ? 'Hide' : links.length > 0 ? 'Change' : 'Earmark specific items'}
             </button>
-          </Field>
-        )}
+          </div>
+        </Field>
 
         {pickerOpen && (
           <div className="max-h-56 space-y-3 overflow-y-auto rounded-xl border border-slate-200 p-3">
@@ -264,14 +279,19 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             )}
           </div>
         )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={`Monthly contribution (${form.currency})`}>
-            <input className="input" type="number" step="any" value={form.monthly_contribution} onChange={(e) => set({ monthly_contribution: e.target.value })} placeholder="25000" />
-          </Field>
-          <Field label="Expected return (% p.a.)">
-            <input className="input" type="number" step="any" value={form.expected_return} onChange={(e) => set({ expected_return: e.target.value })} placeholder="12" />
-          </Field>
-        </div>
+        <Field label="Expected return (% a year)" hint={returnHint(form.target_date)}>
+          <input
+            className="input"
+            type="number"
+            step="any"
+            value={form.expected_return}
+            onChange={(e) => {
+              setReturnTouched(true);
+              set({ expected_return: e.target.value });
+            }}
+            placeholder="12"
+          />
+        </Field>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
@@ -285,19 +305,69 @@ function GoalForm({ open, onClose, onSaved, editing }) {
   );
 }
 
-function GoalCard({ goal, onEdit, onDelete }) {
+// "8 months left", "4.2 years left".
+function timeLeft(years) {
+  const m = Math.round((years || 0) * 12);
+  if (m <= 0) return null;
+  return m < 24 ? `${m} month${m === 1 ? '' : 's'} left` : `${years.toFixed(1)} years left`;
+}
+const monthYear = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+// What the goal's verdict means in its own numbers — at most three short lines,
+// the first saying where it stands, the last what would change it.
+function verdictLines(goal) {
+  const p = goal.plan;
+  const cur = goal.base_currency;
+  const target = goal.target_amount_base;
+  const by = goal.target_date ? monthYear(goal.target_date) : null;
+  const m = (v) => money(v, cur, { whole: true });
+  const c = (v) => money(v, cur, { compact: true });
+  switch (p.status) {
+    case 'funded':
+      return [
+        p.funded_now >= target
+          ? 'What’s set aside already covers it.'
+          : `What’s set aside grows to ${c(target)} by ${by} at ${goal.expected_return}% a year — nothing more needed.`,
+      ];
+    case 'on_track':
+      return [`Gets ${m(p.monthly_share)} a month — lands on ${c(target)} by ${by}.`];
+    case 'behind':
+      return [
+        p.monthly_share > 0
+          ? `Gets ${m(p.monthly_share)} a month · needs ${m(p.required_monthly)}.`
+          : `Needs ${m(p.required_monthly)} a month — nothing is left for it yet.`,
+        `At this pace: ${c(p.projected_value)} by ${by} (${Math.round(p.projected_pct)}%).`,
+        p.reached_on
+          ? `Arrives ${monthYear(p.reached_on)} — or add ${m(p.extra_needed)} a month to stay on time.`
+          : `Add ${m(p.extra_needed)} a month to stay on time.`,
+      ];
+    case 'waiting':
+      return [
+        `Needs ${m(p.required_monthly)} a month to arrive on time.`,
+        'It starts once the goals above it are covered — or move it up.',
+      ];
+    case 'unknown':
+      return [`Needs ${m(p.required_monthly)} a month to arrive on time.`, 'Set your monthly amount above to see whether that fits.'];
+    case 'overdue':
+      return [`${m(p.funded_now)} set aside of ${m(target)}. Move the date to keep planning it.`];
+    default:
+      return ['Add a target date to plan the monthly amount.'];
+  }
+}
+
+function GoalCard({ goal, onEdit, onDelete, onMove, onSafeReturn, first, last, moving }) {
   const meta = typeMeta(goal.type);
-  const p = goal.projection || {};
-  // Display in the user's base currency. The server converts the goal's amounts
-  // (and the projection) into `base_currency`; fall back to native if absent.
+  const p = goal.plan;
   const cur = goal.base_currency || goal.currency || 'INR';
   const target = goal.target_amount_base ?? goal.target_amount;
-  const current = goal.current_amount_base ?? goal.current_amount;
-  const monthly = goal.monthly_contribution_base ?? goal.monthly_contribution;
-  const saved = Math.min(100, p.saved_pct ?? 0);
+  const funded = Math.min(100, p.funded_pct ?? 0);
+  const status = STATUS[p.status] || STATUS.unknown;
+  const iconBtn = 'rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30';
 
   return (
-    <motion.div variants={cardRise} whileHover={{ y: -5 }} className="card group relative overflow-hidden p-5">
+    // `layout`: when the order changes, cards glide to their new places rather
+    // than jumping — the move is the feedback that the reorder happened.
+    <motion.div layout variants={cardRise} className="card group relative flex flex-col overflow-hidden p-5">
       {/* oversized goal-icon watermark, stirring gently on hover */}
       <meta.icon
         aria-hidden
@@ -305,15 +375,29 @@ function GoalCard({ goal, onEdit, onDelete }) {
         strokeWidth={1}
         className="pointer-events-none absolute -bottom-7 -right-6 -rotate-12 text-brand-700 opacity-[0.07] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-110 dark:text-[#8fa9cd] dark:opacity-[0.12]"
       />
-      <div className="relative flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-          <meta.icon size={20} />
+      <div className="relative flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="num flex h-7 w-7 items-center justify-center rounded-full bg-gold-100 text-xs font-bold text-gold-700"
+            title={`Priority ${p.rank}`}
+          >
+            {p.rank}
+          </span>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+            <meta.icon size={20} />
+          </div>
         </div>
-        <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-          <button onClick={() => onEdit(goal)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700">
+        <div className="flex gap-0.5">
+          <button aria-label={`Move ${goal.name} up`} title="Higher priority" disabled={first || moving} onClick={() => onMove(goal.id, -1)} className={iconBtn}>
+            <ArrowUp size={15} />
+          </button>
+          <button aria-label={`Move ${goal.name} down`} title="Lower priority" disabled={last || moving} onClick={() => onMove(goal.id, 1)} className={iconBtn}>
+            <ArrowDown size={15} />
+          </button>
+          <button aria-label={`Edit ${goal.name}`} onClick={() => onEdit(goal)} className={iconBtn}>
             <Pencil size={15} />
           </button>
-          <button onClick={() => onDelete(goal)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600">
+          <button aria-label={`Delete ${goal.name}`} onClick={() => onDelete(goal)} className={`${iconBtn} hover:bg-rose-100 hover:text-rose-600`}>
             <Trash2 size={15} />
           </button>
         </div>
@@ -323,40 +407,56 @@ function GoalCard({ goal, onEdit, onDelete }) {
       <p className="text-xs font-medium uppercase text-slate-400">
         {meta.label}
         {goal.target_date ? ` · by ${dateLabel(goal.target_date)}` : ''}
-        {p.years_to_target ? ` · ${p.years_to_target}y` : ''}
+        {timeLeft(p.years_left) ? ` · ${timeLeft(p.years_left)}` : ''}
       </p>
 
       <p className="num mt-2 text-2xl font-bold tracking-tight text-brand-900">{money(target, cur)}</p>
 
-      {/* progress saved so far */}
+      {/* what's set aside for it today, out of your real balances */}
       <div className="mt-3">
-        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-gold-400" style={{ width: `${saved}%` }} />
+        <div
+          className="h-2 overflow-hidden rounded-full bg-slate-100"
+          role="img"
+          aria-label={`${money(p.funded_now, cur)} set aside, ${Math.round(funded)}% of the target`}
+        >
+          <motion.div
+            className="h-full rounded-full bg-gold-400"
+            initial={false}
+            animate={{ width: `${funded}%` }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          />
         </div>
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
-          {money(current, cur)} saved · {saved}%
+        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+          <span className="num">{money(p.funded_now, cur)}</span> set aside today · {Math.round(funded)}%
           {goal.links_count > 0 && (
             <span className="chip bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-              <Link2 size={10} className="mr-1" /> auto · {goal.links_count} linked
+              <Link2 size={10} className="mr-1" /> {goal.links_count} earmarked
             </span>
           )}
         </p>
       </div>
 
-      {/* projection */}
-      <div className="mt-4 rounded-xl border border-[#efeadd] bg-[#faf8f1] p-3">
-        {p.on_track ? (
-          <span className="chip bg-emerald-100 text-emerald-700">On track</span>
-        ) : (
-          <span className="chip bg-amber-100 text-amber-700">Behind</span>
-        )}
-        <p className="mt-2 text-sm text-slate-600">
-          Projected <span className="font-semibold text-slate-900">{money(p.projected_value, cur)}</span>
-          {monthly ? ` at ${money(monthly, cur)}/mo` : ''}
-        </p>
-        {!p.on_track && p.required_monthly != null && (
-          <p className="mt-1 text-sm text-amber-700">
-            Invest {money(p.required_monthly, cur)}/mo to reach it.
+      <div className="relative mt-4 rounded-xl border border-[#efeadd] bg-[#faf8f1] p-3">
+        <span className={`chip gap-1 ${status.tone}`}>
+          <status.icon size={12} aria-hidden /> {status.label}
+        </span>
+        {verdictLines(goal).map((line, i) => (
+          <p key={i} className={`mt-1.5 text-sm ${i === 0 ? 'text-slate-700' : 'text-slate-500'}`}>
+            {line}
+          </p>
+        ))}
+        {optimistic(goal) && (
+          <p className="mt-2.5 border-t border-[#efeadd] pt-2.5 text-xs leading-relaxed text-slate-500">
+            {goal.expected_return}% is optimistic for money needed this soon — safer places like FDs pay about{' '}
+            {SAFE_RETURN}%.{' '}
+            <button
+              type="button"
+              disabled={moving}
+              onClick={() => onSafeReturn(goal.id)}
+              className="font-semibold text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-800"
+            >
+              Plan at {SAFE_RETURN}%
+            </button>
           </p>
         )}
       </div>
@@ -387,7 +487,7 @@ function PremiumLock({ onUpgrade }) {
 // going to get there?" — so they share a page. The tab lives in the URL (?tab=)
 // so a link to Insights is a real link and a refresh lands where you were.
 const TABS = [
-  { key: 'goals', label: 'Goals', icon: Target, blurb: 'Set a target, track progress, and see if you’re on pace.' },
+  { key: 'goals', label: 'Goals', icon: Target, blurb: 'What you own and what you save, spread across your goals.' },
   { key: 'calculator', label: 'Calculator', icon: Calculator, blurb: 'SIP, lumpsum and goal maths, with step-up and inflation built in.' },
   { key: 'insights', label: 'Insights', icon: Compass, blurb: 'Where your money is taking you, and where it’s exposed.' },
 ];
@@ -475,12 +575,49 @@ export default function Goals() {
   const premium = billing.data ? !!billing.data?.state?.premium : billing.error ? false : null;
   const goalsQ = useApi('/goals', { vary: [base], enabled: premium === true });
   const goals = goalsQ.data?.goals || [];
+  const plan = goalsQ.data?.plan;
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [error, setError] = useState('');
+  const [moving, setMoving] = useState(false);
   const confirm = useConfirm();
+
+  // Priority is the whole list's order, so a move sends the full new order.
+  // `ids: null` hands the order back to the automatic one.
+  async function saveOrder(ids) {
+    setMoving(true);
+    setError('');
+    try {
+      await api('/goals/order', { method: 'PUT', body: { ids } });
+      goalsQ.reload();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMoving(false);
+    }
+  }
+  const move = (id, dir) => {
+    const ids = goals.map((g) => g.id);
+    const i = ids.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    saveOrder(ids);
+  };
+  async function planAtSafeReturn(id) {
+    setMoving(true);
+    setError('');
+    try {
+      await api(`/goals/${id}`, { method: 'PATCH', body: { expected_return: SAFE_RETURN } });
+      goalsQ.reload();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMoving(false);
+    }
+  }
 
   const reloadAll = () => {
     billing.reload();
@@ -537,7 +674,7 @@ export default function Goals() {
                 illo="goals"
                 icon={Target}
                 title="No goals yet"
-                hint="Add your first goal — retirement, a house, your child's education — and we'll project whether you're on track."
+                hint="Add your first goal — retirement, a house, your child's education — and see how your money and monthly savings cover it."
                 action={
                   <button
                     className="btn-primary"
@@ -551,24 +688,40 @@ export default function Goals() {
                 }
               />
             ) : (
-              <motion.div
-                variants={gridStagger}
-                initial={pageVisible() ? 'hidden' : false}
-                animate="show"
-                className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-              >
-                {goals.map((g) => (
-                  <GoalCard
-                    key={g.id}
-                    goal={g}
-                    onEdit={(goal) => {
-                      setEditing(goal);
-                      setFormOpen(true);
-                    }}
-                    onDelete={onDelete}
+              <>
+                {plan && (
+                  <GoalPlanCard
+                    goals={goals}
+                    plan={plan}
+                    cur={goalsQ.data?.base_currency || base}
+                    onChanged={goalsQ.reload}
+                    onResetOrder={() => saveOrder(null)}
                   />
-                ))}
-              </motion.div>
+                )}
+                <motion.div
+                  variants={gridStagger}
+                  initial={pageVisible() ? 'hidden' : false}
+                  animate="show"
+                  className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                >
+                  {goals.map((g, i) => (
+                    <GoalCard
+                      key={g.id}
+                      goal={g}
+                      first={i === 0}
+                      last={i === goals.length - 1}
+                      moving={moving}
+                      onMove={move}
+                      onSafeReturn={planAtSafeReturn}
+                      onEdit={(goal) => {
+                        setEditing(goal);
+                        setFormOpen(true);
+                      }}
+                      onDelete={onDelete}
+                    />
+                  ))}
+                </motion.div>
+              </>
             )}
           </div>
         )}

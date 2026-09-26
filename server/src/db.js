@@ -449,6 +449,19 @@ export async function initDb() {
       WHERE ${col} IS NOT NULL AND ${col}_currency IS NULL
     `);
   }
+  // Goal plan. `priority` is the user's own order for their goals — NULL means
+  // the automatic one (emergency first, then soonest date). goal_prefs holds
+  // the monthly amount for goals when the user sets it rather than having it
+  // measured from transactions, tagged with the currency it was typed in.
+  await addColumn('goals', 'priority', 'INTEGER');
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS goal_prefs (
+      user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      monthly_budget          REAL,
+      monthly_budget_currency TEXT,
+      updated_at              TEXT
+    )
+  `);
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;

@@ -17,7 +17,7 @@ is no free trial. You (admin) are always premium.
 |---|---|
 | `JWT_SECRET` | Any long random string (keeps everyone logged in across restarts). |
 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | Free cloud SQLite (turso.tech) — persists data across redeploys. |
-| `ADMIN_EMAILS` | `ralathuru@gmail.com` — makes that account admin + always-premium. |
+| `ADMIN_EMAILS` | Your own sign-in email (comma-separate several) — makes that account admin + always-premium. |
 
 Deploy on Render (Docker) per `DEPLOY.md`. Without Turso, data resets on every redeploy.
 
@@ -30,7 +30,7 @@ use the same channel). Render's free tier blocks SMTP, so use **Brevo's HTTP API
 | Key | What |
 |---|---|
 | `BREVO_API_KEY` | From brevo.com → SMTP & API → API Keys. |
-| `EMAIL_FROM` | e.g. `Sampada <ralathuru@gmail.com>` (verify this sender in Brevo). |
+| `EMAIL_FROM` | e.g. `Sampada <you@example.com>` (verify this sender in Brevo). |
 
 (Gmail SMTP also works on a paid host — see `.env.production.example`.) If email
 ever fails to send, the verification code is written to the server logs as a fallback.

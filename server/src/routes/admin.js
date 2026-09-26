@@ -53,7 +53,7 @@ const CHILD_TABLES = [
   'holdings', 'cash_accounts', 'assets', 'transactions', 'goals', 'goal_links', 'alerts',
   'net_worth_snapshots', 'investment_txns', 'subscriptions', 'recurring_rules', 'budgets',
   'broker_connections', 'email_prefs', 'password_reset_codes', 'sessions',
-  'support_messages', 'profiles', 'insight_prefs', 'allocation_targets',
+  'support_messages', 'profiles', 'insight_prefs', 'allocation_targets', 'goal_prefs',
 ];
 
 adminRouter.delete(
