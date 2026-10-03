@@ -17,6 +17,21 @@ import { ErrorBanner, Modal, Spinner } from './ui.jsx';
 
 const keyOf = (it) => `${it.kind}:${it.ref_id}`;
 
+// The figures describing other goals' claims arrived over a few releases. An
+// app build newer than the server it talks to must still open the picker, so
+// anything missing reads as "nobody else has claimed this" rather than
+// crashing the sheet.
+const withDefaults = (it) => ({
+  rate: 1,
+  taken_base: 0,
+  explicit_base: 0,
+  whole_count: 0,
+  ahead_base: 0,
+  taken_by: [],
+  ahead_by: [],
+  ...it,
+});
+
 // What kind of money an item is, shown as an icon and a word — never by colour
 // alone, and never as a verdict: a share isn't "bad", it's just not where money
 // needed next year usually sits.
@@ -139,7 +154,7 @@ function Row({ it, s, base, onToggle, onChange }) {
             </span>
             {it.taken_base > 0 && (
               <span>
-                · {money(it.taken_base, base, { compact: true })} of it is for {it.taken_by.join(' and ')}
+                · {money(it.taken_base, base, { compact: true })} of it is for {it.taken_by.join(' and ') || 'another goal'}
               </span>
             )}
           </span>
@@ -171,7 +186,7 @@ export default function GoalFunding({ goal, open, fresh = false, onClose, onSave
     api(`/goals/${goal.id}/funding`)
       .then((d) => {
         if (stale) return;
-        setData(d);
+        setData({ ...d, items: (d.items || []).map(withDefaults) });
         setSel(
           Object.fromEntries(
             d.items.filter((it) => it.mine).map((it) => [keyOf(it), { portion: it.mine.portion, value: it.mine.value == null ? '' : String(it.mine.value) }])
