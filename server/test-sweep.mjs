@@ -203,6 +203,36 @@ ok((await http('/goals/plan', { method: 'PUT', body: { monthly_budget: null } })
 ok((await http('/goals/order', { method: 'PUT', body: { ids: [gid] } })).json.plan.custom_order === true, 'goals can be put in your own order');
 ok((await http('/goals/order', { method: 'PUT', body: { ids: [999999999] } })).status === 400, "a goal that isn't yours can't be ordered");
 ok((await http('/goals/order', { method: 'PUT', body: { ids: null } })).json.plan.custom_order === false, 'the order goes back to automatic');
+// Funding a goal from named items: portions, exact tracking, no double claims.
+const bankId = c1.json.account.id;
+const bankIn = (r) => (r.json.items || []).find((i) => i.kind === 'account' && i.ref_id === bankId);
+const picker = await http(`/goals/${gid}/funding`);
+ok(picker.status === 200 && bankIn(picker)?.tag === 'Bank account' && bankIn(picker)?.value_base === 30000, 'funding picker lists what a goal can be funded from', JSON.stringify(bankIn(picker)));
+const part = await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [{ kind: 'account', ref_id: bankId, portion: 'amount', value: 12000 }] } });
+ok(part.status === 200 && part.json.goal.funding.mode === 'chosen' && near(part.json.goal.plan.funded_now, 12000, 0.01), 'a goal funded by part of an account shows exactly that part', JSON.stringify(part.json.goal?.plan?.funded_now));
+ok(part.json.goal.plan.from_pot === 0 && part.json.goal.funding.mix.safe === 100, 'nothing is added from the rest of the portfolio');
+const gB = await http('/goals', { method: 'POST', body: { name: 'Sweep Goal B', target_amount: 500000, currency: 'INR', target_date: '2035-01-01' } });
+const over = await http(`/goals/${gB.json.goal.id}/links`, { method: 'PUT', body: { links: [{ kind: 'account', ref_id: bankId, portion: 'amount', value: 25000 }] } });
+ok(near(over.json.goal.plan.funded_now, 18000, 0.01) && near(over.json.goal.funding.short, 7000, 0.01), 'two goals cannot claim more of an account than it holds', JSON.stringify([over.json.goal?.plan?.funded_now, over.json.goal?.funding?.short]));
+// What the others ASK for, settled without this goal's own claim — the figure
+// someone choosing for this goal has to work around.
+const around = bankIn(await http(`/goals/${gid}/funding`));
+ok(around?.taken_base === 25000 && around?.taken_by?.[0] === 'Sweep Goal B' && around?.mine?.value === 12000, 'the picker shows what other goals claim, and by name', JSON.stringify(around));
+ok((await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [{ kind: 'account', ref_id: bankId, portion: 'percent', value: 150 }] } })).status === 400, 'a share above 100% is refused');
+ok((await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [{ kind: 'account', ref_id: bankId, portion: 'amount', value: 0 }] } })).status === 400, 'a zero amount is refused');
+const oldApp = await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [{ kind: 'account', ref_id: bankId }] } });
+ok(near(oldApp.json.goal.plan.funded_now, 12000, 0.01), 'an older app re-saving the link keeps the amount that was set', JSON.stringify(oldApp.json.goal?.plan?.funded_now));
+ok((await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [] } })).json.goal.funding.mode === 'auto', 'removing the named items goes back to automatic');
+await http(`/goals/${gB.json.goal.id}`, { method: 'DELETE' });
+// The one account that funds a goal is closed. The goal is never topped up
+// while it has named items, so it must not be left pointing at nothing.
+const pot = await http('/cash', { method: 'POST', body: { name: 'Sweep Wedding Pot', type: 'BANK', balance: 5000, currency: 'INR' } });
+await http(`/goals/${gid}/links`, { method: 'PUT', body: { links: [{ kind: 'account', ref_id: pot.json.account.id, portion: 'all' }] } });
+const mine = async () => (await http('/goals')).json.goals.find((g) => g.id === gid);
+ok((await mine()).funding.mode === 'chosen' && near((await mine()).plan.funded_now, 5000, 0.01), 'a goal funded by one whole account tracks that account');
+await http(`/cash/${pot.json.account.id}`, { method: 'DELETE' });
+ok((await mine()).funding.mode === 'auto', 'closing the account that funds a goal returns it to automatic');
+ok(Number((await db.prepare('SELECT COUNT(*) AS n FROM goal_links WHERE user_id = ?').get(uid))?.n) === 0, 'and leaves no link behind');
 ok((await http(`/goals/${gid}`, { method: 'PATCH', body: { name: 'Sweep Goal 2' } })).status === 200, 'goal renamed');
 ok((await http(`/goals/${gid}`, { method: 'DELETE' })).status === 200, 'goal deleted');
 ok(Number((await db.prepare('SELECT COUNT(*) AS n FROM goal_links WHERE user_id = ?').get(uid))?.n) === 0, 'goal links cleaned with goal');

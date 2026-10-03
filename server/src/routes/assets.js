@@ -79,6 +79,10 @@ assetsRouter.delete(
   asyncHandler(async (req, res) => {
     const info = await remove.run(req.params.id, req.user.id);
     if (!info.changes) throw new HttpError(404, 'Asset not found');
+    // A goal funded by this asset must not keep pointing at nothing.
+    await db
+      .prepare("DELETE FROM goal_links WHERE user_id = ? AND kind = 'asset' AND ref_id = ?")
+      .run(req.user.id, req.params.id);
     res.json({ ok: true });
   })
 );

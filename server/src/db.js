@@ -462,6 +462,17 @@ export async function initDb() {
       updated_at              TEXT
     )
   `);
+  // Goal funding. A goal can be funded by named investments and accounts rather
+  // than a share of everything: each link takes all of its item (portion NULL),
+  // a fixed amount in the item's own currency ('amount' — "₹2 lakh of my savings
+  // account"), or a share of it ('percent' — "half this fund", which then grows
+  // with the fund). portion_value holds that amount or percentage.
+  await addColumn('goal_links', 'portion', 'TEXT');
+  await addColumn('goal_links', 'portion_value', 'REAL');
+  // What kind of fund a mutual fund is (AMFI's scheme category), so money set
+  // aside for a goal can be told apart as liquid, debt or equity. NULL = not
+  // looked up yet; '' = the source has no category for it.
+  await addColumn('price_cache', 'category', 'TEXT');
   // The token-link password reset was replaced by emailed codes long ago.
   await client.execute('DROP TABLE IF EXISTS password_resets');
   const where = process.env.TURSO_DATABASE_URL ? 'Turso (cloud)' : `local file (${DB_PATH})`;

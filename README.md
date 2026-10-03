@@ -48,8 +48,13 @@ native **iOS & Android** apps from the same codebase ([MOBILE.md](MOBILE.md)).
     date (or your own order). Each goal takes only what it needs today, so no rupee is counted
     twice and progress rises and falls with your wealth. Your monthly surplus (income − spending,
     or an amount you set) is shared the same way, and the plan shows what's left over — or how
-    far short it falls, with the extra a month or the later date each goal would need. Earmark
-    specific holdings, accounts or property for a goal if you want.
+    far short it falls, with the extra a month or the later date each goal would need.
+    **Choose exactly what funds a goal** — a liquid fund, half an equity fund, a fixed amount of
+    a savings account, gold you mean to sell — and it tracks precisely those, to the rupee, with
+    nothing added by guesswork. Each item is labelled for what it is (bank, liquid or debt fund,
+    equity, property) and the goal says whether that mix suits how soon the money is needed. Two
+    goals can't claim more of an item than it holds; goals you haven't chosen for fill
+    automatically from the rest.
   - **Calculator** — SIP, Lumpsum and **SWP** (withdrawal plan) with step-up and inflation. Free,
     and also public with no login at `/calculators`.
   - **Insights** *(premium)* — **Financial independence**: your number is what N years of your
@@ -121,7 +126,7 @@ node --env-file-if-exists=.env test-sweep.mjs      # whole-app regression sweep,
 node --env-file-if-exists=.env test-insights.mjs   # or any focused suite
 ```
 
-Focused suites cover the goal plan, insights, legacy, statements, login security, digest timing,
+Focused suites cover the goal plan and goal funding, insights, legacy, statements, login security, digest timing,
 holding merges, cash adjustments, broker pruning, allocation, pricing and more. `test-email-pipeline.mjs` starts
 its own API instance and a local SMTP server. The suites create throwaway users, so point them at
 a local database, never production. Lint with `npm run lint`.
@@ -145,7 +150,7 @@ PDF from CAMS/KFintech/NSDL — re-saved PDFs don't parse. In the app: **Investm
 | Asset | Source | Notes |
 |---|---|---|
 | Stocks (7 markets) | Yahoo Finance | Ticker per market, e.g. `AAPL`, `RELIANCE` (`.NS` auto), `BARC` (UK), `RY` (Canada) |
-| Indian mutual funds | AMFI / mfapi.in | Search by name or AMFI scheme code; broker ISINs resolve automatically |
+| Indian mutual funds | AMFI / mfapi.in | Search by name or AMFI scheme code; broker ISINs resolve automatically; the scheme category (liquid, debt, equity…) is recorded too |
 | FX (all 7 currencies) | open.er-api.com | Live, free; cached 6 h |
 
 Prices cache 15 min; the Investments page polls every 30 s on a 20 s cache. When Yahoo's live
@@ -230,7 +235,7 @@ Project Finance/
 │   │   │                   # import, broker, billing, email, family, profiles, legacy,
 │   │   │                   # support, export, admin, cron
 │   │   ├── services/       # prices/FX, portfolio, summary, allocationTree, networth, briefing,
-│   │   │                   # insights/ (fi, risk), goalPlan, returns, recurring, statement, digest,
+│   │   │                   # insights/ (fi, risk), goalPlan, goalFunding, returns, recurring, statement, digest,
 │   │   │                   # email, scheduler, alerts, family, legacy, importer, brokers,
 │   │   │                   # billing, pricing, stripe, totp
 │   │   └── tools/cas/      # Python casparser bridge

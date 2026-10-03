@@ -244,6 +244,10 @@ holdingsRouter.delete(
   asyncHandler(async (req, res) => {
     const info = await remove.run(req.params.id, req.user.id);
     if (!info.changes) throw new HttpError(404, 'Holding not found');
+    // A goal funded by this holding must not keep pointing at nothing.
+    await db
+      .prepare("DELETE FROM goal_links WHERE user_id = ? AND kind = 'holding' AND ref_id = ?")
+      .run(req.user.id, req.params.id);
     res.json({ ok: true });
   })
 );

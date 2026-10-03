@@ -43,6 +43,8 @@ export async function enrichHoldings(holdings, base, opts = {}) {
       price_source: isManual ? 'manual' : p.source || null,
       price_updated_at: isManual ? null : p.updated_at || null,
       price_stale: isManual ? false : !!p.stale,
+      // The fund's AMFI category, when the price source knows it.
+      category: p.category || null,
       market_value: marketNative,
       market_value_base: valueBase,
       cost_value: costNative,
