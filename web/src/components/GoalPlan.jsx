@@ -91,6 +91,10 @@ function Shares({ goals, field, cur, empty = '—' }) {
             <span className="flex min-w-0 items-baseline gap-2 text-brand-100">
               <span className="num flex-none text-[10px] font-bold text-gold-300">{g.plan.rank}</span>
               <span className="truncate">{g.name}</span>
+              {/* this goal's money was chosen by name, not assigned by the plan */}
+              {field === 'funded_now' && g.plan.dedicated && (
+                <span className="flex-none text-[10px] font-semibold uppercase tracking-wider text-gold-300/90">chosen</span>
+              )}
             </span>
             <span className={`num flex-none font-semibold ${v > 0 ? 'text-white' : 'text-brand-300'}`}>
               {v > 0 ? money(v, cur, { whole: true }) : empty}
@@ -213,8 +217,13 @@ function HowItWorks({ plan, cur }) {
           >
             <ol className="list-decimal space-y-2.5 px-1 pb-1 pl-5 pt-3 text-xs leading-relaxed text-brand-200">
               <li>
-                <span className="font-semibold text-brand-100">Your money fills your goals in order</span> — an
-                emergency fund first, then the soonest date. Use the arrows on a goal to change the order.
+                <span className="font-semibold text-brand-100">Choose what funds a goal, and it tracks exactly that.</span>{' '}
+                On any goal, pick the investments and accounts you&apos;ve set aside for it — all of one, a fixed amount, or
+                a share. That goal then shows precisely what those are worth, and nothing else is added to it.
+              </li>
+              <li>
+                <span className="font-semibold text-brand-100">Everything you haven&apos;t chosen fills the other goals in order</span>{' '}
+                — an emergency fund first, then the soonest date. Use the arrows on a goal to change the order.
               </li>
               <li>
                 <span className="font-semibold text-brand-100">Each goal takes only what it needs today</span>: the
@@ -231,10 +240,10 @@ function HowItWorks({ plan, cur }) {
                 you add money, goals fill faster; when they fall, the plan says so.
               </li>
               <li>
-                Only investments and cash count
-                {plan.property_excluded > 0 ? ` — your property (${short(plan.property_excluded, cur)}) doesn't` : ''}:
-                selling a home to fund a goal means buying or renting another. To reserve a particular investment,
-                account or property for one goal, edit the goal and earmark it.
+                Only investments and cash are shared out automatically
+                {plan.property_excluded > 0 ? ` — your property (${short(plan.property_excluded, cur)}) isn't` : ''}:
+                selling a home to fund a goal means buying or renting another. Property or gold you do mean to sell
+                for a goal can be chosen for it by name.
               </li>
             </ol>
           </motion.div>
@@ -312,13 +321,21 @@ export default function GoalPlanCard({ goals, plan, cur, onChanged, onResetOrder
               />
             </div>
             <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-brand-200">
-              <Key color={FILL}>Set aside {short(setAside, cur)}</Key>
+              <Key color={FILL}>
+                Set aside {short(setAside, cur)}
+                {pot.earmarked > 0 ? ` (${short(pot.earmarked, cur)} chosen by you)` : ''}
+              </Key>
               <Key color={TRACK}>Free {short(pot.unassigned, cur)}</Key>
             </p>
             <Shares goals={goals} field="funded_now" cur={cur} />
             <p className="mt-3 text-[11px] leading-relaxed text-brand-200/85">
               Investments {short(pot.investments, cur)} + cash {short(pot.cash, cur)}
-              {plan.property_excluded > 0 ? ` · property (${short(plan.property_excluded, cur)}) not counted` : ''}.
+              {plan.earmarked_outside > 0
+                ? ` · plus ${short(plan.earmarked_outside, cur)} of property or gold you chose for a goal`
+                : plan.property_excluded > 0
+                  ? ` · property (${short(plan.property_excluded, cur)}) not counted`
+                  : ''}
+              .
             </p>
           </div>
 

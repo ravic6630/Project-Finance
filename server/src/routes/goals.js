@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { authRequired, requirePremium } from '../auth.js';
 import { asyncHandler, bad, HttpError, num, oneOf, str } from '../util.js';
-import { buildGoalPlan } from '../services/goalPlan.js';
+import { buildGoalPlan, neededToday, orderGoals, yearsUntil } from '../services/goalPlan.js';
+import { classify, mixShares, resolveEarmarks } from '../services/goalFunding.js';
 import { measureCashflow } from '../services/insights/fi.js';
 import { getFxRate } from '../services/prices.js';
 import { buildSummary } from '../services/summary.js';
@@ -62,54 +63,75 @@ const listLinks = db.prepare('SELECT * FROM goal_links WHERE user_id = ? ORDER B
 const linksForGoal = db.prepare('SELECT * FROM goal_links WHERE goal_id = ? AND user_id = ? ORDER BY id');
 const clearLinks = db.prepare('DELETE FROM goal_links WHERE goal_id = ? AND user_id = ?');
 const insertLink = db.prepare(
-  'INSERT OR IGNORE INTO goal_links (user_id, goal_id, kind, ref_id, created_at) VALUES (?, ?, ?, ?, ?)'
+  'INSERT OR IGNORE INTO goal_links (user_id, goal_id, kind, ref_id, portion, portion_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
 );
 
 const LINK_KINDS = ['holding', 'account', 'asset'];
+const PORTIONS = ['all', 'amount', 'percent'];
 
-// Current value (in the user's base currency) of every linkable item, one
-// batch: holdings from the already-priced summary items, accounts and assets
-// via FX. Returns { 'holding:12': {name, value}, 'account:3': …, 'asset:7': … }.
-async function linkableValues(user, items) {
+// Everything a goal can be funded from, valued now. Holdings come from the
+// already-priced summary; accounts and assets are converted here. For each:
+//   value    — in the user's base currency
+//   native   — in the item's own currency, with `rate` converting it to base
+//              (a fixed-amount earmark is stored in the item's own currency)
+//   cls/tag  — what kind of money it is (goalFunding.classify)
+// Keyed 'holding:12' / 'account:3' / 'asset:7'.
+async function fundableItems(user, summary) {
   const base = user.base_currency;
   const [accounts, assets] = await Promise.all([
     db.prepare('SELECT * FROM cash_accounts WHERE user_id = ?').all(user.id),
     db.prepare('SELECT * FROM assets WHERE user_id = ?').all(user.id),
   ]);
-  const values = {};
-  for (const h of items || []) values[`holding:${h.id}`] = { name: h.name, value: h.market_value_base || 0 };
   const fx = { [base]: 1 };
   const rate = async (c) => {
     if (fx[c] == null) fx[c] = await getFxRate(c, base);
     return fx[c];
   };
-  for (const a of accounts) values[`account:${a.id}`] = { name: a.name, value: a.balance * (await rate(a.currency)) };
-  for (const a of assets) values[`asset:${a.id}`] = { name: a.name, value: a.value * (await rate(a.currency)) };
-  return values;
-}
 
-// What each goal has earmarked through its links: { [goalId]: { value, in_pot,
-// count } }. An item linked to two goals is shared between them rather than
-// counted in full by both, and `in_pot` is the part that came out of
-// investments or cash — a linked property funds its goal without ever having
-// been in the pot the plan spreads.
-async function earmarksFor(user, goalIds, items) {
-  const links = (await listLinks.all(user.id)).filter((l) => goalIds.includes(l.goal_id));
-  if (!links.length) return {};
-  const values = await linkableValues(user, items);
-  const sharers = {};
-  for (const l of links) sharers[`${l.kind}:${l.ref_id}`] = (sharers[`${l.kind}:${l.ref_id}`] || 0) + 1;
-  const out = {};
-  for (const l of links) {
-    const key = `${l.kind}:${l.ref_id}`;
-    // A deleted item counts 0; an overdrawn account can't fund anything.
-    const value = values[key] ? Math.max(0, values[key].value) / sharers[key] : 0;
-    const e = (out[l.goal_id] ||= { value: 0, in_pot: 0, count: 0 });
-    e.value += value;
-    e.count += 1;
-    if (l.kind !== 'asset') e.in_pot += value;
+  const items = {};
+  for (const h of summary.items || []) {
+    const value = h.market_value_base || 0;
+    // Unpriced holdings fall back to cost, which is in the holding's currency.
+    const native = h.market_value != null ? h.market_value : h.cost_value;
+    const currency = h.market_value != null ? h.price_currency : h.currency;
+    items[`holding:${h.id}`] = {
+      kind: 'holding',
+      ref_id: h.id,
+      name: h.name,
+      value,
+      native,
+      currency,
+      rate: native > 0 ? value / native : await rate(currency),
+      ...classify({ kind: 'holding', holding_kind: h.kind, category: h.category, name: h.name }),
+    };
   }
-  return out;
+  for (const a of accounts) {
+    const r = await rate(a.currency);
+    items[`account:${a.id}`] = {
+      kind: 'account',
+      ref_id: a.id,
+      name: a.name,
+      value: a.balance * r,
+      native: a.balance,
+      currency: a.currency,
+      rate: r,
+      ...classify({ kind: 'account', type: a.type }),
+    };
+  }
+  for (const a of assets) {
+    const r = await rate(a.currency);
+    items[`asset:${a.id}`] = {
+      kind: 'asset',
+      ref_id: a.id,
+      name: a.name,
+      value: a.value * r,
+      native: a.value,
+      currency: a.currency,
+      rate: r,
+      ...classify({ kind: 'asset', type: a.type }),
+    };
+  }
+  return items;
 }
 
 // Goals are stored in their own currency but planned in the user's base
@@ -157,9 +179,11 @@ async function monthlyBudget(prefs, summary, rows, rates, base) {
   return { amount: null, source: 'none', measured };
 }
 
+const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
 // One goal as the API returns it: the stored row, its amounts in base currency,
-// its place in the plan — and the older `projection` shape, filled from the
-// plan so an app build that predates it shows the same numbers.
+// its place in the plan, what funds it — and the older `projection` shape,
+// filled from the plan so an app build that predates it shows the same numbers.
 function present(g, base, rates, earmark, p) {
   const target = (Number(g.target_amount) || 0) * (rates[g.currency || 'INR'] ?? 1);
   return {
@@ -169,6 +193,22 @@ function present(g, base, rates, earmark, p) {
     current_amount_base: p.funded_now,
     monthly_contribution_base: p.monthly_share ?? 0,
     links_count: earmark ? earmark.count : 0,
+    // 'chosen' — the named items below, and only those; 'auto' — a share of
+    // whatever isn't spoken for. `short` is what the chosen items could no
+    // longer deliver (a balance was spent, another goal ranks ahead).
+    funding: earmark
+      ? {
+          mode: 'chosen',
+          items: earmark.items.map((i) => ({
+            ...i,
+            requested: round2(i.requested),
+            granted: round2(i.granted),
+            short: round2(i.short),
+          })),
+          short: round2(earmark.short),
+          mix: mixShares(earmark.mix),
+        }
+      : { mode: 'auto', items: [], short: 0, mix: null },
     plan: p,
     projection: {
       years_to_target: p.years_left,
@@ -182,30 +222,58 @@ function present(g, base, rates, earmark, p) {
   };
 }
 
+// Everything the plan and the funding picker both need: the goals (as the plan
+// reads them), what the user owns, and the links between the two.
+async function fundingContext(user) {
+  const base = user.base_currency;
+  const [rows, summary, prefs, allLinks] = await Promise.all([
+    list.all(user.id),
+    buildSummary(user, { scope: null, withItems: true }),
+    getPrefs.get(user.id),
+    listLinks.all(user.id),
+  ]);
+  const rates = await ratesFor(rows, base);
+  const planGoals = rows.map((g) => ({
+    id: g.id,
+    name: g.name,
+    type: g.type,
+    date: g.target_date,
+    target: (Number(g.target_amount) || 0) * (rates[g.currency || 'INR'] ?? 1),
+    r: Number(g.expected_return) || 0,
+    priority: g.priority,
+  }));
+  const ids = new Set(rows.map((g) => g.id));
+  const items = await fundableItems(user, summary);
+  return {
+    base,
+    rows,
+    summary,
+    prefs,
+    rates,
+    planGoals,
+    // A link to something that no longer exists is not a choice any more. It is
+    // dropped here rather than counted as zero, because a goal funded by named
+    // items is never topped up: left in, a goal whose one chosen account was
+    // later closed would sit at nothing for ever. Dropped, it goes back to
+    // filling automatically until the user chooses again.
+    links: allLinks.filter((l) => ids.has(l.goal_id) && items[`${l.kind}:${l.ref_id}`]),
+    items,
+    // Claims on a shared item are settled in the same order the plan uses.
+    order: orderGoals(planGoals).map((g) => g.id),
+  };
+}
+
 // The whole plan for one user. Every goal's numbers depend on the others —
 // money one goal takes is money the next can't — so even a single-goal
 // response is read out of the full plan.
 async function planFor(user) {
-  const base = user.base_currency;
-  const [rows, summary, prefs] = await Promise.all([
-    list.all(user.id),
-    buildSummary(user, { scope: null, withItems: true }),
-    getPrefs.get(user.id),
-  ]);
-  const rates = await ratesFor(rows, base);
-  const earmarks = await earmarksFor(user, rows.map((g) => g.id), summary.items);
-  const budget = await monthlyBudget(prefs, summary, rows, rates, base);
+  const ctx = await fundingContext(user);
+  const { base, rows, summary, rates } = ctx;
+  const earmarks = resolveEarmarks(ctx).byGoal;
+  const budget = await monthlyBudget(ctx.prefs, summary, rows, rates, base);
 
   const plan = buildGoalPlan({
-    goals: rows.map((g) => ({
-      id: g.id,
-      name: g.name,
-      type: g.type,
-      date: g.target_date,
-      target: (Number(g.target_amount) || 0) * (rates[g.currency || 'INR'] ?? 1),
-      r: Number(g.expected_return) || 0,
-      priority: g.priority,
-    })),
+    goals: ctx.planGoals,
     pot: { investments: summary.investments.value, cash: summary.cash.total },
     earmarks,
     budget,
@@ -219,6 +287,9 @@ async function planFor(user) {
       ...overview,
       // Shown beside the pot so its size needs no explaining.
       property_excluded: summary.assets.total > 0 ? summary.assets.total : 0,
+      // Property or gold a goal has been given by name counts for that goal
+      // even though it was never part of the pot.
+      earmarked_outside: round2(Object.values(earmarks).reduce((s, e) => s + (e.value - e.in_pot), 0)),
       // Amounts typed on goals before the plan existed are no longer counted;
       // the page says so once, so nobody wonders where their figure went.
       legacy_saved: rows.some((g) => Number(g.current_amount) > 0 && !earmarks[g.id]),
@@ -306,28 +377,107 @@ goalsRouter.delete(
   })
 );
 
-// The goal's linked items, valued live — feeds the picker in the edit form.
+const portionOf = (l) => (l.portion === 'amount' || l.portion === 'percent' ? l.portion : 'all');
+const KIND_ORDER = { holding: 0, account: 1, asset: 2 };
+
+// Everything this goal could be funded from — each investment, account and
+// asset with what it's worth, what kind of money it is, how much of it other
+// goals have already claimed, and what this goal has chosen so far.
+goalsRouter.get(
+  '/:id/funding',
+  asyncHandler(async (req, res) => {
+    const ctx = await fundingContext(req.user);
+    const id = Number(req.params.id);
+    const goal = ctx.planGoals.find((g) => g.id === id);
+    if (!goal) throw new HttpError(404, 'Goal not found');
+    const row = ctx.rows.find((g) => g.id === id);
+    const mine = new Map(ctx.links.filter((l) => l.goal_id === id).map((l) => [`${l.kind}:${l.ref_id}`, l]));
+    // Settled WITHOUT this goal's own claims: what the others take is what
+    // this goal is choosing around.
+    const others = resolveEarmarks({ ...ctx, links: ctx.links.filter((l) => l.goal_id !== id) }).usage;
+    const names = new Map(ctx.rows.map((g) => [g.id, g.name]));
+    const years = yearsUntil(goal.date);
+    // Fixed claims are served in priority order, so the ones that outrank this
+    // goal are money it cannot have; the ones below it are money it would be
+    // taking. The picker says which is which instead of guessing.
+    const myRank = ctx.order.indexOf(id);
+    const ahead = (taker) => taker.explicit && ctx.order.indexOf(taker.goal_id) < myRank;
+    const named = (takers) => [...new Set(takers.map((t) => names.get(t.goal_id)).filter(Boolean))];
+
+    res.json({
+      goal: {
+        id,
+        name: goal.name,
+        target_date: goal.date,
+        years_left: round2(years),
+        expected_return: goal.r,
+        target_amount_base: round2(goal.target),
+        needed_today: round2(neededToday(goal.target, goal.r, years)),
+      },
+      items: Object.entries(ctx.items)
+        .map(([key, it]) => {
+          const used = others[key];
+          const link = mine.get(key);
+          return {
+            kind: it.kind,
+            ref_id: it.ref_id,
+            name: it.name,
+            tag: it.tag,
+            cls: it.cls,
+            currency: it.currency,
+            rate: it.rate,
+            value_native: round2(Math.max(0, it.native)),
+            value_base: round2(Math.max(0, it.value)),
+            taken_base: round2(used ? used.taken : 0),
+            // Fixed amounts and shares other goals took, and how many of them
+            // hold "all of it" — together, what "all of it" would mean here.
+            explicit_base: round2(used ? used.explicit : 0),
+            whole_count: used ? used.whole : 0,
+            taken_by: used ? named(used.takers) : [],
+            // The part claimed by goals that rank ahead of this one.
+            ahead_base: round2(used ? used.takers.filter(ahead).reduce((s, t) => s + t.granted, 0) : 0),
+            ahead_by: used ? named(used.takers.filter(ahead)) : [],
+            mine: link ? { portion: portionOf(link), value: link.portion_value } : null,
+          };
+        })
+        // Nothing can be set aside out of an empty or overdrawn item — unless
+        // it's already chosen, in which case it must stay visible to untick.
+        .filter((it) => it.value_base > 0 || it.mine)
+        .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.value_base - a.value_base),
+      base_currency: ctx.base,
+    });
+  })
+);
+
+// The goal's links as stored — kept for app builds that predate /funding.
 goalsRouter.get(
   '/:id/links',
   asyncHandler(async (req, res) => {
     const goal = await getOne.get(req.params.id, req.user.id);
     if (!goal) throw new HttpError(404, 'Goal not found');
     const links = await linksForGoal.all(req.params.id, req.user.id);
-    const items = links.some((l) => l.kind === 'holding')
-      ? (await buildSummary(req.user, { scope: null, withItems: true })).items
-      : [];
-    const values = links.length ? await linkableValues(req.user, items) : {};
+    const items = links.length
+      ? await fundableItems(req.user, await buildSummary(req.user, { scope: null, withItems: true }))
+      : {};
     res.json({
       links: links.map((l) => {
-        const v = values[`${l.kind}:${l.ref_id}`];
-        return { kind: l.kind, ref_id: l.ref_id, name: v?.name || '(removed)', value_base: v?.value || 0 };
+        const it = items[`${l.kind}:${l.ref_id}`];
+        return {
+          kind: l.kind,
+          ref_id: l.ref_id,
+          portion: portionOf(l),
+          value: l.portion_value,
+          name: it?.name || '(removed)',
+          value_base: it?.value || 0,
+        };
       }),
       base_currency: req.user.base_currency,
     });
   })
 );
 
-// Replace the goal's links wholesale (the picker sends its full selection).
+// Replace what funds the goal, wholesale (the picker sends its full selection).
+// Each link takes all of its item, a fixed amount of it, or a share of it.
 // Every reference must belong to the caller.
 goalsRouter.put(
   '/:id/links',
@@ -335,12 +485,29 @@ goalsRouter.put(
     const goal = await getOne.get(req.params.id, req.user.id);
     if (!goal) throw new HttpError(404, 'Goal not found');
     const raw = Array.isArray(req.body.links) ? req.body.links.slice(0, 100) : [];
+    // An app build that predates portions sends only kind + ref_id, and sends
+    // the whole list on every goal save. Read as "all of it", that would turn a
+    // carefully set "₹2 lakh of this account" into the entire account the next
+    // time a goal was renamed from an old phone — so a link that arrives with
+    // no portion at all keeps the one it already had.
+    const existing = new Map(
+      (await linksForGoal.all(req.params.id, req.user.id)).map((l) => [`${l.kind}:${l.ref_id}`, l])
+    );
     const wanted = [];
     for (const l of raw) {
       const kind = oneOf(String(l.kind || ''), LINK_KINDS, 'kind');
       const refId = Number(l.ref_id);
       if (!Number.isInteger(refId) || refId <= 0) throw bad('ref_id must be a positive integer');
-      wanted.push({ kind, refId });
+      const kept = l.portion === undefined ? existing.get(`${kind}:${refId}`) : null;
+      const portion = kept ? portionOf(kept) : l.portion == null ? 'all' : oneOf(String(l.portion), PORTIONS, 'portion');
+      let value = null;
+      if (portion !== 'all') {
+        value = kept ? kept.portion_value : num(l.value, 'value');
+        if (!(value > 0)) throw bad('Enter how much of it is for this goal — more than zero');
+        if (portion === 'percent' && value > 100) throw bad('A share of an item cannot be more than 100%');
+        if (value > 1e15) throw bad('That amount is too large');
+      }
+      wanted.push({ kind, refId, portion, value });
     }
     // Ownership check per kind in one query each.
     const tables = { holding: 'holdings', account: 'cash_accounts', asset: 'assets' };
@@ -354,7 +521,9 @@ goalsRouter.put(
     }
     await clearLinks.run(req.params.id, req.user.id);
     const ts = now();
-    for (const w of wanted) await insertLink.run(req.user.id, req.params.id, w.kind, w.refId, ts);
+    for (const w of wanted) {
+      await insertLink.run(req.user.id, req.params.id, w.kind, w.refId, w.portion === 'all' ? null : w.portion, w.value, ts);
+    }
     res.json({ goal: await oneFromPlan(req.user, req.params.id) });
   })
 );

@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   Calculator,
+  Check,
   Compass,
   Link2,
   Car,
@@ -30,6 +32,7 @@ import InsightsPanel from '../components/insights/InsightsPanel.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import CalculatorTool from '../components/CalculatorTool.jsx';
 import GoalPlanCard, { STATUS } from '../components/GoalPlan.jsx';
+import GoalFunding from '../components/GoalFunding.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 import { gridStagger, cardRise, pageVisible } from '../lib/motion.js';
 
@@ -71,66 +74,59 @@ const returnHint = (date) => {
   if (y < 10) return 'A 3–10 year goal suits a mix of equity and debt.';
   return 'Ten years or more can stay mostly in equity for higher growth.';
 };
-// A near goal planned at an equity-like return looks better covered than it is.
+// A goal planned at an equity return while its money sits in a bank account
+// looks better covered than it is. When the goal is funded by named items we
+// know what it's actually in; otherwise how soon it's needed is the only clue.
 const SAFE_RETURN = 7;
-const optimistic = (goal) => goal.plan.years_left > 0 && goal.plan.years_left < 3 && Number(goal.expected_return) > SAFE_RETURN + 1;
+function returnNudge(goal) {
+  const r = Number(goal.expected_return);
+  if (!(r > SAFE_RETURN + 1) || !(goal.plan.years_left > 0)) return null;
+  const mix = goal.funding?.mode === 'chosen' ? goal.funding.mix : null;
+  if (mix) {
+    return mix.safe >= 75
+      ? `It's funded from bank balances and debt funds, which earn about ${SAFE_RETURN}% — the plan assumes ${r}%.`
+      : null;
+  }
+  return goal.plan.years_left < 3
+    ? `${r}% is optimistic for money needed this soon — safer places like FDs pay about ${SAFE_RETURN}%.`
+    : null;
+}
+
+// What a goal's named money is made of, and — for a goal that is close —
+// whether that suits it. Stated as what it is, not as advice.
+const KIND_WORDS = { safe: 'bank & debt funds', growth: 'shares & equity funds', physical: 'property & gold', unknown: 'other funds' };
+function mixLine(goal) {
+  const mix = goal.funding?.mode === 'chosen' ? goal.funding.mix : null;
+  if (!mix) return null;
+  const y = goal.plan.years_left;
+  if (y > 0 && y < 3) {
+    if (mix.growth >= 25) return { tone: 'warn', text: `${mix.growth}% of it is in shares or equity funds — these can be down just when it's needed.` };
+    if (mix.physical >= 50) return { tone: 'warn', text: `${mix.physical}% of it is property or gold, which has to be sold in time.` };
+    if (mix.safe >= 75) return { tone: 'good', text: 'In bank balances and debt funds — the usual home for money needed this soon.' };
+  }
+  const parts = ['safe', 'growth', 'physical', 'unknown'].filter((k) => mix[k] > 0).map((k) => `${mix[k]}% ${KIND_WORDS[k]}`);
+  return { tone: 'plain', text: parts.join(' · ') };
+}
+
+// "₹2,00,000 of it", "50% of it" — how much of an item a goal has taken.
+function portionWords(i) {
+  if (i.missing) return ' · no longer there';
+  if (i.portion === 'amount') return ` · ${money(i.portion_value, i.currency, { whole: true })} of it`;
+  if (i.portion === 'percent') return ` · ${i.portion_value}% of it`;
+  return i.shared ? ' · shared with another goal' : '';
+}
 
 function GoalForm({ open, onClose, onSaved, editing }) {
   const { user } = useAuth();
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  // Portfolio linking: when items are linked, "saved so far" tracks them live.
-  const [links, setLinks] = useState([]); // [{kind, ref_id}]
-  const [linksReady, setLinksReady] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [linkables, setLinkables] = useState(null); // {holdings, accounts, assets}
   // Once the user types their own return, picking a date stops suggesting one.
   const [returnTouched, setReturnTouched] = useState(false);
-
-  async function openPicker() {
-    setPickerOpen((o) => !o);
-    if (linkables) return;
-    try {
-      const [h, c, a] = await Promise.all([api('/holdings'), api('/cash'), api('/assets')]);
-      setLinkables({
-        holdings: h.holdings || [],
-        accounts: c.accounts || [],
-        assets: a.assets || [],
-      });
-    } catch {
-      setLinkables({ holdings: [], accounts: [], assets: [] });
-    }
-  }
-
-  const linkKey = (k, id) => `${k}:${id}`;
-  const isLinked = (k, id) => links.some((l) => l.kind === k && l.ref_id === id);
-  const toggleLink = (k, id) =>
-    setLinks((ls) =>
-      ls.some((l) => l.kind === k && l.ref_id === id)
-        ? ls.filter((l) => !(l.kind === k && l.ref_id === id))
-        : [...ls, { kind: k, ref_id: id }]
-    );
 
   useEffect(() => {
     if (!open) return;
     setError('');
-    setPickerOpen(false);
-    setLinks([]);
-    // Saving PUTs the full link list, so an unloaded/failed GET would wipe the
-    // goal's existing links. Track readiness, and ignore a response that
-    // belongs to a goal we've since navigated away from.
-    setLinksReady(!editing);
-    if (editing) {
-      const forGoal = editing.id;
-      api(`/goals/${forGoal}/links`)
-        .then((d) => {
-          if (forGoal !== editing.id) return;
-          setLinks((d.links || []).map((l) => ({ kind: l.kind, ref_id: l.ref_id })));
-          setLinksReady(true);
-        })
-        .catch(() => setError("Couldn't load this goal's linked investments — reopen it before saving."));
-    }
     // An existing goal's return is already a choice someone made.
     setReturnTouched(!!editing);
     setForm(
@@ -160,7 +156,8 @@ function GoalForm({ open, onClose, onSaved, editing }) {
     setBusy(true);
     try {
       // No "saved so far" or monthly figure: the plan works both out from what
-      // you actually own and earn.
+      // you actually own and earn. What funds the goal is chosen separately
+      // (GoalFunding), so it isn't part of this payload either.
       const payload = {
         name: form.name,
         type: form.type,
@@ -169,15 +166,10 @@ function GoalForm({ open, onClose, onSaved, editing }) {
         expected_return: Number(form.expected_return || 0),
         currency: form.currency,
       };
-      let goalId = editing?.id;
+      let created = null;
       if (editing) await api(`/goals/${editing.id}`, { method: 'PATCH', body: payload });
-      else {
-        const d = await api('/goals', { method: 'POST', body: payload });
-        goalId = d.goal.id;
-      }
-      // Only write links when we actually know what they were.
-      if (linksReady) await api(`/goals/${goalId}/links`, { method: 'PUT', body: { links } });
-      onSaved();
+      else created = (await api('/goals', { method: 'POST', body: payload })).goal;
+      onSaved(created);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -220,65 +212,6 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             <input className="input" type="date" value={form.target_date} onChange={(e) => setDate(e.target.value)} required />
           </Field>
         </div>
-        <Field
-          label="How it's funded"
-          hint={
-            links.length > 0
-              ? 'These fund this goal first; anything more it needs comes from your other investments and cash, in priority order.'
-              : "Automatically — from your investments and cash, in priority order, so it moves with your wealth. You don't type a saved amount."
-          }
-        >
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-[#e8e2d4] bg-[#faf8f1] px-3.5 py-2.5">
-            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-              <Link2 size={14} className="text-brand-600" />
-              {links.length > 0
-                ? `${links.length} item${links.length === 1 ? '' : 's'} earmarked for this goal`
-                : 'From your whole portfolio'}
-            </span>
-            <button type="button" className="text-sm font-semibold text-brand-600 hover:underline" onClick={openPicker}>
-              {pickerOpen ? 'Hide' : links.length > 0 ? 'Change' : 'Earmark specific items'}
-            </button>
-          </div>
-        </Field>
-
-        {pickerOpen && (
-          <div className="max-h-56 space-y-3 overflow-y-auto rounded-xl border border-slate-200 p-3">
-            {!linkables ? (
-              <p className="py-4 text-center text-sm text-slate-400">Loading your portfolio…</p>
-            ) : (
-              [
-                ['Investments', 'holding', linkables.holdings.map((h) => ({ id: h.id, name: h.name, value: h.market_value_base, cur: null }))],
-                ['Cash & Bank', 'account', linkables.accounts.map((a) => ({ id: a.id, name: a.name, value: a.balance, cur: a.currency }))],
-                ['Assets', 'asset', linkables.assets.map((a) => ({ id: a.id, name: a.name, value: a.value_base ?? a.value, cur: null }))],
-              ].map(([label, kind, rows]) =>
-                rows.length === 0 ? null : (
-                  <div key={kind}>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-                    {rows.map((row) => (
-                      <label key={linkKey(kind, row.id)} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-brand-600"
-                          checked={isLinked(kind, row.id)}
-                          onChange={() => toggleLink(kind, row.id)}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{row.name}</span>
-                        <span className="num shrink-0 text-xs text-slate-400">
-                          {row.value != null ? money(row.value, row.cur || user.base_currency) : ''}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )
-              )
-            )}
-            {linkables && !linkables.holdings.length && !linkables.accounts.length && !linkables.assets.length && (
-              <p className="py-3 text-center text-sm text-slate-400">
-                Nothing to link yet — add holdings, accounts or assets first.
-              </p>
-            )}
-          </div>
-        )}
         <Field label="Expected return (% a year)" hint={returnHint(form.target_date)}>
           <input
             className="input"
@@ -292,6 +225,13 @@ function GoalForm({ open, onClose, onSaved, editing }) {
             placeholder="12"
           />
         </Field>
+        {!editing && (
+          <p className="flex items-start gap-2 rounded-xl border border-[#e8e2d4] bg-[#faf8f1] px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+            <Link2 size={14} className="mt-0.5 flex-none text-brand-600" aria-hidden />
+            Next you&apos;ll choose which of your investments and accounts are for this goal — or let it fill automatically
+            from whatever isn&apos;t set aside elsewhere.
+          </p>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
@@ -355,19 +295,26 @@ function verdictLines(goal) {
   }
 }
 
-function GoalCard({ goal, onEdit, onDelete, onMove, onSafeReturn, first, last, moving }) {
+function GoalCard({ goal, onEdit, onDelete, onMove, onFund, onSafeReturn, first, last, moving }) {
   const meta = typeMeta(goal.type);
   const p = goal.plan;
   const cur = goal.base_currency || goal.currency || 'INR';
   const target = goal.target_amount_base ?? goal.target_amount;
   const funded = Math.min(100, p.funded_pct ?? 0);
   const status = STATUS[p.status] || STATUS.unknown;
+  const funding = goal.funding || { mode: 'auto', items: [], short: 0 };
+  const chosen = funding.mode === 'chosen';
+  const mix = mixLine(goal);
+  const nudge = returnNudge(goal);
   const iconBtn = 'rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30';
 
   return (
     // `layout`: when the order changes, cards glide to their new places rather
     // than jumping — the move is the feedback that the reorder happened.
-    <motion.div layout variants={cardRise} className="card group relative flex flex-col overflow-hidden p-5">
+    // overflow-clip, not -hidden: the watermark hangs past the edge, and a
+    // hidden box is still scrollable — find-in-page or a focus jump could slide
+    // the whole card's contents sideways. A clipped box cannot scroll at all.
+    <motion.div layout variants={cardRise} className="card group relative flex flex-col overflow-clip p-5">
       {/* oversized goal-icon watermark, stirring gently on hover */}
       <meta.icon
         aria-hidden
@@ -428,12 +375,59 @@ function GoalCard({ goal, onEdit, onDelete, onMove, onSafeReturn, first, last, m
         </div>
         <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
           <span className="num">{money(p.funded_now, cur)}</span> set aside today · {Math.round(funded)}%
-          {goal.links_count > 0 && (
-            <span className="chip bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-              <Link2 size={10} className="mr-1" /> {goal.links_count} earmarked
-            </span>
-          )}
         </p>
+      </div>
+
+      {/* what that money actually is — the named items, or the automatic share */}
+      <div className="relative mt-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <Link2 size={11} aria-hidden /> Funded by
+          </p>
+          <button type="button" onClick={() => onFund(goal)} className="text-xs font-semibold text-brand-600 hover:underline">
+            {chosen ? 'Change' : 'Choose investments'}
+          </button>
+        </div>
+        {chosen ? (
+          <>
+            <ul className="mt-1.5 space-y-1">
+              {funding.items.slice(0, 3).map((i) => (
+                <li key={`${i.kind}:${i.ref_id}`} className="flex items-baseline justify-between gap-3 text-xs">
+                  {/* the name gives way to the edge; "50% of it" never does */}
+                  <span className="flex min-w-0 items-baseline">
+                    <span className="truncate text-slate-600">{i.name}</span>
+                    <span className="flex-none whitespace-pre text-slate-400">{portionWords(i)}</span>
+                  </span>
+                  <span className="num flex-none font-semibold text-slate-700">{money(i.granted, cur, { whole: true })}</span>
+                </li>
+              ))}
+            </ul>
+            {funding.items.length > 3 && <p className="mt-1 text-xs text-slate-400">+{funding.items.length - 3} more</p>}
+            {mix && (
+              <p
+                className={`mt-2 flex items-start gap-1.5 text-xs ${
+                  mix.tone === 'warn' ? 'text-amber-700' : mix.tone === 'good' ? 'text-emerald-700' : 'text-slate-500'
+                }`}
+              >
+                {mix.tone === 'warn' && <AlertTriangle size={13} className="mt-0.5 flex-none" aria-hidden />}
+                {mix.tone === 'good' && <Check size={13} className="mt-0.5 flex-none" aria-hidden />}
+                {mix.text}
+              </p>
+            )}
+            {funding.short > 0.5 && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
+                <AlertTriangle size={13} className="mt-0.5 flex-none" aria-hidden />
+                {money(funding.short, cur, { whole: true })} of what you set aside isn&apos;t there — an account holds less
+                now, or a higher-priority goal claims the same money.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+            A share of whatever isn&apos;t set aside for another goal. Choose the exact funds and accounts to track it
+            precisely.
+          </p>
+        )}
       </div>
 
       <div className="relative mt-4 rounded-xl border border-[#efeadd] bg-[#faf8f1] p-3">
@@ -445,10 +439,9 @@ function GoalCard({ goal, onEdit, onDelete, onMove, onSafeReturn, first, last, m
             {line}
           </p>
         ))}
-        {optimistic(goal) && (
+        {nudge && (
           <p className="mt-2.5 border-t border-[#efeadd] pt-2.5 text-xs leading-relaxed text-slate-500">
-            {goal.expected_return}% is optimistic for money needed this soon — safer places like FDs pay about{' '}
-            {SAFE_RETURN}%.{' '}
+            {nudge}{' '}
             <button
               type="button"
               disabled={moving}
@@ -582,6 +575,9 @@ export default function Goals() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [error, setError] = useState('');
   const [moving, setMoving] = useState(false);
+  // The goal whose funding is being chosen. `fresh` right after it was created:
+  // the picker then offers "skip" rather than "cancel", since nothing is lost.
+  const [funding, setFunding] = useState(null); // { goal, fresh }
   const confirm = useConfirm();
 
   // Priority is the whole list's order, so a move sends the full new order.
@@ -713,6 +709,7 @@ export default function Goals() {
                       moving={moving}
                       onMove={move}
                       onSafeReturn={planAtSafeReturn}
+                      onFund={(goal) => setFunding({ goal, fresh: false })}
                       onEdit={(goal) => {
                         setEditing(goal);
                         setFormOpen(true);
@@ -745,7 +742,24 @@ export default function Goals() {
         </div>
       )}
 
-      <GoalForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={goalsQ.reload} />
+      <GoalForm
+        open={formOpen}
+        editing={editing}
+        onClose={() => setFormOpen(false)}
+        onSaved={(created) => {
+          goalsQ.reload();
+          // A new goal goes straight to "what funds it?" — the moment someone
+          // knows which money they mean, and the one question the form left out.
+          if (created) setFunding({ goal: created, fresh: true });
+        }}
+      />
+      <GoalFunding
+        open={!!funding}
+        goal={funding?.goal}
+        fresh={!!funding?.fresh}
+        onClose={() => setFunding(null)}
+        onSaved={goalsQ.reload}
+      />
       <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onChanged={reloadAll} />
     </div>
   );

@@ -112,6 +112,11 @@ async function fetchMfNav(schemeCode) {
     currency: 'INR',
     name: json?.meta?.scheme_name || `Scheme ${schemeCode}`,
     source: 'amfi',
+    // AMFI's own label for the scheme ("Debt Scheme - Liquid Fund", "Equity
+    // Scheme - Large Cap Fund"). It's what tells a liquid fund from an equity
+    // one — which matters the moment money is set aside for a dated goal.
+    // '' rather than null when absent, so "never looked" and "has none" differ.
+    category: String(json?.meta?.scheme_category || '').trim(),
   };
 }
 
@@ -282,11 +287,12 @@ export async function searchStocks(query, kind) {
 // ---- Price cache ----------------------------------------------------------
 const getCachedPrice = db.prepare('SELECT * FROM price_cache WHERE price_key = ?');
 const upsertPrice = db.prepare(`
-  INSERT INTO price_cache (price_key, price, currency, name, source, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO price_cache (price_key, price, currency, name, source, category, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(price_key) DO UPDATE SET
     price = excluded.price, currency = excluded.currency,
-    name = excluded.name, source = excluded.source, updated_at = excluded.updated_at
+    name = excluded.name, source = excluded.source, category = excluded.category,
+    updated_at = excluded.updated_at
 `);
 
 // Requests currently in flight, keyed by price key, so concurrent callers for
@@ -305,7 +311,10 @@ export async function getPrice(holding, { force = false, ttl } = {}) {
   const maxAge = force ? 0 : holding.kind === 'IN_MF' ? Math.max(baseTtl, PRICE_TTL_MS) : baseTtl;
 
   const cached = await getCachedPrice.get(key);
-  if (cached && isFresh(cached.updated_at, maxAge)) {
+  // A fund cached before its category was recorded is fetched once more to
+  // learn it (NULL = never looked; '' = looked, the source has none).
+  const needsCategory = holding.kind === 'IN_MF' && cached && cached.category == null;
+  if (cached && isFresh(cached.updated_at, maxAge) && !needsCategory) {
     return { ...cached, stale: false };
   }
 
@@ -321,7 +330,7 @@ export async function getPrice(holding, { force = false, ttl } = {}) {
             ? await fetchMfNav(holding.scheme_code)
             : await fetchStock(holding.symbol);
         const ts = now();
-        await upsertPrice.run(key, fresh.price, fresh.currency, fresh.name, fresh.source, ts);
+        await upsertPrice.run(key, fresh.price, fresh.currency, fresh.name, fresh.source, fresh.category ?? null, ts);
         return { price_key: key, ...fresh, updated_at: ts, stale: false };
       })().finally(() => priceInFlight.delete(key));
       priceInFlight.set(key, inFlight);

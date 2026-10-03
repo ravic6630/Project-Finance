@@ -122,17 +122,39 @@ console.log('— each month —');
 }
 
 /* ------------------------------- earmarks --------------------------------- */
-console.log('— earmarks —');
+// A goal funded by named investments shows exactly what those are worth. That
+// is why someone names them — so the pot never tops the figure up.
+console.log('— goals funded by named investments —');
 {
   const p = plan({ earmarks: { 3: { value: 500000, in_pot: 500000 } } });
-  ok(p.pot.shared === POT.investments + POT.cash - 500000, 'earmarked investments leave the shared pot');
-  ok(byId(p, 3).funded_now === 500000 && byId(p, 3).earmarked === 500000, 'and fund their own goal first');
+  ok(p.pot.shared === POT.investments + POT.cash - 500000, 'named investments leave the shared pot');
+  ok(byId(p, 3).funded_now === 500000 && byId(p, 3).from_pot === 0 && byId(p, 3).dedicated, 'and fund their own goal — exactly, with nothing added from the pot', JSON.stringify(byId(p, 3)));
   ok(near(sum(p.goals.map((g) => g.funded_now)), POT.investments + POT.cash, 0.05), 'still no rupee counted twice');
 }
 {
   const p = plan({ earmarks: { 3: { value: 5000000, in_pot: 0 } } });
-  ok(p.pot.shared === POT.investments + POT.cash, 'a linked property funds its goal without touching the pot');
+  ok(p.pot.shared === POT.investments + POT.cash, 'named property funds its goal without touching the pot');
   ok(byId(p, 3).funded_now === 5000000, 'and counts in full for that goal');
+}
+{
+  // The wedding is funded by a liquid fund and a bank balance worth ₹3 lakh —
+  // less than it needs, with plenty elsewhere in the portfolio.
+  const p = plan({ earmarks: { 1: { value: 300000, in_pot: 300000 } } });
+  const marriage = byId(p, 1);
+  ok(marriage.funded_now === 300000 && marriage.from_pot === 0, 'a goal short of what it needs still shows only its named money', String(marriage.funded_now));
+  ok(marriage.status !== 'funded' && marriage.required_monthly > 0, 'and says what it needs a month instead of borrowing a figure', marriage.status);
+  ok(near(byId(p, 2).from_pot, POT.investments + POT.cash - 300000, 0.02), 'everything unnamed goes to the goals that fill automatically', String(byId(p, 2).from_pot));
+  ok(byId(p, 2).dedicated === false, 'which stay automatic');
+}
+{
+  const p = plan({ earmarks: { 1: { value: 0, in_pot: 0 } } });
+  ok(byId(p, 1).dedicated && byId(p, 1).funded_now === 0, 'named money that is now worth nothing funds nothing — the pot does not step in');
+}
+{
+  const p = plan({
+    earmarks: { 1: { value: 100000, in_pot: 100000 }, 2: { value: 200000, in_pot: 200000 }, 3: { value: 300000, in_pot: 300000 } },
+  });
+  ok(p.pot.unassigned === POT.investments + POT.cash - 600000 && p.pot.assigned === 0, 'when every goal is funded by name, the rest is simply free', JSON.stringify(p.pot));
 }
 
 /* ------------------------------- edge cases ------------------------------- */
@@ -161,6 +183,51 @@ console.log('— edge cases —');
   ok(p.pot.total === 0 && p.goals.every((g) => g.funded_now === 0), 'an overdrawn pot funds nothing rather than going negative');
 }
 ok(!/NaN|Infinity|undefined/.test(JSON.stringify(plan())), 'the plan serialises with no NaN, Infinity or undefined');
+
+/* --------------------------- the same in any money ------------------------ */
+// A goal filled by the plan gets EXACTLY what it needs today, a figure reached
+// by dividing and multiplying back — which leaves floating-point residue about
+// one time in twenty. The verdict must not depend on that residue, or the same
+// goal reads "covered" in rupees and "on track" in dollars, and flickers
+// between page loads.
+console.log('— the same in any money —');
+{
+  let seed = 42;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  let residue = 0;
+  let wrong = 0;
+  const N = 5000;
+  for (let i = 0; i < N; i += 1) {
+    // Rupee-sized and dollar-sized targets, every return band, any horizon.
+    const target = Math.round(1000 + rnd() * 5e7) / (rnd() < 0.5 ? 1 : 96.37);
+    const r = [5, 7, 10, 12][Math.floor(rnd() * 4)];
+    const years = 0.2 + rnd() * 20;
+    if (requiredMonthly(target, neededToday(target, r, years), r, years) !== 0) residue += 1;
+    const date = new Date(NOW + years * 365.25 * 864e5).toISOString().slice(0, 10);
+    const p = buildGoalPlan({
+      goals: [{ id: 1, type: 'CUSTOM', date, target, r, priority: null }],
+      pot: { investments: target * 2, cash: 0 },
+      budget: { amount: 0, source: 'set' },
+      nowMs: NOW,
+    });
+    if (p.goals[0].status !== 'funded') wrong += 1;
+  }
+  ok(residue === 0, `a goal given exactly what it needs today needs nothing a month — in all ${N} cases`, `${residue} left a residue`);
+  ok(wrong === 0, 'and is always "covered", never "on track at ₹0 a month"', `${wrong} of ${N} were not`);
+}
+{
+  // The whole plan, in rupees and in the same money worth a hundredth as much.
+  const scale = 1 / 96.37;
+  const inr = plan();
+  const usd = buildGoalPlan({
+    goals: GOALS.map((g) => ({ ...g, target: g.target * scale })),
+    pot: { investments: POT.investments * scale, cash: POT.cash * scale },
+    budget: { amount: 120000 * scale, source: 'set' },
+    nowMs: NOW,
+  });
+  ok(usd.goals.map((g) => g.status).join() === inr.goals.map((g) => g.status).join(), 'every goal reaches the same verdict in another currency', usd.goals.map((g) => g.status).join());
+  ok(usd.goals.every((g, i) => Math.abs(g.funded_pct - inr.goals[i].funded_pct) < 0.01), 'and the same progress');
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

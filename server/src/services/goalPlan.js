@@ -7,9 +7,11 @@
 // same ₹20 lakh. Here every rupee is counted once:
 //
 //  1. THE POT — investments + cash. Property is left out: a home you live in
-//     can't pay for a wedding. Anything the user earmarked for a goal (a goal
-//     link) funds that goal first and leaves the shared pot.
-//  2. TODAY — the shared pot fills goals in priority order. Each takes only
+//     can't pay for a wedding.
+//  2. TODAY — a goal the user has funded with named investments and accounts
+//     (see goalFunding.js) gets exactly those, and they leave the pot: that is
+//     the accurate reading, so nothing is added to it by guesswork. What's left
+//     of the pot fills the remaining goals in priority order. Each takes only
 //     what it still needs today: the sum that, left invested at the goal's
 //     expected return, grows into its target by its date. What no goal needs
 //     is reported as unassigned, never quietly spread.
@@ -63,7 +65,13 @@ export function neededToday(target, r, years) {
 export function requiredMonthly(target, funded, r, years) {
   const f = sipFactor(Math.round(years * 12), r);
   if (!(f > 0)) return null;
-  return Math.max(0, (target - funded * growth(r, years)) / f);
+  const gap = target - funded * growth(r, years);
+  // A goal handed exactly what it needs today got that figure by dividing the
+  // target by the growth; multiplying back leaves a residue around 1e-10 as
+  // often as not. That is arithmetic, not money — and left in, it made a
+  // covered goal read "on track, ₹0 a month" on one load and "covered" on the
+  // next. Anything under a billionth of the target is nothing.
+  return gap <= target * 1e-9 ? 0 : gap / f;
 }
 
 // How many months until `funded` plus `monthly` a month reaches the target, or
@@ -112,9 +120,11 @@ export function orderGoals(goals) {
 /*
  * goals:    [{ id, name, type, date, target, r, priority }] — amounts in base
  * pot:      { investments, cash }                           — in base
- * earmarks: { [goalId]: { value, in_pot } } — linked items' value for each goal;
- *           in_pot is the part that came out of investments or cash (a linked
- *           property funds its goal without ever having been in the pot)
+ * earmarks: { [goalId]: { value, in_pot } } — for each goal funded by named
+ *           items, what those items give it; in_pot is the part that came out
+ *           of investments or cash (earmarked property funds its goal without
+ *           ever having been in the pot). A goal with an entry here is funded
+ *           by its items alone; a goal without one fills from the shared pot.
  * budget:   { amount|null, source, ... } — the monthly surplus for goals
  */
 export function buildGoalPlan({ goals = [], pot = {}, earmarks = {}, budget = null, nowMs = Date.now() } = {}) {
@@ -133,10 +143,12 @@ export function buildGoalPlan({ goals = [], pot = {}, earmarks = {}, budget = nu
     const years = yearsUntil(g.date, nowMs);
     const r = num(g.r);
     const target = Math.max(0, num(g.target));
+    // Funded by named items → exactly those, never topped up from the pot.
+    const dedicated = earmarks[g.id] != null;
     const earmarked = Math.max(0, num(earmarks[g.id]?.value));
 
     const need = neededToday(target, r, years);
-    const fromPot = Math.min(poolLeft, Math.max(0, need - earmarked));
+    const fromPot = dedicated ? 0 : Math.min(poolLeft, Math.max(0, need));
     poolLeft -= fromPot;
     const funded = earmarked + fromPot;
 
@@ -157,7 +169,9 @@ export function buildGoalPlan({ goals = [], pot = {}, earmarks = {}, budget = nu
     else if (pastDue) status = 'overdue';
     else if (!g.date) status = 'no_date';
     else if (share == null) status = 'unknown'; // no monthly figure to judge by
-    else if (share >= required - 0.5) status = 'on_track';
+    // Relative, not "within half a rupee": the same plan viewed in dollars
+    // must reach the same verdict, and half a unit is a hundred times bigger there.
+    else if (share >= required * (1 - 1e-9)) status = 'on_track';
     else if (funded <= 0 && share <= 0) status = 'waiting';
     else status = 'behind';
 
@@ -165,6 +179,7 @@ export function buildGoalPlan({ goals = [], pot = {}, earmarks = {}, budget = nu
       id: g.id,
       rank: index + 1,
       years_left: round2(years),
+      dedicated,
       earmarked: round2(earmarked),
       from_pot: round2(fromPot),
       funded_now: round2(funded),
