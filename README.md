@@ -37,7 +37,7 @@ native **iOS & Android** apps from the same codebase ([MOBILE.md](MOBILE.md)).
 
 **See where you stand**
 - **Dashboard** — a personalised hero whose entrance matches the landing page (rows rise in, net
-  worth counts up, the trend line draws itself), a **"since your last visit"** briefing,
+  worth counts up), a **"since your last visit"** briefing,
   a **zoomable asset-allocation sunburst** (click any slice to drill in), income vs expense once
   there's cashflow, **milestone confetti** and a **"Get growing"** checklist.
 - **Net-worth history** *(premium)* — 1D → 10Y ranges, with a **benchmark overlay**: NIFTY 50,

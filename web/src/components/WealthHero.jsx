@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -6,7 +6,7 @@ import { RefreshCw, Sprout, Trophy } from 'lucide-react';
 import { money, percent } from '../lib/format.js';
 import { isNewMilestone, reachedMilestone } from '../lib/milestones.js';
 import { pageVisible } from '../lib/motion.js';
-import { Aurora, Counter, Sparkline, Spotlight, settle } from './fx.jsx';
+import { Aurora, Counter, Spotlight, settle } from './fx.jsx';
 
 // The landing hero's hand-sequenced entrance, at dashboard scale: each row
 // rises into place a beat after the one above it, so the card reads top-down
@@ -49,33 +49,12 @@ function monthChange(hist) {
   return { delta: to - from, pct: ((to - from) / from) * 100 };
 }
 
-// The tiny trend line beside the total. Plots only real snapshots — and when the
-// history is shorter than the window asked for, the label says so rather than
-// implying we have 90 days of data we don't.
-function recentSeries(hist, days = 90, max = 32) {
-  if (!hist || hist.length < 2) return null;
-  const end = asMs(hist[hist.length - 1].date);
-  const within = hist.filter((p) => asMs(p.date) >= end - days * DAY);
-  if (within.length < 2) return null;
-  const covers = asMs(hist[0].date) <= end - (days - 5) * DAY;
-  const step = within.length > max ? (within.length - 1) / (max - 1) : 0;
-  const points = step
-    ? Array.from({ length: max }, (_, i) => within[Math.round(i * step)].net_worth)
-    : within.map((p) => p.net_worth);
-  const startLabel = new Date(asMs(within[0].date)).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-  });
-  return { points, label: covers ? `Last ${days} days` : `Since ${startLabel}` };
-}
-
 // The dashboard's personalised hero: greeting + animated net worth + a warm,
 // growth-themed insight, over a slowly drifting brand-coloured aurora.
 export default function WealthHero({ data, base, user, onRefresh, refreshing, isEmpty }) {
   const first = (user.name || '').trim().split(' ')[0] || 'there';
   const chg = monthChange(data.net_worth_history);
   const up = chg ? chg.delta >= 0 : true;
-  const spark = useMemo(() => recentSeries(data.net_worth_history), [data.net_worth_history]);
 
   const milestone = reachedMilestone(data.net_worth || 0, base);
   const [justCrossed, setJustCrossed] = useState(false);
@@ -191,25 +170,15 @@ export default function WealthHero({ data, base, user, onRefresh, refreshing, is
           )}
         </div>
 
-        <motion.div {...rise(0.3)} className="flex shrink-0 flex-col items-end gap-3">
-          <button
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white ring-1 ring-white/15 backdrop-blur transition hover:bg-white/15 disabled:opacity-60"
-          >
-            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-
-          {spark && (
-            <div className="w-40 rounded-2xl bg-white/[0.07] p-3 ring-1 ring-inset ring-white/10 backdrop-blur">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-200">
-                {spark.label}
-              </p>
-              <Sparkline points={spark.points} stroke="#d8bb79" fill="#c2a368" height={30} className="mt-2" />
-            </div>
-          )}
-        </motion.div>
+        <motion.button
+          {...rise(0.3)}
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white ring-1 ring-white/15 backdrop-blur transition hover:bg-white/15 disabled:opacity-60"
+        >
+          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </motion.button>
       </div>
     </Spotlight>
   );
