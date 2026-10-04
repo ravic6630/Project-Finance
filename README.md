@@ -93,7 +93,8 @@ native **iOS & Android** apps from the same codebase ([MOBILE.md](MOBILE.md)).
   **⌘K / Ctrl-K command palette**, installable **PWA** plus native apps, and in-app
   **support chat** with the admin (email notifications both ways).
 - **Multi-user** — everyone gets a private account (email + OTP verification).
-- **Admin panel** — user overview, grant/revoke premium, password resets, support inbox.
+- **Admin panel** — user overview, grant/revoke premium, support inbox, and password resets
+  (a generated or chosen password, shown once, with the option to sign the user out everywhere).
 - **Your data** — one-click full-account **JSON export** from Settings (broker tokens never
   included).
 

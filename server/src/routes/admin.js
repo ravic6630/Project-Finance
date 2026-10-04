@@ -1,8 +1,8 @@
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { Router } from 'express';
-import { db } from '../db.js';
+import { db, now } from '../db.js';
 import { applyEffectiveRole, authRequired, hashPassword, requireAdmin } from '../auth.js';
-import { asyncHandler, HttpError } from '../util.js';
+import { asyncHandler, bad, HttpError } from '../util.js';
 import { activatePremium, deactivatePremium, extendPremium, premiumState } from '../services/billing.js';
 import { sendPremiumWelcome } from '../services/premiumEmail.js';
 
@@ -93,19 +93,65 @@ adminRouter.post(
   })
 );
 
+// The same floor sign-up and the emailed reset hold a password to.
+const MIN_PASSWORD = 6;
+
 const setPw = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
 const clearResets = db.prepare('DELETE FROM password_reset_codes WHERE user_id = ?');
-// Reset a user's password (no email needed) — returns a temp password to share.
+const clearLoginGuard = db.prepare(
+  'UPDATE users SET failed_logins = 0, login_otp_hash = NULL, login_otp_expires = NULL, login_otp_attempts = 0 WHERE id = ?'
+);
+const endSessions = db.prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL');
+const endOtherSessions = db.prepare(
+  'UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?'
+);
+
+// A password someone has to read out or retype: twelve characters in three
+// groups, from an alphabet with nothing that can be taken for something else
+// (no 0/o, no 1/l/i). 31^12 is about 59 bits — ample for a password handed
+// over once, behind a sign-in that rate-limits guesses.
+const READABLE = 'abcdefghjkmnpqrstuvwxyz23456789';
+function readablePassword() {
+  const group = () => Array.from({ length: 4 }, () => READABLE[randomInt(READABLE.length)]).join('');
+  return `${group()}-${group()}-${group()}`;
+}
+
+// Reset a user's password, no email needed. The new password goes back to the
+// admin ONCE, to pass on; only its hash is kept.
 adminRouter.post(
   '/users/:id/reset-password',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const target = await getUser.get(id);
     if (!target) throw new HttpError(404, 'User not found');
-    const provided = String(req.body.password || '');
-    const password = provided.length >= 6 ? provided : randomBytes(9).toString('base64url');
+
+    // A typed password that was too short used to be dropped without a word
+    // and a random one issued in its place — the admin read back a password
+    // they had not chosen. Too short is now an error, as it is everywhere else.
+    const provided = String(req.body.password ?? '');
+    if (provided && provided.length < MIN_PASSWORD) throw bad(`Password must be at least ${MIN_PASSWORD} characters`);
+    const password = provided || readablePassword();
+
     await setPw.run(hashPassword(password), id);
     await clearResets.run(id);
-    res.json({ ok: true, email: target.email, password });
+    // Whoever is being helped has usually just failed a few sign-ins — which
+    // would make their next CORRECT password demand a code by email, the one
+    // thing an admin reset exists to route around. The reset settles that run,
+    // exactly as the emailed reset does.
+    await clearLoginGuard.run(id);
+
+    // Optionally end what is already signed in — the point of a reset made
+    // because someone else may know the old password. An admin resetting their
+    // own keeps the device they are on.
+    let signedOut = 0;
+    if (req.body.sign_out) {
+      const info =
+        id === req.user.id
+          ? await endOtherSessions.run(now(), id, req.sessionTokenHash || '')
+          : await endSessions.run(now(), id);
+      signedOut = Number(info.changes) || 0;
+    }
+
+    res.json({ ok: true, email: target.email, password, generated: !provided, signed_out: signedOut });
   })
 );
