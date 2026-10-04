@@ -5,6 +5,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { dateLabel } from '../lib/format.js';
 import { ErrorBanner, Spinner } from '../components/ui.jsx';
 import AdminSupport from '../components/AdminSupport.jsx';
+import ResetPasswordModal from '../components/ResetPasswordModal.jsx';
 import { useConfirm } from '../lib/confirm.jsx';
 
 function Stat({ label, value }) {
@@ -22,6 +23,8 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(0);
+  // The user whose password is being reset, while that sheet is open.
+  const [resetting, setResetting] = useState(null);
   const confirm = useConfirm();
 
   const load = useCallback(async () => {
@@ -65,28 +68,6 @@ export default function Admin() {
     }
   }
 
-  async function resetPw(u) {
-    const custom = window.prompt(
-      `Reset password for ${u.email}.\nType a new password, or leave blank to auto-generate:`,
-      ''
-    );
-    if (custom === null) return; // cancelled
-    setBusy(u.id);
-    try {
-      const r = await api(`/admin/users/${u.id}/reset-password`, {
-        method: 'POST',
-        body: { password: custom || undefined },
-      });
-      window.alert(
-        `New password for ${r.email}:\n\n${r.password}\n\nShare this with them — they can change it after signing in.`
-      );
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(0);
-    }
-  }
-
   async function remove(u) {
     if (!(await confirm({ title: `Delete ${u.email}?`, message: 'This permanently removes their account and ALL their data. This cannot be undone.', confirmLabel: 'Delete user', danger: true }))) return;
     setBusy(u.id);
@@ -105,7 +86,10 @@ export default function Admin() {
   if (!data) return null;
 
   return (
-    <div className="space-y-6">
+    // pb-16: the floating chat button sits over the bottom-right corner, which
+    // is exactly where the last user's actions end up. The extra room lets that
+    // row scroll clear of it instead of leaving its buttons underneath.
+    <div className="space-y-6 pb-16">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Total users" value={data.counts.users} />
         <Stat label="Premium" value={data.counts.premium} />
@@ -192,10 +176,11 @@ export default function Admin() {
                         </>
                       )}
                       <button
-                        onClick={() => resetPw(u)}
+                        onClick={() => setResetting(u)}
                         disabled={busy === u.id}
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
                         title="Reset password"
+                        aria-label={`Reset password for ${u.email}`}
                       >
                         <KeyRound size={15} />
                       </button>
@@ -217,6 +202,8 @@ export default function Admin() {
           </table>
         </div>
       </div>
+
+      <ResetPasswordModal user={resetting} self={resetting?.id === user.id} onClose={() => setResetting(null)} />
     </div>
   );
 }
