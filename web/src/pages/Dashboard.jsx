@@ -43,6 +43,7 @@ import WelcomeBack from '../components/WelcomeBack.jsx';
 import AllocationSunburst from '../components/AllocationSunburst.jsx';
 import { FamilyInviteBanner, FamilyScopeNote } from '../components/FamilyBits.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
+import HealthCard from '../components/health/HealthCard.jsx';
 
 const COLORS = ['#1f3a66', '#c2a368', '#2f7a53', '#3e7c8c', '#8a3b4c', '#7c6a48'];
 
@@ -620,6 +621,12 @@ export default function Dashboard() {
 
         <WelcomeBack data={data.since_last_visit} base={base} name={user.name} />
         <GettingStarted data={data} />
+
+        {data.financial_health?.scored > 0 && (
+          <Reveal y={12}>
+            <HealthCard health={data.financial_health} />
+          </Reveal>
+        )}
 
         <Reveal y={12}>
           <SectionRule label="Your holdings" />

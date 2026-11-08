@@ -35,6 +35,7 @@ import { familyRouter } from './routes/family.js';
 import { statementsRouter } from './routes/statements.js';
 import { insightsRouter } from './routes/insights.js';
 import { legacyRouter } from './routes/legacy.js';
+import { financialHealthRouter } from './routes/financialHealth.js';
 import { startDigestScheduler } from './services/scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -76,6 +77,7 @@ app.use('/api/family', familyRouter);
 app.use('/api/statements', statementsRouter);
 app.use('/api/insights', insightsRouter);
 app.use('/api/legacy', legacyRouter);
+app.use('/api/financial-health', financialHealthRouter);
 
 // Unknown API route -> JSON 404 (so the SPA fallback never swallows it).
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

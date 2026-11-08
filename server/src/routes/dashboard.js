@@ -7,6 +7,7 @@ import { recordSnapshot, getHistory } from '../services/networth.js';
 import { materializeRecurring } from '../services/recurring.js';
 import { buildFamilySummary, buildMemberView, linkedMembers, mergeHistorySeries } from '../services/family.js';
 import { buildBriefing } from '../services/briefing.js';
+import { buildHealth } from '../services/health.js';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(authRequired);
@@ -20,6 +21,9 @@ dashboardRouter.get(
     const base = req.user.base_currency;
     const premium = (await premiumState(req.user)).premium;
     let summary;
+    // Only on the whole-account view: the score measures everything a user
+    // owns, so beside one profile's or a member's numbers it would mislead.
+    let health = null;
 
     if (raw === 'me' || (Number.isInteger(Number(raw)) && Number(raw) > 0)) {
       // My own money, or one managed profile — unchanged behavior.
@@ -33,7 +37,15 @@ dashboardRouter.get(
       summary.net_worth_history = premium ? await getHistory(memberId, base) : null;
     } else {
       // Everyone: my whole account, plus each linked member's.
-      const own = await buildSummary(req.user, { refresh, scope: null, withTree: true });
+      const own = await buildSummary(req.user, { refresh, scope: null, withTree: true, withItems: true });
+      // The health card reads the summary just priced rather than pricing the
+      // portfolio a second time. Items were only fetched for it — they're the
+      // Investments page's payload, not the dashboard's, so they go after.
+      health = await buildHealth(req.user, { summary: own }).catch((err) => {
+        console.error('financial health failed:', err.message);
+        return null;
+      });
+      delete own.items;
       // Record today's net worth for everyone, so history accrues even on the
       // free plan. Always MY OWN total — linked members record their own when
       // they visit, and the family chart sums the series at read time.
@@ -52,6 +64,7 @@ dashboardRouter.get(
     }
 
     summary.premium = premium;
+    summary.financial_health = health;
     // What changed since the visit before this one. Only for the user's own
     // money: a linked member's view is someone else's account, and "since you
     // were last here" would be measuring the wrong person's visits against it.
