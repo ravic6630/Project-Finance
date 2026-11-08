@@ -19,6 +19,7 @@ const OWNED_TABLES = [
   'goals',
   'goal_links',
   'goal_prefs',
+  'health_prefs',
   'alerts',
   'investment_txns',
   'recurring_rules',

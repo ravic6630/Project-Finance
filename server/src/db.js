@@ -462,6 +462,15 @@ export async function initDb() {
       updated_at              TEXT
     )
   `);
+  // Financial health: the optional dimensions a user has chosen to leave out
+  // of their score, as a JSON array of keys (see OPTIONAL in services/health.js).
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS health_prefs (
+      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      left_out   TEXT,
+      updated_at TEXT
+    )
+  `);
   // Goal funding. A goal can be funded by named investments and accounts rather
   // than a share of everything: each link takes all of its item (portion NULL),
   // a fixed amount in the item's own currency ('amount' — "₹2 lakh of my savings

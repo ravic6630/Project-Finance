@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authRequired } from '../auth.js';
 import { asyncHandler } from '../util.js';
-import { buildHealth } from '../services/health.js';
+import { buildHealth, setHealthPrefs } from '../services/health.js';
 
 // Not /api/health — that path is the uptime check Render and cron-job.org hit,
 // and it must stay unauthenticated and instant.
@@ -13,4 +13,14 @@ financialHealthRouter.use(authRequired);
 financialHealthRouter.get(
   '/',
   asyncHandler(async (req, res) => res.json(await buildHealth(req.user)))
+);
+
+// Which optional dimensions count. Sends back the rebuilt result, so the page
+// repaints from one round trip.
+financialHealthRouter.put(
+  '/settings',
+  asyncHandler(async (req, res) => {
+    await setHealthPrefs(req.user.id, req.body);
+    res.json(await buildHealth(req.user));
+  })
 );

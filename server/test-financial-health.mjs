@@ -22,9 +22,11 @@ const ok = (cond, label, extra = '') => {
   }
 };
 
-async function http(path, { token } = {}) {
+async function http(path, { token, method = 'GET', body: payload } = {}) {
   const res = await fetch(`${API}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   const text = await res.text();
   let body = {};
@@ -40,7 +42,7 @@ const PW = 'secret123';
 async function cleanup() {
   const rows = await db.prepare(`SELECT id FROM users WHERE email LIKE '%${DOMAIN}'`).all();
   for (const { id } of rows) {
-    for (const t of ['sessions', 'subscriptions', 'holdings', 'cash_accounts', 'assets', 'transactions', 'budgets', 'goals', 'insight_prefs', 'net_worth_snapshots', 'email_prefs']) {
+    for (const t of ['sessions', 'subscriptions', 'holdings', 'cash_accounts', 'assets', 'transactions', 'budgets', 'goals', 'insight_prefs', 'health_prefs', 'net_worth_snapshots', 'email_prefs']) {
       try {
         await db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(id);
       } catch {}
@@ -164,6 +166,38 @@ ok(!('items' in dash.body), 'dashboard does not leak the holdings list it priced
 ok(typeof dash.body.net_worth === 'number' && dash.body.allocation_tree && typeof dash.body.allocation_tree === 'object', 'dashboard keeps its usual shape (net worth, allocation tree)');
 const dashMe = await http('/dashboard?profile=me', { token: ravi.token });
 ok(dashMe.status === 200 && dashMe.body.financial_health === null, 'a single-profile view carries no whole-account score');
+
+/* --------------------------- optional dimensions --------------------------- */
+console.log('— optional dimensions —');
+ok(dim(b, 'savings').optional && dim(b, 'protect').optional, 'savings rate and plan & protect are optional');
+ok(['emergency', 'budgets', 'diversification', 'growth'].every((k) => dim(b, k).optional === false), 'the other four are not');
+ok(b.dimensions.every((d) => d.counted === true) && b.excluded?.length === 0, 'everything counts by default');
+
+const putPrefs = (excluded) => http('/financial-health/settings', { token: ravi.token, method: 'PUT', body: { excluded } });
+const o1 = await putPrefs(['savings']);
+ok(o1.status === 200 && o1.body.score === 52, 'savings left out: mean of 60,50,39,76,36 => 52', `${o1.status} ${o1.body.score} ${o1.text.slice(0, 120)}`);
+ok(o1.body.total === 5 && o1.body.scored === 5, 'the count becomes 5 of 5', `${o1.body.scored}/${o1.body.total}`);
+ok(dim(o1.body, 'savings').counted === false && dim(o1.body, 'savings').score === 65, 'the savings card keeps its reading (65), marked not counted');
+const o2 = await putPrefs(['savings', 'protect']);
+ok(o2.body.score === 56 && o2.body.total === 4, 'legacy card left out too: mean of 60,50,39,76 => 56 across 4', `${o2.body.score} ${o2.body.total}`);
+ok(o2.body.weakest?.key === 'diversification', 'a left-out dimension is never the weakest area', JSON.stringify(o2.body.weakest));
+ok(o2.body.band?.key === 'fair' && o2.body.excluded.join() === 'savings,protect', 'response says which are left out');
+const o3 = await http('/financial-health', { token: ravi.token });
+ok(o3.body.score === 56, 'the choice is saved', String(o3.body.score));
+const o4 = await http('/dashboard', { token: ravi.token });
+ok(o4.body.financial_health?.score === 56, 'and the dashboard card uses it', String(o4.body.financial_health?.score));
+ok((await putPrefs(['growth'])).status === 400, 'a required dimension cannot be left out (400)');
+ok((await putPrefs(['bogus'])).status === 400, 'an unknown key is refused (400)');
+ok((await http('/financial-health/settings', { token: ravi.token, method: 'PUT', body: { excluded: 'savings' } })).status === 400, 'excluded must be a list (400)');
+ok((await http('/financial-health', { token: ravi.token })).body.score === 56, 'a refused change leaves the saved choice alone');
+await db.prepare('UPDATE health_prefs SET left_out = ? WHERE user_id = ?').run('["growth","savings","nope"]', ravi.id);
+const o5 = await http('/financial-health', { token: ravi.token });
+ok(o5.body.score === 52 && o5.body.excluded.join() === 'savings', 'stored keys that are not optional are ignored', `${o5.body.score} ${o5.body.excluded}`);
+await db.prepare('UPDATE health_prefs SET left_out = ? WHERE user_id = ?').run('not json', ravi.id);
+ok((await http('/financial-health', { token: ravi.token })).body.score === 54, 'an unreadable stored value counts everything');
+const o6 = await putPrefs([]);
+ok(o6.status === 200 && o6.body.score === 54 && o6.body.total === 6, 'counting everything again => back to 54 across 6', `${o6.body.score} ${o6.body.total}`);
+ok((await http('/financial-health/settings', { method: 'PUT', body: { excluded: [] } })).status === 401, 'settings need a token (401)');
 
 /* --------------------------- protect moves the score ----------------------- */
 console.log('— legacy contact —');

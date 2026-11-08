@@ -1,4 +1,5 @@
-import { db } from '../db.js';
+import { db, now } from '../db.js';
+import { bad } from '../util.js';
 import { getFxRate } from './prices.js';
 import { todayIST } from './recurring.js';
 import { buildSummary } from './summary.js';
@@ -32,11 +33,12 @@ import { planFor } from '../routes/goals.js';
    {
      score: 0..100 | null,        // null when fewer than MIN_DIMENSIONS measured
      band: { key, label } | null, // excellent ≥80 · good ≥60 · fair ≥40 · needs_attention
-     scored: n, total: 6,
+     scored: n, total: m,         // measured / counted (6 minus any left out)
+     excluded: [key],             // optional dimensions the user switched off
      weakest: { key, label, score } | null,
      headline: string,
      dimensions: [{
-       key, label, pillar, available, score, band,
+       key, label, pillar, available, score, band, optional, counted,
        value, target, tip, reason, action: { label, to }, metrics
      }],
      not_scored: [string],
@@ -45,6 +47,40 @@ import { planFor } from '../routes/goals.js';
 */
 
 export const MIN_DIMENSIONS = 3;
+
+// Dimensions a user may leave out of their score. Savings rate is only as true
+// as the income and spending recorded, and plenty of people track their wealth
+// without logging every transaction. Plan & protect asks about nominees and a
+// legacy contact, which some people would rather not set up. Either can be
+// switched off; the reading stays on its card, it just stops counting.
+export const OPTIONAL = ['savings', 'protect'];
+
+const prefsRow = db.prepare('SELECT left_out FROM health_prefs WHERE user_id = ?');
+const upsertPrefs = db.prepare(`
+  INSERT INTO health_prefs (user_id, left_out, updated_at) VALUES (?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET left_out = excluded.left_out, updated_at = excluded.updated_at
+`);
+
+export async function healthPrefs(userId) {
+  const row = await prefsRow.get(userId);
+  let excluded = [];
+  try {
+    excluded = JSON.parse(row?.left_out || '[]');
+  } catch {}
+  // Only ever honour keys that are still optional, whatever is stored.
+  return { excluded: Array.isArray(excluded) ? OPTIONAL.filter((k) => excluded.includes(k)) : [] };
+}
+
+export async function setHealthPrefs(userId, body) {
+  const list = body?.excluded;
+  if (!Array.isArray(list)) throw bad('excluded must be a list');
+  for (const k of list) {
+    if (!OPTIONAL.includes(k)) throw bad(`${k} can't be left out of the score`);
+  }
+  const excluded = OPTIONAL.filter((k) => list.includes(k));
+  await upsertPrefs.run(userId, JSON.stringify(excluded), now());
+  return { excluded };
+}
 
 /* --------------------------------- helpers -------------------------------- */
 
@@ -419,7 +455,7 @@ export async function buildHealth(user, { summary = null } = {}) {
   const sum = summary || (await buildSummary(user, { scope: null, withItems: true }));
   const money = moneyFmt(user.base_currency);
   const m = measureCashflow(sum);
-  const prefs = await prefsFor(user.id).catch(() => null);
+  const [prefs, { excluded }] = await Promise.all([prefsFor(user.id).catch(() => null), healthPrefs(user.id)]);
   // Stored in whatever currency it was typed in; everything else here is base.
   let setAnnualSpend = Number(prefs?.annual_spend) || 0;
   if (setAnnualSpend > 0 && prefs.annual_spend_currency && prefs.annual_spend_currency !== user.base_currency) {
@@ -434,9 +470,12 @@ export async function buildHealth(user, { summary = null } = {}) {
     diversification(sum, money),
     growth(sum, money),
     protect,
-  ];
+  ].map((d) => ({ ...d, optional: OPTIONAL.includes(d.key), counted: !excluded.includes(d.key) }));
 
-  const measured = dimensions.filter((d) => d.available);
+  // A dimension left out still shows its reading; it just doesn't count,
+  // toward the score, the weakest area, or the "N of M" either.
+  const inPlay = dimensions.filter((d) => d.counted);
+  const measured = inPlay.filter((d) => d.available);
   const score =
     measured.length >= MIN_DIMENSIONS
       ? clampScore(measured.reduce((s, d) => s + d.score, 0) / measured.length)
@@ -448,11 +487,12 @@ export async function buildHealth(user, { summary = null } = {}) {
     score,
     band,
     scored: measured.length,
-    total: dimensions.length,
+    total: inPlay.length,
+    excluded,
     weakest: weakest ? { key: weakest.key, label: weakest.label, score: weakest.score } : null,
     headline:
       score == null
-        ? `${measured.length} of ${dimensions.length} measured so far — a score needs at least ${MIN_DIMENSIONS}.`
+        ? `${measured.length} of ${inPlay.length} measured so far — a score needs at least ${MIN_DIMENSIONS}.`
         : HEADLINES[band.key],
     dimensions,
     not_scored: ["Borrowing (debt-to-income) isn't scored: Sampada doesn't record loans yet, so the figure would be invented."],

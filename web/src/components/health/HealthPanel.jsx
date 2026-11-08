@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from 'recharts';
@@ -13,6 +14,7 @@ import {
   ShieldCheck,
   TrendingUp,
 } from 'lucide-react';
+import { api } from '../../lib/api.js';
 import { useAuth } from '../../lib/AuthContext.jsx';
 import { useApi } from '../../lib/useApi.js';
 import { dateLabel } from '../../lib/format.js';
@@ -81,6 +83,7 @@ function PanelSkeleton() {
 /* ---------------------------------- hero ---------------------------------- */
 function Hero({ data }) {
   const { score, band, scored, total, headline, as_of: asOf } = data;
+  const leftOut = data.excluded?.length || 0;
   const s = bandStyle(band);
   return (
     <div className="card flex h-full flex-col items-center gap-6 p-6 text-center sm:flex-row sm:p-8 sm:text-left">
@@ -104,6 +107,7 @@ function Hero({ data }) {
         <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600">{headline}</p>
         <p className="mt-3 text-xs text-slate-400">
           Measured across {scored} of {total} dimensions
+          {leftOut ? ` · ${leftOut} left out by you` : ''}
           {asOf ? ` · as of ${dateLabel(asOf)}` : ''}
         </p>
       </div>
@@ -113,7 +117,7 @@ function Hero({ data }) {
 
 /* --------------------------------- radar ---------------------------------- */
 function Breakdown({ dimensions }) {
-  const measured = dimensions.filter((d) => d.available);
+  const measured = dimensions.filter((d) => d.available && d.counted !== false);
   const rows = measured.map((d) => ({ axis: SHORT[d.key] || d.label, score: d.score }));
   return (
     <div className="card flex h-full flex-col p-5 sm:p-6">
@@ -153,12 +157,49 @@ function Breakdown({ dimensions }) {
   );
 }
 
+/* ------------------------------ count switch ------------------------------ */
+// On the optional cards only. Off leaves the reading on the card and takes it
+// out of the score, the radar and the weakest-area line.
+function CountSwitch({ on, busy, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={busy}
+      onClick={() => onChange(!on)}
+      className="inline-flex shrink-0 items-center gap-2 rounded-full text-xs font-semibold text-slate-500 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-wait disabled:opacity-60 dark:focus-visible:ring-gold-300"
+    >
+      Count in my score
+      <span
+        aria-hidden="true"
+        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+          on ? 'bg-brand-600 dark:bg-gold-400' : 'bg-slate-300 dark:bg-white/15'
+        }`}
+      >
+        {/* Inline white: the theme sheet repaints .bg-white as a dark card colour. */}
+        <span
+          className={`h-4 w-4 rounded-full shadow transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`}
+          style={{ background: '#fff' }}
+        />
+      </span>
+    </button>
+  );
+}
+
 /* ------------------------------ dimension card ---------------------------- */
-function DimensionCard({ d }) {
+function DimensionCard({ d, busy, onCount }) {
   const Icon = ICONS[d.key] || HeartPulse;
-  const s = bandStyle(d.band);
+  const counted = d.counted !== false;
+  const s = counted ? bandStyle(d.band) : null;
   // "Plan & protect" is its own pillar; printing it twice says nothing.
   const pillar = d.pillar && d.pillar.toLowerCase() !== d.label.toLowerCase() ? d.pillar : null;
+  const countRow = d.optional && (
+    <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+      <span className="text-[11px] text-slate-400">{counted ? 'Optional' : 'Left out of your score'}</span>
+      <CountSwitch on={counted} busy={busy} onChange={(on) => onCount(d.key, on)} />
+    </div>
+  );
 
   if (!d.available) {
     return (
@@ -174,67 +215,82 @@ function DimensionCard({ d }) {
             <p className="font-semibold text-slate-700">{d.label}</p>
             {pillar && <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{pillar}</p>}
           </div>
-          <span className="chip whitespace-nowrap bg-slate-100 text-slate-500">Not measured</span>
+          <span className="chip whitespace-nowrap bg-slate-100 text-slate-500">
+            {counted ? 'Not measured' : 'Not counted'}
+          </span>
         </div>
         <p className="mt-4 text-sm leading-relaxed text-slate-500">{d.reason}</p>
-        {d.action && (
-          <Link
-            to={d.action.to}
-            className="mt-auto inline-flex items-center gap-1 pt-4 text-xs font-semibold text-brand-700 hover:text-brand-800"
-          >
-            Open {d.action.label} <ArrowRight size={13} />
-          </Link>
-        )}
+        <div className="mt-auto pt-4">
+          {d.action && (
+            <Link
+              to={d.action.to}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800"
+            >
+              Open {d.action.label} <ArrowRight size={13} />
+            </Link>
+          )}
+          {countRow}
+        </div>
       </motion.div>
     );
   }
 
   return (
     <motion.div variants={cardRise} className="card flex h-full flex-col p-5">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-          <Icon size={18} />
+      {/* Dimmed, not hidden, when left out: the reading is still true. */}
+      <div className={`flex flex-1 flex-col transition-opacity ${counted ? '' : 'opacity-50'}`}>
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+            <Icon size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-slate-900">{d.label}</p>
+            {pillar && <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{pillar}</p>}
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="num text-2xl font-bold leading-none tracking-tight text-slate-900">{d.score}</span>
+            {counted ? (
+              <BandChip band={d.band} className="!px-2 !py-0.5 text-[10px]" />
+            ) : (
+              <span className="chip whitespace-nowrap bg-slate-100 !px-2 !py-0.5 text-[10px] text-slate-500">
+                Not counted
+              </span>
+            )}
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-slate-900">{d.label}</p>
-          {pillar && <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{pillar}</p>}
+
+        <div
+          className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
+          role="progressbar"
+          aria-valuenow={d.score}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${d.label} score`}
+        >
+          <div className={`h-full rounded-full ${s?.bar || 'bg-slate-400'}`} style={{ width: `${d.score}%` }} />
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <span className="num text-2xl font-bold leading-none tracking-tight text-slate-900">{d.score}</span>
-          <BandChip band={d.band} className="!px-2 !py-0.5 text-[10px]" />
+
+        <p className="mt-4 text-sm leading-relaxed text-slate-700">{d.value}</p>
+        <p className="mt-1 text-xs text-slate-400">Target: {d.target}</p>
+
+        <div className="mt-auto pt-4">
+          {d.tip && (
+            <p className="flex items-start gap-2 rounded-xl bg-gold-50 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+              <Lightbulb size={14} className="mt-0.5 shrink-0 text-gold-600" aria-hidden="true" />
+              <span>{d.tip}</span>
+            </p>
+          )}
+          {d.action && (
+            <Link
+              to={d.action.to}
+              className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800"
+            >
+              {d.action.label} <ArrowRight size={13} />
+            </Link>
+          )}
         </div>
       </div>
-
-      <div
-        className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
-        role="progressbar"
-        aria-valuenow={d.score}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${d.label} score`}
-      >
-        <div className={`h-full rounded-full ${s?.bar || 'bg-slate-400'}`} style={{ width: `${d.score}%` }} />
-      </div>
-
-      <p className="mt-4 text-sm leading-relaxed text-slate-700">{d.value}</p>
-      <p className="mt-1 text-xs text-slate-400">Target: {d.target}</p>
-
-      <div className="mt-auto pt-4">
-        {d.tip && (
-          <p className="flex items-start gap-2 rounded-xl bg-gold-50 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
-            <Lightbulb size={14} className="mt-0.5 shrink-0 text-gold-600" aria-hidden="true" />
-            <span>{d.tip}</span>
-          </p>
-        )}
-        {d.action && (
-          <Link
-            to={d.action.to}
-            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800"
-          >
-            {d.action.label} <ArrowRight size={13} />
-          </Link>
-        )}
-      </div>
+      {countRow}
     </motion.div>
   );
 }
@@ -245,14 +301,30 @@ export default function HealthPanel() {
   const base = user.base_currency;
   // Every amount in the readings is pre-formatted in the base currency, so a
   // currency switch must re-fetch rather than repaint stale figures.
-  const { data, loading, error } = useApi('/financial-health', { vary: [base] });
+  const { data, loading, error, mutate } = useApi('/financial-health', { vary: [base] });
+  const [saving, setSaving] = useState(null); // key of the switch being saved
+  const [saveError, setSaveError] = useState('');
+
+  async function setCounted(key, on) {
+    const current = data?.excluded || [];
+    const excluded = on ? current.filter((k) => k !== key) : [...new Set([...current, key])];
+    setSaving(key);
+    setSaveError('');
+    try {
+      mutate(await api('/financial-health/settings', { method: 'PUT', body: { excluded } }));
+    } catch (err) {
+      setSaveError(err.message);
+    } finally {
+      setSaving(null);
+    }
+  }
 
   if (loading && !data) return <PanelSkeleton />;
   if (!data) return <ErrorBanner message={error || 'Could not load your financial health.'} />;
 
   return (
     <div className="space-y-6">
-      <ErrorBanner message={error} />
+      <ErrorBanner message={saveError || error} />
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
@@ -270,7 +342,7 @@ export default function HealthPanel() {
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
       >
         {data.dimensions.map((d) => (
-          <DimensionCard key={d.key} d={d} />
+          <DimensionCard key={d.key} d={d} busy={saving === d.key} onCount={setCounted} />
         ))}
       </motion.div>
 
@@ -299,6 +371,13 @@ export default function HealthPanel() {
             <span className="font-semibold text-slate-600">The overall score</span> is the plain average
             of the dimensions that can be measured — never a zero for one that can’t — and needs at
             least three. Bands: 80 and above Excellent, 60–79 Good, 40–59 Fair, below 40 Needs attention.
+          </p>
+          <p>
+            <span className="font-semibold text-slate-600">Savings rate and Plan &amp; protect are optional.</span>{' '}
+            Switch either off on its card and the score is worked out from the rest. Savings rate is only
+            right if all your income and spending is recorded, and Plan &amp; protect asks about nominees and
+            a legacy contact, which not everyone wants to set up. A dimension you leave out keeps its reading
+            on its card.
           </p>
           <p>
             The targets are common rules of thumb rather than personal advice: save about 20% of income;

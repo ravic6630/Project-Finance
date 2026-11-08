@@ -50,6 +50,8 @@ if (typeof window !== 'undefined') window.addEventListener('sampada:mutated', cl
 //   error    — message from the latest failed request ('' otherwise)
 //   status   — HTTP status of that failure (402 is the premium wall)
 //   reload() — refetch now; keeps whatever is on screen until the answer lands
+//   mutate(d) — paint a response the caller already holds (a write that sends
+//               back the fresh resource), without asking the server again
 export function useApi(path, { vary = [], enabled = true } = {}) {
   const key = keyFor(path, vary);
   const initial = cache.get(key);
@@ -97,5 +99,15 @@ export function useApi(path, { vary = [], enabled = true } = {}) {
     reload();
   }, [key, reload, enabled]);
 
-  return { ...state, reload };
+  const mutate = useCallback(
+    (d) => {
+      // Anything still in flight was asked before this write; it must not land on top.
+      reqRef.current += 1;
+      cache.set(key, { data: d, at: Date.now() });
+      setState({ data: d, loading: false, stale: false, error: '', status: null });
+    },
+    [key]
+  );
+
+  return { ...state, reload, mutate };
 }
