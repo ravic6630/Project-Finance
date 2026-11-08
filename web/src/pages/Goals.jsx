@@ -12,6 +12,7 @@ import {
   Car,
   Crown,
   GraduationCap,
+  HeartPulse,
   Home,
   LifeBuoy,
   Palmtree,
@@ -29,6 +30,7 @@ import { dateLabel, money } from '../lib/format.js';
 import { EmptyState, ErrorBanner, Field, Modal, Spinner } from '../components/ui.jsx';
 import { useApi } from '../lib/useApi.js';
 import InsightsPanel from '../components/insights/InsightsPanel.jsx';
+import HealthPanel from '../components/health/HealthPanel.jsx';
 import UpgradeModal from '../components/UpgradeModal.jsx';
 import CalculatorTool from '../components/CalculatorTool.jsx';
 import GoalPlanCard, { STATUS } from '../components/GoalPlan.jsx';
@@ -476,11 +478,12 @@ function PremiumLock({ onUpgrade }) {
 }
 
 /* ------------------------------------ hub ---------------------------------- */
-// Goals, the calculator and Insights are three answers to one question — "am I
+// Goals, Health, the calculator and Insights all answer one question — "am I
 // going to get there?" — so they share a page. The tab lives in the URL (?tab=)
 // so a link to Insights is a real link and a refresh lands where you were.
 const TABS = [
   { key: 'goals', label: 'Goals', icon: Target, blurb: 'What you own and what you save, spread across your goals.' },
+  { key: 'health', label: 'Health', icon: HeartPulse, blurb: 'Six readings of your financial health, each measured and explained.' },
   { key: 'calculator', label: 'Calculator', icon: Calculator, blurb: 'SIP, lumpsum and goal maths, with step-up and inflation built in.' },
   { key: 'insights', label: 'Insights', icon: Compass, blurb: 'Where your money is taking you, and where it’s exposed.' },
 ];
@@ -505,7 +508,7 @@ function TabBar({ active, onChange }) {
       role="tablist"
       aria-label="Goals sections"
       onKeyDown={onKey}
-      className="inline-flex gap-1 rounded-2xl bg-slate-100 p-1 dark:bg-[#16233c]"
+      className="inline-flex max-w-full gap-1 overflow-x-auto rounded-2xl bg-slate-100 p-1 [scrollbar-width:none] dark:bg-[#16233c]"
     >
       {TABS.map((t) => {
         const on = t.key === active;
@@ -519,7 +522,7 @@ function TabBar({ active, onChange }) {
             aria-controls={`goals-panel-${t.key}`}
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(t.key)}
-            className={`relative flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:focus-visible:ring-gold-300 ${
+            className={`relative flex shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-sm sm:px-3.5 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:focus-visible:ring-gold-300 ${
               on ? 'text-brand-800' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -532,7 +535,8 @@ function TabBar({ active, onChange }) {
                 className="absolute inset-0 rounded-xl bg-white shadow-sm ring-1 ring-gold-200 dark:bg-brand-700/50 dark:ring-[#2e4a75]"
               />
             )}
-            <t.icon size={15} className={`relative ${on ? 'text-gold-500 dark:text-gold-300' : ''}`} />
+            {/* Four labelled tabs don't fit a phone with icons; words are the part that has to stay. */}
+            <t.icon size={15} className={`relative hidden sm:block ${on ? 'text-gold-500 dark:text-gold-300' : ''}`} />
             <span className="relative">{t.label}</span>
           </button>
         );
@@ -723,6 +727,14 @@ export default function Goals() {
           </div>
         )}
       </div>
+
+      {/* --------------------------------- health -------------------------------- */}
+      {/* Free for everyone: it only reads what the user has already recorded. */}
+      {visited.has('health') && (
+        <div role="tabpanel" id="goals-panel-health" aria-labelledby="goals-tab-health" hidden={tab !== 'health'}>
+          <HealthPanel />
+        </div>
+      )}
 
       {/* ------------------------------- calculator ------------------------------ */}
       {/* Free for everyone — it is the same tool as the public page. A free

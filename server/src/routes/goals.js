@@ -224,11 +224,14 @@ function present(g, base, rates, earmark, p) {
 
 // Everything the plan and the funding picker both need: the goals (as the plan
 // reads them), what the user owns, and the links between the two.
-async function fundingContext(user) {
+// `summary` may be passed in already built (scope null, withItems) by a caller
+// that has just priced the same portfolio — the financial-health score — so it
+// isn't priced a second time on the same request.
+async function fundingContext(user, { summary: prebuilt = null } = {}) {
   const base = user.base_currency;
   const [rows, summary, prefs, allLinks] = await Promise.all([
     list.all(user.id),
-    buildSummary(user, { scope: null, withItems: true }),
+    prebuilt || buildSummary(user, { scope: null, withItems: true }),
     getPrefs.get(user.id),
     listLinks.all(user.id),
   ]);
@@ -266,8 +269,8 @@ async function fundingContext(user) {
 // The whole plan for one user. Every goal's numbers depend on the others —
 // money one goal takes is money the next can't — so even a single-goal
 // response is read out of the full plan.
-async function planFor(user) {
-  const ctx = await fundingContext(user);
+export async function planFor(user, opts = {}) {
+  const ctx = await fundingContext(user, opts);
   const { base, rows, summary, rates } = ctx;
   const earmarks = resolveEarmarks(ctx).byGoal;
   const budget = await monthlyBudget(ctx.prefs, summary, rows, rates, base);

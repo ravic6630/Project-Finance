@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Wallet,
   HeartHandshake,
+  HeartPulse,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/AuthContext.jsx';
@@ -25,6 +26,7 @@ const PAGES = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard, keywords: 'home net worth' },
   { label: 'Investments', to: '/investments', icon: TrendingUp, keywords: 'stocks funds portfolio import broker' },
   { label: 'Goals', to: '/goals', icon: Target, keywords: 'projections calculator sip swp' },
+  { label: 'Financial health', to: '/goals?tab=health', icon: HeartPulse, keywords: 'score savings rate emergency fund budget diversification' },
   { label: 'Returns & tax', to: '/returns', icon: Receipt, keywords: 'xirr capital gains' },
   { label: 'Cash & Bank', to: '/cash', icon: Wallet, keywords: 'accounts fd deposit' },
   { label: 'Assets', to: '/assets', icon: Building2, keywords: 'property land gold vehicle business' },
