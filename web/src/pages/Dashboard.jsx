@@ -622,10 +622,10 @@ export default function Dashboard() {
         <WelcomeBack data={data.since_last_visit} base={base} name={user.name} />
         <GettingStarted data={data} />
 
-        {data.financial_health?.scored > 0 && (
-          <Reveal y={12}>
-            <HealthCard health={data.financial_health} />
-          </Reveal>
+        {/* A linked member's view is someone else's login, so no score of
+            yours belongs beside it. Every other view is your own money. */}
+        {!String(activeProfile).startsWith('u:') && (
+          <HealthCard health={data.financial_health} wholeAccount={activeProfile !== 'all'} />
         )}
 
         <Reveal y={12}>
