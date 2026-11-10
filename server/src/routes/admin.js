@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { Router } from 'express';
 import { db, now } from '../db.js';
+import { deleteAccount } from '../services/accounts.js';
 import { applyEffectiveRole, authRequired, hashPassword, requireAdmin } from '../auth.js';
 import { asyncHandler, bad, HttpError } from '../util.js';
 import { activatePremium, deactivatePremium, extendPremium, premiumState } from '../services/billing.js';
@@ -15,8 +16,10 @@ const listUsers = db.prepare(`
     (SELECT COUNT(*) FROM cash_accounts c WHERE c.user_id = u.id) AS accounts,
     (SELECT COUNT(*) FROM transactions t WHERE t.user_id = u.id)  AS transactions,
     (SELECT daily FROM email_prefs e WHERE e.user_id = u.id)      AS daily_email
-  FROM users u ORDER BY u.created_at DESC
+  FROM users u WHERE u.demo_expires_at IS NULL ORDER BY u.created_at DESC
 `);
+// Live demos are disposable visitors, not users: counted, never listed.
+const countDemos = db.prepare('SELECT COUNT(*) AS n FROM users WHERE demo_expires_at IS NOT NULL');
 const getUser = db.prepare('SELECT id, email, name, role FROM users WHERE id = ?');
 
 adminRouter.get(
@@ -43,19 +46,13 @@ adminRouter.get(
         users: users.length,
         premium: users.filter((u) => u.premium).length,
         holdings: users.reduce((s, u) => s + u.holdings, 0),
+        live_demos: Number((await countDemos.get())?.n || 0),
       },
       users,
     });
   })
 );
 
-const CHILD_TABLES = [
-  'holdings', 'cash_accounts', 'assets', 'transactions', 'goals', 'goal_links', 'alerts',
-  'net_worth_snapshots', 'investment_txns', 'subscriptions', 'recurring_rules', 'budgets',
-  'broker_connections', 'email_prefs', 'password_reset_codes', 'sessions',
-  'support_messages', 'profiles', 'insight_prefs', 'allocation_targets', 'goal_prefs',
-  'health_prefs',
-];
 
 adminRouter.delete(
   '/users/:id',
@@ -64,13 +61,7 @@ adminRouter.delete(
     if (id === req.user.id) throw new HttpError(400, "You can't delete your own admin account here.");
     const target = await getUser.get(id);
     if (!target) throw new HttpError(404, 'User not found');
-    // Explicit child deletes (don't rely on FK cascade across DB backends).
-    await db.batch([
-      ...CHILD_TABLES.map((t) => ({ sql: `DELETE FROM ${t} WHERE user_id = ?`, args: [id] })),
-      // family_links keys by inviter/invitee, not user_id — clear both directions.
-      { sql: 'DELETE FROM family_links WHERE inviter_id = ? OR invitee_id = ?', args: [id, id] },
-      { sql: 'DELETE FROM users WHERE id = ?', args: [id] },
-    ]);
+    await deleteAccount(id);
     res.json({ ok: true, deleted: target.email });
   })
 );

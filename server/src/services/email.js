@@ -61,6 +61,9 @@ async function sendViaBrevo({ to, subject, html, text }) {
 
 // Send an email. Throws a friendly error if no sender is configured.
 export async function sendMail({ to, subject, html, text }) {
+  // Live-demo accounts live at the reserved .invalid domain. Nothing is ever
+  // sent there, whatever path a message took to get here.
+  if (/@demo\.invalid$/i.test(String(to || '').trim())) return { skipped: 'demo account' };
   if (!emailConfigured()) {
     throw new Error(
       "Email isn't set up yet. Add BREVO_API_KEY (recommended — works on hosts that block SMTP) or SMTP_HOST/USER/PASS."

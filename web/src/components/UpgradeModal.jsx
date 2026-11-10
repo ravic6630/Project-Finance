@@ -126,7 +126,9 @@ export default function UpgradeModal({ open, onClose, onChanged }) {
           <p className="text-sm text-slate-500">
             {info.state.plan === 'admin'
               ? 'Owner account — all features unlocked.'
-              : info.state.until
+              : info.state.plan === 'demo'
+                ? 'This live demo has every Premium feature switched on. Create your free account to keep using them.'
+                : info.state.until
                 ? `Active until ${dateLabel(info.state.until)}.`
                 : 'Active.'}
           </p>

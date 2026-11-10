@@ -79,6 +79,20 @@ broker app's redirect URL must be `https://<your-domain>/broker/<broker>/callbac
 Brokers without a free API are covered by **Import CSV** (Investments → Import CSV)
 — works for any broker in any country, no keys needed.
 
+## 6. Live demo — on by default, nothing to set
+
+"Explore the live demo" on the home page gives each visitor a private account
+filled with a sample family's money, every Premium feature on. Email, payments,
+broker logins, family invites and support chat are refused inside it, and it is
+deleted when it expires. Optional knobs:
+
+- `DEMO_TTL_HOURS` — how long a demo lives (default `24`)
+- `DEMO_MAX_ACCOUNTS` — most demos at once; the oldest is removed past it (default `300`)
+- `DEMO_ENABLED=0` — switch the demo off (the button then shows an error)
+
+Expired demos are cleaned up when a new one starts, hourly while the server is
+awake, and on each `/api/cron/run` ping.
+
 ---
 
 ## Go-live order

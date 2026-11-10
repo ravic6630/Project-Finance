@@ -5,6 +5,7 @@ import { useAuth } from '../lib/AuthContext.jsx';
 import { ErrorBanner } from '../components/ui.jsx';
 import AuthAside from '../components/AuthAside.jsx';
 import PasswordField from '../components/PasswordField.jsx';
+import DemoButton from '../components/DemoButton.jsx';
 
 export default function Login() {
   const { login, complete2fa, completeLoginVerification } = useAuth();
@@ -188,9 +189,9 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-2 text-center text-sm text-slate-400">
-            Just exploring?{' '}
+            Just exploring? <DemoButton variant="link" label="Open the live demo" /> or{' '}
             <Link to="/calculators" className="font-medium text-brand-600 hover:underline">
-              Try our free calculators
+              try the calculators
             </Link>
           </p>
         </div>
