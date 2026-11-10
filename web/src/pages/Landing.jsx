@@ -11,18 +11,21 @@ import {
   ArrowRight,
   Bell,
   Building2,
-  Calculator,
   Globe2,
+  HeartPulse,
   LineChart,
   Link2,
   MessageCircle,
   PiggyBank,
+  Receipt,
   ShieldCheck,
   Sprout,
   Target,
   TrendingUp,
   Trophy,
+  Users,
 } from 'lucide-react';
+import DemoButton, { useDemoLauncher } from '../components/DemoButton.jsx';
 import {
   Aurora,
   Counter,
@@ -228,6 +231,27 @@ const STEPS = [
   ['Watch it grow', 'Live prices, a daily net-worth trend, goals and projections. 🌱'],
 ];
 
+// What the demo account has in it, so a visitor knows where to click first.
+// Every line is something the sample family's data actually shows.
+const DEMO_TOUR = [
+  [LineChart, 'Net worth over two years', 'Pick any range and set it against the Nifty 50.'],
+  [HeartPulse, 'A financial health score', 'Six readings, each with the one change that moves it.'],
+  [Target, 'Goals that plan themselves', 'A college fund, a holiday, retirement — on track or not.'],
+  [Receipt, 'True returns & tax', 'XIRR, plus short- and long-term gains, lot by lot.'],
+  [PiggyBank, 'Budgets & cashflow', 'Six months of spending, one category over budget.'],
+  [Users, 'The whole family', 'Switch between Asha, Rohan, and everyone together.'],
+];
+
+// The nav's demo entry is a plain text link, like its neighbours.
+function NavDemoLink() {
+  const { launch, busy } = useDemoLauncher();
+  return (
+    <button type="button" onClick={launch} disabled={busy} className="font-semibold transition hover:text-brand-700 disabled:cursor-wait">
+      {busy ? 'Opening…' : 'Live demo'}
+    </button>
+  );
+}
+
 const PREMIUM = [
   [TrendingUp, 'Auto-sync brokers with unlimited holdings'],
   [LineChart, 'Net-worth history from a day to a decade'],
@@ -269,6 +293,7 @@ export default function Landing() {
             <nav className="hidden items-center gap-7 text-sm font-semibold text-slate-500 md:flex">
               <a href="#features" className="transition hover:text-brand-700">Features</a>
               <a href="#premium" className="transition hover:text-brand-700">Premium</a>
+              <NavDemoLink />
               <Link to="/calculators" className="transition hover:text-brand-700">Calculators</Link>
             </nav>
             {/* Shrink-proof: the wordmark truncates before the actions do, so the
@@ -331,17 +356,14 @@ export default function Landing() {
                     <ArrowRight size={17} className="transition-transform duration-200 group-hover:translate-x-0.5" />
                   </Link>
                 </Magnetic>
-                <Link
-                  to="/calculators"
-                  className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-4 font-semibold text-brand-700 ring-1 ring-[#e8e2d4] transition duration-200 hover:ring-gold-300 dark:ring-white/10"
-                >
-                  <Calculator size={17} /> Try the calculators
-                </Link>
+                {/* Self-aligned so its hint line, when it appears, hangs under
+                    this button instead of stretching the row. */}
+                <DemoButton variant="secondary" label="Explore the live demo" className="self-start" />
               </motion.div>
 
-              <motion.p {...enter(0.5)} className="mt-5 flex items-center gap-1.5 text-sm text-slate-400">
+              <motion.p {...enter(0.5)} className="mt-5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-slate-400">
                 <ShieldCheck size={15} className="text-emerald-500" />
-                Free to start · no card needed · read-only broker access
+                Free to start · no card needed · the demo needs no sign-up
               </motion.p>
             </div>
 
@@ -458,6 +480,55 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* ------------------------------------------------------ live demo -- */}
+        <section id="demo" className="mx-auto max-w-6xl px-4 pb-24 lg:px-8">
+          <Reveal>
+            <Spotlight className="card relative overflow-hidden p-7 sm:p-10 lg:p-12">
+              <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-600">
+                    Live demo · no sign-up
+                  </p>
+                  <h2
+                    className="font-display mt-4 text-4xl font-bold text-brand-900 sm:text-[2.75rem]"
+                    style={TIGHT}
+                  >
+                    Walk around a real-looking account
+                  </h2>
+                  <p className="mt-4 max-w-md leading-relaxed text-slate-500">
+                    Meet Asha and Rohan in Pune: Indian and US shares, mutual funds, an FD, a flat
+                    and four goals. Click anything, add a holding, switch currency — every Premium
+                    feature is on. It’s yours alone, and it’s deleted after 24 hours.
+                  </p>
+                  <div className="mt-8">
+                    <DemoButton variant="primary" label="Open the live demo" />
+                  </div>
+                  <p className="mt-4 text-xs text-slate-400">
+                    Sample data only. Nothing in the demo can email anyone, charge anything or reach a
+                    real broker.
+                  </p>
+                </div>
+                <ul className="grid gap-3 sm:grid-cols-2">
+                  {DEMO_TOUR.map(([Icon, title, body]) => (
+                    <li
+                      key={title}
+                      className="flex gap-3 rounded-2xl bg-[#faf9f5] p-4 ring-1 ring-inset ring-[#e8e2d4] dark:bg-white/[0.03] dark:ring-white/10"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                        <Icon size={17} />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-900">{title}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{body}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Spotlight>
+          </Reveal>
+        </section>
+
         {/* --------------------------------------------------- how it works -- */}
         <section className="border-y border-[#e8e2d4] bg-[#faf9f5]">
           <div className="mx-auto max-w-6xl px-4 py-24 lg:px-8">
@@ -547,7 +618,10 @@ export default function Landing() {
               >
                 Plant it today. Watch it grow.
               </h2>
-              <p className="mt-4 text-slate-500">Your first holding takes under a minute.</p>
+              <p className="mt-4 text-slate-500">
+                Your first holding takes under a minute — or{' '}
+                <DemoButton variant="link" label="look around the live demo first" />.
+              </p>
             </Reveal>
             <Reveal delay={0.12}>
               <div className="mt-9">
@@ -571,9 +645,10 @@ export default function Landing() {
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
               <Sprout size={16} className="text-gold-500" /> Sampada · wealth, all in one place
             </div>
-            <div className="flex gap-5 text-sm font-medium text-slate-500">
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-slate-500 [&>*]:whitespace-nowrap">
               <Link to="/login" className="transition hover:text-brand-700">Sign in</Link>
               <Link to="/signup" className="transition hover:text-brand-700">Create account</Link>
+              <a href="#demo" className="transition hover:text-brand-700">Live demo</a>
               <Link to="/calculators" className="transition hover:text-brand-700">Calculators</Link>
               <Link to="/privacy" className="transition hover:text-brand-700">Privacy</Link>
             </div>

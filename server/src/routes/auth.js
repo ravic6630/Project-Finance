@@ -10,6 +10,7 @@ import { generateSecret, otpauthUri, verifyTotp } from '../services/totp.js';
 import { HttpError, asyncHandler, bad, escapeHtml, oneOf, str, rateLimit } from '../util.js';
 import { emailConfigured, sendMail } from '../services/email.js';
 import { CURRENCIES } from '../markets.js';
+import { DEMO_ENABLED, createDemoAccount } from '../services/demo.js';
 
 export const authRouter = Router();
 
@@ -29,6 +30,7 @@ const publicUser = (u) => ({
   base_currency: u.base_currency,
   role: u.role,
   totp_enabled: !!u.totp_enabled,
+  demo_expires_at: u.demo_expires_at || null,
 });
 
 const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -321,6 +323,21 @@ authRouter.post(
     const token = signToken(user);
     await createSession(user.id, token, req);
     res.json({ token, user: publicUser(user) });
+  })
+);
+
+// ---- Live demo ----------------------------------------------------------------
+// A fresh, private, pre-filled account per click (see services/demo.js). Six an
+// hour per address is plenty for someone exploring and useless for flooding.
+authRouter.post(
+  '/demo',
+  rateLimit({ name: 'demo', windowMs: 60 * 60000, max: 6 }),
+  asyncHandler(async (req, res) => {
+    if (!DEMO_ENABLED) throw new HttpError(404, 'The live demo is switched off.');
+    const user = await createDemoAccount({ baseCurrency: pickCurrency(req.body?.base_currency) });
+    const token = signToken(user);
+    await createSession(user.id, token, req);
+    res.status(201).json({ token, user: publicUser(user) });
   })
 );
 

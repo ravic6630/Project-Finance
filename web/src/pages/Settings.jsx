@@ -76,7 +76,11 @@ export default function Settings() {
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="Email">
-            <input className="input bg-slate-50 text-slate-500" value={user.email} disabled />
+            <input
+              className="input bg-slate-50 text-slate-500"
+              value={user.demo_expires_at ? 'Live demo account — no email' : user.email}
+              disabled
+            />
           </Field>
           <Field
             label="Base currency"
@@ -120,7 +124,9 @@ export default function Settings() {
               {billing?.state?.premium
                 ? billing.state.plan === 'admin'
                   ? 'Owner account — all features unlocked.'
-                  : billing.state.until
+                  : billing.state.plan === 'demo'
+                    ? 'Live demo — every Premium feature is on until the demo ends.'
+                    : billing.state.until
                     ? `Premium active until ${dateLabel(billing.state.until)}.`
                     : 'Premium active.'
                 : 'Upgrade to auto-sync brokers and unlock everything.'}
@@ -132,7 +138,8 @@ export default function Settings() {
         </button>
       </div>
 
-      <ReferralCard />
+      {/* A referral from a demo would credit an account deleted tomorrow. */}
+      {!user.demo_expires_at && <ReferralCard />}
 
       <EmailDigestCard onUpgrade={() => setUpgradeOpen(true)} />
 

@@ -37,6 +37,7 @@ import { insightsRouter } from './routes/insights.js';
 import { legacyRouter } from './routes/legacy.js';
 import { financialHealthRouter } from './routes/financialHealth.js';
 import { startDigestScheduler } from './services/scheduler.js';
+import { sweepDemos } from './services/demo.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -130,4 +131,10 @@ app.listen(PORT, () => {
   // after a (re)start doesn't wait on a ~5 MB download. Non-blocking; failures
   // are ignored and it's re-fetched lazily on demand.
   warmMfList();
+  // Expired live demos: once now, then hourly while the server is awake. (A
+  // sleeping free-tier server can't run a timer; the daily cron ping and every
+  // new demo also sweep, so nothing outlives its expiry by much.)
+  const sweep = () => sweepDemos().catch((e) => console.error('demo sweep failed:', e.message));
+  sweep();
+  setInterval(sweep, 60 * 60 * 1000).unref();
 });

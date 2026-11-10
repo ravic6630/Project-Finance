@@ -27,7 +27,9 @@ emailRouter.get(
       daily_hour: p?.daily_hour ?? 8,
       daily_tz: p?.daily_tz || 'Asia/Kolkata',
       last_sent: p?.last_sent || null,
-      email: req.user.email,
+      // A demo's address is a throwaway that can't receive anything; naming it
+      // on screen would only puzzle the visitor.
+      email: req.user.demo_expires_at ? null : req.user.email,
       configured: emailConfigured(),
       premium: (await premiumState(req.user)).premium,
     });

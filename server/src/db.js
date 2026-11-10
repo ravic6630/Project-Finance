@@ -413,6 +413,9 @@ export async function initDb() {
   await addColumn('users', 'legacy_warned_at', 'TEXT');
   await addColumn('users', 'legacy_released_at', 'TEXT');
   await addColumn('users', 'legacy_note', 'TEXT');
+  // Live demo accounts (services/demo.js): set = a disposable demo that is
+  // deleted after this moment; NULL = a real account.
+  await addColumn('users', 'demo_expires_at', 'TEXT');
   // Nominee per account/holding/asset. NULL = never recorded (not the same as
   // "none": one is a gap in our knowledge, the other a gap in their paperwork).
   for (const t of ['holdings', 'cash_accounts', 'assets']) {

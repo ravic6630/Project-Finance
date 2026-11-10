@@ -39,6 +39,8 @@ const upsertSub = db.prepare(`
 // Premium if you're an admin, or have an active subscription that hasn't lapsed.
 export async function premiumState(user) {
   if (user.role === 'admin') return { premium: true, plan: 'admin', until: null };
+  // A live demo shows everything; it ends when the demo does.
+  if (user.demo_expires_at) return { premium: true, plan: 'demo', until: user.demo_expires_at, provider: null };
   const sub = await getSub.get(user.id);
   const active =
     sub?.status === 'active' &&

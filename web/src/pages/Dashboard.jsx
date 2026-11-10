@@ -620,7 +620,9 @@ export default function Dashboard() {
         <FamilyScopeNote data={data} active={activeProfile} />
 
         <WelcomeBack data={data.since_last_visit} base={base} name={user.name} />
-        <GettingStarted data={data} />
+        {/* A demo is someone else's finished setup, and two of the checklist's
+            steps (the daily email, a legacy contact) are switched off in it. */}
+        {!user.demo_expires_at && <GettingStarted data={data} />}
 
         {/* A linked member's view is someone else's login, so no score of
             yours belongs beside it. Every other view is your own money. */}

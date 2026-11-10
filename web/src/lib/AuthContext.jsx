@@ -101,6 +101,17 @@ export function AuthProvider({ children }) {
     setUser(d.user);
   }
 
+  // The live demo: a fresh, private, pre-filled account (server/src/services/demo.js).
+  // Also "start over" from inside one — the old demo is simply left to expire.
+  async function startDemo() {
+    const d = await api('/auth/demo', { method: 'POST', body: {} });
+    clearDashboardCache();
+    clearApiCache();
+    setToken(d.token);
+    setUser(d.user);
+    return d.user;
+  }
+
   function resendSignup(email) {
     return api('/auth/signup/resend', { method: 'POST', body: { email } });
   }
@@ -122,7 +133,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, waking, login, complete2fa, completeLoginVerification, startSignup, verifySignup, resendSignup, logout, updateProfile }}
+      value={{ user, loading, waking, login, complete2fa, completeLoginVerification, startSignup, verifySignup, resendSignup, startDemo, logout, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

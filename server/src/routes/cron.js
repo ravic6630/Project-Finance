@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler, HttpError } from '../util.js';
 import { runDigests, runMonthlyStatements } from '../services/scheduler.js';
 import { runLegacyChecks } from '../services/legacy.js';
+import { sweepDemos } from '../services/demo.js';
 import { evaluateAlerts, refreshAllInstruments } from '../services/alerts.js';
 
 export const cronRouter = Router();
@@ -29,6 +30,8 @@ function assertSecret(req) {
 // instead of stacking a second run on top.
 let inFlight = null;
 async function runAll({ force = false } = {}) {
+  // Expired live demos go first, so nothing below spends time on them.
+  const demos = await sweepDemos().catch((e) => ({ error: e.message }));
   const refresh = await refreshAllInstruments();
   const alerts = await evaluateAlerts();
   const digests = await runDigests({ force });
@@ -37,7 +40,7 @@ async function runAll({ force = false } = {}) {
   // who stayed quiet past their threshold. Wrapped so a bug here can never
   // stop the digests — and vice versa.
   const legacy = await runLegacyChecks().catch((e) => ({ error: e.message }));
-  return { ok: !digests.error, refresh, alerts, digests, statements, legacy };
+  return { ok: !digests.error, demos, refresh, alerts, digests, statements, legacy };
 }
 function kickOff(opts) {
   if (inFlight) return false;
